@@ -1,0 +1,17 @@
+[package]
+name = "zkml-prover"
+description = "Off-chain ML inference and ZK proof generation for zkml-soroban"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zkml-common = { path = "../zkml-common" }
+serde = { workspace = true }
+serde_json = "1"
+
+# Phase 1: RISC Zero zkVM (uncomment when integrating)
+# risc0-zkvm = "1"
+
+# ONNX model import (uncomment when integrating)
+# prost = "0.13"

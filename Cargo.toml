@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/zkml-common",
+    "crates/zkml-prover",
+    "crates/zkml-verifier",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/diegoveme/ZKML-Soroban"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }

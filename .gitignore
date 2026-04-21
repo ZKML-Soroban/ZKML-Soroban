@@ -1,0 +1,27 @@
+# Build artifacts
+/target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Soroban
+.soroban/
+
+# Environment
+.env
+.env.local
+
+# Coverage and profiling
+*.profraw
+*.profdata
+lcov.info
+coverage/
