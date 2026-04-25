@@ -58,3 +58,16 @@ mod tests {
         assert!((original - recovered).abs() < 1e-4);
     }
 }
+
+impl FixedPoint {
+    /// Checked addition of two fixed-point numbers with the same scale.
+    ///
+    /// Returns `None` on overflow. Both operands must share the same scale;
+    /// this is checked with a debug assertion.
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in addition");
+        self.value
+            .checked_add(other.value)
+            .map(|value| Self { value, scale: self.scale })
+    }
+}
