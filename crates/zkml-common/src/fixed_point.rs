@@ -91,3 +91,13 @@ mod tests_add {
         assert!(a.checked_add(b).is_none());
     }
 }
+
+impl FixedPoint {
+    /// Checked subtraction of two fixed-point numbers with the same scale.
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in subtraction");
+        self.value
+            .checked_sub(other.value)
+            .map(|value| Self { value, scale: self.scale })
+    }
+}
