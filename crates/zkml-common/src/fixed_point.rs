@@ -71,3 +71,23 @@ impl FixedPoint {
             .map(|value| Self { value, scale: self.scale })
     }
 }
+
+#[cfg(test)]
+mod tests_add {
+    use super::*;
+
+    #[test]
+    fn add_matches_real_arithmetic() {
+        let a = FixedPoint::quantize(1.25);
+        let b = FixedPoint::quantize(2.50);
+        let sum = a.checked_add(b).expect("no overflow");
+        assert!((sum.dequantize() - 3.75).abs() < 1e-4);
+    }
+
+    #[test]
+    fn add_overflow_returns_none() {
+        let a = FixedPoint::from_raw(i64::MAX, DEFAULT_SCALE);
+        let b = FixedPoint::from_raw(1, DEFAULT_SCALE);
+        assert!(a.checked_add(b).is_none());
+    }
+}
