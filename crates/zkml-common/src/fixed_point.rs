@@ -101,3 +101,16 @@ impl FixedPoint {
             .map(|value| Self { value, scale: self.scale })
     }
 }
+
+impl FixedPoint {
+    /// Multiply two fixed-point numbers, rescaling the result.
+    ///
+    /// Uses an `i128` intermediate to avoid overflow before the shift back
+    /// down by `scale` fractional bits.
+    pub fn mul(self, other: Self) -> Self {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
+        let wide = (self.value as i128) * (other.value as i128);
+        let scaled = wide >> self.scale;
+        Self { value: scaled as i64, scale: self.scale }
+    }
+}
