@@ -114,3 +114,15 @@ impl FixedPoint {
         Self { value: scaled as i64, scale: self.scale }
     }
 }
+
+impl FixedPoint {
+    /// Saturating addition: clamps to the representable range on overflow.
+    pub fn saturating_add(self, other: Self) -> Self {
+        Self { value: self.value.saturating_add(other.value), scale: self.scale }
+    }
+
+    /// Negate the value.
+    pub fn neg(self) -> Self {
+        Self { value: -self.value, scale: self.scale }
+    }
+}
