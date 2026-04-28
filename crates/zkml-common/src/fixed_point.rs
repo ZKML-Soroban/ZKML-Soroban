@@ -126,3 +126,22 @@ impl FixedPoint {
         Self { value: -self.value, scale: self.scale }
     }
 }
+
+#[cfg(test)]
+mod tests_overflow {
+    use super::*;
+
+    #[test]
+    fn saturating_add_clamps() {
+        let a = FixedPoint::from_raw(i64::MAX, DEFAULT_SCALE);
+        let b = FixedPoint::from_raw(1000, DEFAULT_SCALE);
+        assert_eq!(a.saturating_add(b).value, i64::MAX);
+    }
+
+    #[test]
+    fn mul_round_trips_small_values() {
+        let a = FixedPoint::quantize(1.5);
+        let b = FixedPoint::quantize(2.0);
+        assert!((a.mul(b).dequantize() - 3.0).abs() < 1e-3);
+    }
+}
