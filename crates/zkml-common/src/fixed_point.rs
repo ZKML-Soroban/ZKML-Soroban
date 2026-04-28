@@ -145,3 +145,15 @@ mod tests_overflow {
         assert!((a.mul(b).dequantize() - 3.0).abs() < 1e-3);
     }
 }
+
+impl core::fmt::Display for FixedPoint {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:.5}", self.dequantize())
+    }
+}
+
+impl From<i32> for FixedPoint {
+    fn from(value: i32) -> Self {
+        FixedPoint::quantize(value as f64)
+    }
+}
