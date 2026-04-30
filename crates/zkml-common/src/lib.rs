@@ -7,3 +7,5 @@ pub mod fixed_point;
 pub mod models;
 pub mod proof;
 pub mod error;
+
+pub use error::ZkmlError;
