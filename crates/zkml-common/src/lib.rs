@@ -10,3 +10,4 @@ pub mod error;
 
 pub use error::ZkmlError;
 pub mod activation;
+pub mod tensor;
