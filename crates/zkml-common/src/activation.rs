@@ -18,3 +18,20 @@ pub fn relu(x: FixedPoint) -> FixedPoint {
 pub fn relu_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
     xs.iter().copied().map(relu).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relu_clamps_negatives() {
+        let neg = FixedPoint::quantize(-2.0);
+        assert_eq!(relu(neg).value, 0);
+    }
+
+    #[test]
+    fn relu_passes_positives() {
+        let pos = FixedPoint::quantize(2.0);
+        assert_eq!(relu(pos).value, pos.value);
+    }
+}
