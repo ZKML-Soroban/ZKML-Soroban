@@ -91,3 +91,32 @@ pub enum Model {
     LogisticRegression(LogisticRegression),
     TinyMLP(TinyMLP),
 }
+
+impl DecisionTree {
+    /// Validate that every split node references in-bounds children and
+    /// feature indices. Returns an error describing the first problem found.
+    pub fn validate(&self) -> Result<(), crate::error::ZkmlError> {
+        for (i, node) in self.nodes.iter().enumerate() {
+            if let TreeNode::Split { feature_index, left, right, .. } = node {
+                if *feature_index >= self.num_features {
+                    return Err(crate::error::ZkmlError::InvalidModel(format!(
+                        "node {i}: feature index {feature_index} out of range"
+                    )));
+                }
+                if *left >= self.nodes.len() || *right >= self.nodes.len() {
+                    return Err(crate::error::ZkmlError::InvalidModel(format!(
+                        "node {i}: child index out of range"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl LogisticRegression {
+    /// Number of input features this model expects.
+    pub fn num_features(&self) -> usize {
+        self.weights.len()
+    }
+}
