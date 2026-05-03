@@ -120,3 +120,41 @@ impl LogisticRegression {
         self.weights.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixed_point::FixedPoint;
+
+    #[test]
+    fn valid_tree_passes() {
+        let tree = DecisionTree {
+            num_features: 1,
+            nodes: vec![
+                TreeNode::Split {
+                    feature_index: 0,
+                    threshold: FixedPoint::quantize(0.5),
+                    left: 1,
+                    right: 2,
+                },
+                TreeNode::Leaf { value: FixedPoint::quantize(0.0) },
+                TreeNode::Leaf { value: FixedPoint::quantize(1.0) },
+            ],
+        };
+        assert!(tree.validate().is_ok());
+    }
+
+    #[test]
+    fn out_of_range_child_fails() {
+        let tree = DecisionTree {
+            num_features: 1,
+            nodes: vec![TreeNode::Split {
+                feature_index: 0,
+                threshold: FixedPoint::quantize(0.5),
+                left: 9,
+                right: 2,
+            }],
+        };
+        assert!(tree.validate().is_err());
+    }
+}
