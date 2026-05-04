@@ -96,3 +96,27 @@ fn infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> FixedPoint {
     }
     activations.first().copied().unwrap_or(FixedPoint::from_raw(0, 16))
 }
+
+#[cfg(test)]
+mod tests_mlp {
+    use super::*;
+    use zkml_common::models::{DenseLayer, Model, TinyMLP};
+
+    fn fp(x: f64) -> FixedPoint {
+        FixedPoint::quantize(x)
+    }
+
+    #[test]
+    fn single_layer_identity() {
+        // One input, one output, weight 1.0, bias 0.0 -> output equals input.
+        let layer = DenseLayer {
+            weights: vec![fp(1.0)],
+            biases: vec![fp(0.0)],
+            input_size: 1,
+            output_size: 1,
+        };
+        let model = Model::TinyMLP(TinyMLP { layers: vec![layer] });
+        let out = run_inference(&model, &[fp(0.7)]);
+        assert!((out.dequantize() - 0.7).abs() < 1e-2);
+    }
+}
