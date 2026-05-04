@@ -120,3 +120,30 @@ mod tests_mlp {
         assert!((out.dequantize() - 0.7).abs() < 1e-2);
     }
 }
+
+/// Return the index of the largest value in a fixed-point vector.
+///
+/// Used to turn a multi-output MLP layer into a class label without a
+/// (ZK-unfriendly) softmax: argmax of the logits equals argmax of softmax.
+pub fn argmax(values: &[FixedPoint]) -> Option<usize> {
+    values
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, v)| v.value)
+        .map(|(i, _)| i)
+}
+
+#[cfg(test)]
+mod tests_argmax {
+    use super::*;
+
+    #[test]
+    fn argmax_picks_highest_logit() {
+        let logits = vec![
+            FixedPoint::quantize(0.1),
+            FixedPoint::quantize(0.9),
+            FixedPoint::quantize(0.4),
+        ];
+        assert_eq!(argmax(&logits), Some(1));
+    }
+}
