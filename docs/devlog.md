@@ -17,3 +17,10 @@ addition, subtraction, multiplication, and saturating variants, each with
 tests. Added a shared `ZkmlError` type, a quantized ReLU activation, and a
 minimal `Tensor` for moving data between dense layers. Next up is wiring these
 into actual MLP inference in the prover.
+
+### Note: matmul accumulation
+
+The dense layer accumulates in `i64` after a per-product right shift. For the
+tiny models we target (at most a few dozen neurons per layer) this keeps us
+well inside the `i64` range. Larger layers would need an `i128` accumulator;
+tracked as a follow-up if Phase 2 introduces bigger circuits.
