@@ -37,3 +37,18 @@ mod tests {
         }
     }
 }
+
+/// Maximum absolute reconstruction error introduced by quantizing `values`.
+///
+/// Useful for asserting that a model survives quantization within tolerance.
+pub fn max_quantization_error(values: &[f64]) -> f64 {
+    values
+        .iter()
+        .map(|&v| (v - FixedPoint::quantize(v).dequantize()).abs())
+        .fold(0.0, f64::max)
+}
+
+/// Dequantize a slice of fixed-point values back to `f64`.
+pub fn dequantize_all(values: &[FixedPoint]) -> Vec<f64> {
+    values.iter().map(FixedPoint::dequantize).collect()
+}
