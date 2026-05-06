@@ -52,3 +52,14 @@ pub fn max_quantization_error(values: &[f64]) -> f64 {
 pub fn dequantize_all(values: &[FixedPoint]) -> Vec<f64> {
     values.iter().map(FixedPoint::dequantize).collect()
 }
+
+#[cfg(test)]
+mod tests_error {
+    use super::*;
+
+    #[test]
+    fn error_within_tolerance() {
+        let values = vec![0.1, -0.25, 3.14159, 100.5, -42.0];
+        assert!(max_quantization_error(&values) < 1e-4);
+    }
+}
