@@ -31,3 +31,16 @@ pub struct JsonDenseLayer {
     pub input_size: usize,
     pub output_size: usize,
 }
+
+use zkml_common::fixed_point::FixedPoint;
+use zkml_common::models::{LogisticRegression, Model};
+
+impl JsonModel {
+    /// Convert a logistic regression JSON document into the internal model.
+    fn into_logistic(weights: Vec<f64>, bias: f64) -> Model {
+        Model::LogisticRegression(LogisticRegression {
+            weights: weights.iter().copied().map(FixedPoint::quantize).collect(),
+            bias: FixedPoint::quantize(bias),
+        })
+    }
+}
