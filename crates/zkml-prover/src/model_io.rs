@@ -69,3 +69,34 @@ impl JsonModel {
         Model::DecisionTree(DecisionTree { nodes, num_features })
     }
 }
+
+use zkml_common::models::{DenseLayer, TinyMLP};
+
+impl JsonModel {
+    /// Convert a tiny MLP JSON document into the internal model.
+    fn into_mlp(layers: Vec<JsonDenseLayer>) -> Model {
+        let layers = layers
+            .into_iter()
+            .map(|l| DenseLayer {
+                weights: l.weights.iter().copied().map(FixedPoint::quantize).collect(),
+                biases: l.biases.iter().copied().map(FixedPoint::quantize).collect(),
+                input_size: l.input_size,
+                output_size: l.output_size,
+            })
+            .collect();
+        Model::TinyMLP(TinyMLP { layers })
+    }
+
+    /// Lower any JSON model into the internal `Model` representation.
+    pub fn into_model(self) -> Model {
+        match self {
+            JsonModel::LogisticRegression { weights, bias } => {
+                Self::into_logistic(weights, bias)
+            }
+            JsonModel::DecisionTree { num_features, nodes } => {
+                Self::into_tree(num_features, nodes)
+            }
+            JsonModel::TinyMlp { layers } => Self::into_mlp(layers),
+        }
+    }
+}
