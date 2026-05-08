@@ -44,3 +44,28 @@ impl JsonModel {
         })
     }
 }
+
+use zkml_common::models::{DecisionTree, TreeNode};
+
+impl JsonModel {
+    /// Convert decision-tree JSON nodes into the internal flat node vector.
+    fn into_tree(num_features: usize, nodes: Vec<JsonTreeNode>) -> Model {
+        let nodes = nodes
+            .into_iter()
+            .map(|n| match n {
+                JsonTreeNode::Split { feature_index, threshold, left, right } => {
+                    TreeNode::Split {
+                        feature_index,
+                        threshold: FixedPoint::quantize(threshold),
+                        left,
+                        right,
+                    }
+                }
+                JsonTreeNode::Leaf { value } => {
+                    TreeNode::Leaf { value: FixedPoint::quantize(value) }
+                }
+            })
+            .collect();
+        Model::DecisionTree(DecisionTree { nodes, num_features })
+    }
+}
