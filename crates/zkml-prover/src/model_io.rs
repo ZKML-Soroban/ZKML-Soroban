@@ -100,3 +100,29 @@ impl JsonModel {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_logistic_regression() {
+        let json = r#"{"kind":"logistic_regression","weights":[0.5,-0.5],"bias":0.0}"#;
+        let doc: JsonModel = serde_json::from_str(json).unwrap();
+        match doc.into_model() {
+            Model::LogisticRegression(lr) => assert_eq!(lr.weights.len(), 2),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn parse_tree_round_trip() {
+        let json = r#"{"kind":"decision_tree","num_features":1,
+            "nodes":[{"type":"leaf","value":1.0}]}"#;
+        let doc: JsonModel = serde_json::from_str(json).unwrap();
+        match doc.into_model() {
+            Model::DecisionTree(t) => assert_eq!(t.nodes.len(), 1),
+            _ => panic!("wrong variant"),
+        }
+    }
+}
