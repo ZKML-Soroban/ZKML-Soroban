@@ -1,29 +1,37 @@
-//! ONNX model importer.
+//! Model importer.
 //!
-//! Parses ONNX protobuf files and converts supported operators into
-//! the internal model representations defined in `zkml-common`.
+//! Native ONNX protobuf parsing is still pending. In the meantime the import
+//! entrypoint accepts the JSON exchange format documented in
+//! `docs/model-format.md` and lowers it into the internal `Model` type, so the
+//! rest of the pipeline can be built and tested end to end.
 //!
-//! # Supported ONNX Operators (planned)
+//! # Planned ONNX operator mapping
 //!
-//! | Operator           | Target Model            |
-//! |--------------------|-------------------------|
-//! | TreeEnsembleClassifier | `DecisionTree`      |
-//! | LinearClassifier   | `LogisticRegression`    |
-//! | MatMul + Add + Relu| `TinyMLP`               |
+//! | Operator                | Target Model           |
+//! |-------------------------|------------------------|
+//! | TreeEnsembleClassifier  | `DecisionTree`         |
+//! | LinearClassifier        | `LogisticRegression`   |
+//! | MatMul + Add + Relu     | `TinyMLP`              |
 
-// TODO: Implement ONNX import using `prost`-generated types.
-//
-// The import pipeline will:
-// 1. Deserialize the ONNX protobuf into a graph representation.
-// 2. Walk the operator graph and identify the model architecture.
-// 3. Extract weights, biases, and tree structures.
-// 4. Quantize all floating-point values into `FixedPoint`.
-// 5. Return the appropriate `Model` variant.
+use zkml_common::models::Model;
 
-/// Placeholder for the ONNX import entry point.
+/// Import a model from the JSON exchange format.
 ///
-/// In a future iteration, this function will accept raw ONNX bytes
-/// and return a quantized `Model`.
-pub fn import_onnx(_onnx_bytes: &[u8]) -> Result<zkml_common::models::Model, String> {
-    Err("ONNX import is not yet implemented".to_string())
+/// # Errors
+///
+/// Returns a descriptive error string if the bytes cannot be parsed.
+pub fn import_onnx(bytes: &[u8]) -> Result<Model, String> {
+    let doc: crate::model_io::JsonModel =
+        serde_json::from_slice(bytes).map_err(|e| format!("model parse error: {e}"))?;
+    Ok(doc.into_model())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_rejects_garbage() {
+        assert!(import_onnx(b"not json").is_err());
+    }
 }
