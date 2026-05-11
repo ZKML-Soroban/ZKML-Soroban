@@ -12,3 +12,4 @@ pub use error::ZkmlError;
 pub mod activation;
 pub mod tensor;
 pub mod commitment;
+pub mod merkle;
