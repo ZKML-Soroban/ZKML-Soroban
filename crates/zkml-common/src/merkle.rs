@@ -34,3 +34,26 @@ fn hash_pair(a: &Commitment, b: &Commitment) -> Commitment {
     }
     commit_i64(&elements)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_is_deterministic() {
+        let leaves = vec![[1u8; 32], [2u8; 32], [3u8; 32]];
+        assert_eq!(merkle_root(&leaves), merkle_root(&leaves));
+    }
+
+    #[test]
+    fn empty_is_zero() {
+        assert_eq!(merkle_root(&[]), [0u8; 32]);
+    }
+
+    #[test]
+    fn order_matters() {
+        let a = vec![[1u8; 32], [2u8; 32]];
+        let b = vec![[2u8; 32], [1u8; 32]];
+        assert_ne!(merkle_root(&a), merkle_root(&b));
+    }
+}
