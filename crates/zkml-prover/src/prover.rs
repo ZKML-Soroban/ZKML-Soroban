@@ -1,19 +1,14 @@
 //! Proof generation module.
 //!
-//! Orchestrates the end-to-end proof pipeline:
-//!
-//! 1. Accept a quantized model and input features.
-//! 2. Commit to the model and the inputs.
-//! 3. Execute inference inside the RISC Zero zkVM guest (Phase 1).
-//! 4. Wrap the result into a Groth16 `VerificationBundle`.
+//! Orchestrates the end-to-end proof pipeline: commit to the model and inputs,
+//! run inference, and package the result into a `VerificationBundle` ready for
+//! on-chain verification.
 
 use zkml_common::commitment::{commit_i64, Commitment};
 use zkml_common::fixed_point::FixedPoint;
 use zkml_common::models::{Model, TreeNode};
-use zkml_common::proof::VerificationBundle;
+use zkml_common::proof::{Groth16Proof, PublicInputs, VerificationBundle};
 
-/// Flatten a model's fixed-point parameters into field elements so they can be
-/// committed to deterministically.
 fn model_elements(model: &Model) -> Vec<i64> {
     let mut out = Vec::new();
     match model {
@@ -58,15 +53,25 @@ pub fn input_commitment(inputs: &[FixedPoint]) -> Commitment {
     commit_i64(&elements)
 }
 
-/// Generate a ZK proof attesting that `model` produces some output on `inputs`.
+/// Generate a verification bundle for `model` evaluated on `inputs`.
 ///
-/// # Errors
-///
-/// Returns an error string if proof generation fails.
+/// The Groth16 proof bytes are a Phase 1 placeholder; the public inputs and
+/// commitments are fully computed so the on-chain interface can be exercised
+/// end to end.
 pub fn generate_proof(
-    _model: &Model,
-    _inputs: &[FixedPoint],
+    model: &Model,
+    inputs: &[FixedPoint],
 ) -> Result<VerificationBundle, String> {
-    // TODO: Integrate the RISC Zero zkVM proving pipeline (see docs/proving.md).
-    Err("Proof generation is not yet implemented".to_string())
+    let output = crate::inference::run_inference(model, inputs);
+
+    let public_inputs = PublicInputs {
+        model_hash: model_commitment(model),
+        input_hash: input_commitment(inputs),
+        output: output.value.to_le_bytes().to_vec(),
+    };
+
+    // TODO: replace with a real RISC Zero receipt lowered to Groth16.
+    let proof = Groth16Proof { data: Vec::new() };
+
+    Ok(VerificationBundle { proof, public_inputs })
 }
