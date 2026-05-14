@@ -75,3 +75,25 @@ pub fn generate_proof(
 
     Ok(VerificationBundle { proof, public_inputs })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zkml_common::models::LogisticRegression;
+
+    fn fp(x: f64) -> FixedPoint {
+        FixedPoint::quantize(x)
+    }
+
+    #[test]
+    fn bundle_is_populated() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![fp(0.5), fp(-0.25)],
+            bias: fp(0.1),
+        });
+        let inputs = vec![fp(1.0), fp(2.0)];
+        let bundle = generate_proof(&model, &inputs).unwrap();
+        assert_ne!(bundle.public_inputs.model_hash, [0u8; 32]);
+        assert_eq!(bundle.public_inputs.output.len(), 8);
+    }
+}
