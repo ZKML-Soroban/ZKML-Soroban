@@ -1,0 +1,5 @@
+{
+  "kind": "logistic_regression",
+  "weights": [0.82, -0.41, 0.33, 1.07],
+  "bias": -0.2
+}
