@@ -1,0 +1,11 @@
+{
+  "kind": "decision_tree",
+  "num_features": 3,
+  "nodes": [
+    { "type": "split", "feature_index": 0, "threshold": 0.5, "left": 1, "right": 2 },
+    { "type": "leaf", "value": 0.0 },
+    { "type": "split", "feature_index": 1, "threshold": 0.3, "left": 3, "right": 4 },
+    { "type": "leaf", "value": 0.0 },
+    { "type": "leaf", "value": 1.0 }
+  ]
+}
