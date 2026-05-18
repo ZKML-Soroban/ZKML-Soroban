@@ -151,3 +151,29 @@ mod test {
         client.initialize(&model_hash);
     }
 }
+
+#[cfg(test)]
+mod test_verify {
+    use super::*;
+    use soroban_sdk::Env;
+
+    fn setup(env: &Env) -> ZkmlVerifierContractClient {
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let model_hash = Bytes::from_slice(env, &[3u8; 32]);
+        client.initialize(&model_hash);
+        client
+    }
+
+    #[test]
+    fn verify_records_and_counts() {
+        let env = Env::default();
+        let client = setup(&env);
+
+        let proof = Bytes::from_slice(&env, &[0u8; 8]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+
+        assert!(client.verify_inference(&proof, &proof, &proof, &public_inputs));
+        assert_eq!(client.get_verification_count(), 1);
+    }
+}
