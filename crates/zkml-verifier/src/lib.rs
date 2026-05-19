@@ -177,3 +177,20 @@ mod test_verify {
         assert_eq!(client.get_verification_count(), 1);
     }
 }
+
+#[cfg(test)]
+mod test_guards {
+    use super::*;
+    use soroban_sdk::Env;
+
+    #[test]
+    #[should_panic(expected = "contract is not initialized")]
+    fn verify_before_initialize_panics() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let proof = Bytes::from_slice(&env, &[0u8; 8]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        client.verify_inference(&proof, &proof, &proof, &public_inputs);
+    }
+}
