@@ -18,3 +18,17 @@ The `zkml-verifier` Soroban contract exposes the following entrypoints.
 1. `model_hash` (32 bytes)
 2. `input_hash` (32 bytes)
 3. `output` (remaining bytes)
+
+## Storage layout
+
+The contract uses instance storage with the following short-symbol keys:
+
+| Key        | Value                                  |
+| ---------- | -------------------------------------- |
+| `init`     | Initialization flag (`bool`).          |
+| `mdl_hash` | The registered model commitment.       |
+| `lst_res`  | The last `InferenceRecord`.            |
+| `vrf_cnt`  | Cumulative count of verified proofs.   |
+
+Instance storage is used because every entry is small and is read on nearly
+every call, so it benefits from being loaded together with the contract.
