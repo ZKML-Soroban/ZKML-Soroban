@@ -24,3 +24,12 @@ The dense layer accumulates in `i64` after a per-product right shift. For the
 tiny models we target (at most a few dozen neurons per layer) this keeps us
 well inside the `i64` range. Larger layers would need an `i128` accumulator;
 tracked as a follow-up if Phase 2 introduces bigger circuits.
+
+## Week 4 (2026-05)
+
+The off-chain pipeline now runs end to end for the supported model families:
+import from JSON, quantize, infer, commit, and assemble a `VerificationBundle`.
+On-chain, the verifier parses public inputs, records results, counts
+verifications, and emits an event. The remaining gap is the real cryptography:
+RISC Zero proving off-chain and the BN254 pairing check on-chain, both tracked
+for the next phase.
