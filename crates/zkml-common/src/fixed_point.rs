@@ -157,3 +157,14 @@ impl From<i32> for FixedPoint {
         FixedPoint::quantize(value as f64)
     }
 }
+
+impl FixedPoint {
+    /// Checked multiplication, returning `None` if the rescaled result does
+    /// not fit in an `i64`.
+    pub fn checked_mul(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
+        let wide = (self.value as i128) * (other.value as i128);
+        let scaled = wide >> self.scale;
+        i64::try_from(scaled).ok().map(|value| Self { value, scale: self.scale })
+    }
+}
