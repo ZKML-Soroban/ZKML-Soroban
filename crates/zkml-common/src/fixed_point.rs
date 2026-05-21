@@ -187,3 +187,15 @@ mod tests_mul {
         assert!((a.checked_mul(b).unwrap().dequantize() - 6.0).abs() < 1e-3);
     }
 }
+
+impl FixedPoint {
+    /// Divide two fixed-point numbers, returning `None` on divide-by-zero.
+    pub fn checked_div(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in division");
+        if other.value == 0 {
+            return None;
+        }
+        let wide = ((self.value as i128) << self.scale) / (other.value as i128);
+        i64::try_from(wide).ok().map(|value| Self { value, scale: self.scale })
+    }
+}
