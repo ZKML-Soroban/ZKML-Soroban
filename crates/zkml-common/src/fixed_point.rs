@@ -168,3 +168,22 @@ impl FixedPoint {
         i64::try_from(scaled).ok().map(|value| Self { value, scale: self.scale })
     }
 }
+
+#[cfg(test)]
+mod tests_mul {
+    use super::*;
+
+    #[test]
+    fn checked_mul_handles_large_values() {
+        let big = FixedPoint::quantize(1_000_000.0);
+        // 1e6 * 1e6 rescaled overflows i64 -> None.
+        assert!(big.checked_mul(big).is_none());
+    }
+
+    #[test]
+    fn checked_mul_small_values_ok() {
+        let a = FixedPoint::quantize(2.0);
+        let b = FixedPoint::quantize(3.0);
+        assert!((a.checked_mul(b).unwrap().dequantize() - 6.0).abs() < 1e-3);
+    }
+}
