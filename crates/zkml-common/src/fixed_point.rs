@@ -199,3 +199,22 @@ impl FixedPoint {
         i64::try_from(wide).ok().map(|value| Self { value, scale: self.scale })
     }
 }
+
+#[cfg(test)]
+mod tests_div {
+    use super::*;
+
+    #[test]
+    fn div_round_trips() {
+        let a = FixedPoint::quantize(6.0);
+        let b = FixedPoint::quantize(2.0);
+        assert!((a.checked_div(b).unwrap().dequantize() - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn div_by_zero_is_none() {
+        let a = FixedPoint::quantize(1.0);
+        let zero = FixedPoint::from_raw(0, DEFAULT_SCALE);
+        assert!(a.checked_div(zero).is_none());
+    }
+}
