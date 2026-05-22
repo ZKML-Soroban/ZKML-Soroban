@@ -23,3 +23,9 @@ yields roughly 4 to 5 decimal digits of precision.
 
 All operations are deterministic integer arithmetic. This matters because the
 off-chain prover and any future in-circuit evaluation must agree bit for bit.
+
+## Vector helpers
+
+`dot(a, b)` computes a fixed-point dot product with the same per-product
+rescaling used inside dense layers, so the prover and any in-circuit evaluation
+agree on intermediate values.
