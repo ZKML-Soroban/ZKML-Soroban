@@ -218,3 +218,30 @@ mod tests_div {
         assert!(a.checked_div(zero).is_none());
     }
 }
+
+/// Fixed-point dot product of two equal-length vectors.
+///
+/// Panics in debug builds if the lengths differ.
+pub fn dot(a: &[FixedPoint], b: &[FixedPoint]) -> FixedPoint {
+    debug_assert_eq!(a.len(), b.len(), "dot product length mismatch");
+    let scale = a.first().map(|x| x.scale).unwrap_or(DEFAULT_SCALE);
+    let acc: i64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x.value * y.value) >> scale)
+        .sum();
+    FixedPoint::from_raw(acc, scale)
+}
+
+#[cfg(test)]
+mod tests_dot {
+    use super::*;
+
+    #[test]
+    fn dot_matches_manual() {
+        let a = vec![FixedPoint::quantize(1.0), FixedPoint::quantize(2.0)];
+        let b = vec![FixedPoint::quantize(3.0), FixedPoint::quantize(4.0)];
+        // 1*3 + 2*4 = 11
+        assert!((dot(&a, &b).dequantize() - 11.0).abs() < 1e-2);
+    }
+}
