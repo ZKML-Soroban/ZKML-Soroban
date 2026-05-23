@@ -24,3 +24,24 @@ pub fn commit_i64(elements: &[i64]) -> Commitment {
     }
     state
 }
+
+/// Encode a commitment as a 64-character lowercase hex string.
+pub fn to_hex(c: &Commitment) -> String {
+    let mut s = String::with_capacity(64);
+    for b in c.iter() {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+/// Decode a 64-character hex string into a commitment, if well-formed.
+pub fn from_hex(s: &str) -> Option<Commitment> {
+    if s.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for i in 0..32 {
+        out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(out)
+}
