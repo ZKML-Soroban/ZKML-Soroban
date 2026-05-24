@@ -147,3 +147,8 @@ mod tests_argmax {
         assert_eq!(argmax(&logits), Some(1));
     }
 }
+
+/// Run inference for each input row, returning one output per row.
+pub fn run_batch(model: &Model, rows: &[Vec<FixedPoint>]) -> Vec<FixedPoint> {
+    rows.iter().map(|row| run_inference(model, row)).collect()
+}
