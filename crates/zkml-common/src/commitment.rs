@@ -45,3 +45,21 @@ pub fn from_hex(s: &str) -> Option<Commitment> {
     }
     Some(out)
 }
+
+#[cfg(test)]
+mod tests_hex {
+    use super::*;
+
+    #[test]
+    fn hex_round_trips() {
+        let c = commit_i64(&[1, 2, 3, 4]);
+        let encoded = to_hex(&c);
+        assert_eq!(encoded.len(), 64);
+        assert_eq!(from_hex(&encoded), Some(c));
+    }
+
+    #[test]
+    fn from_hex_rejects_bad_length() {
+        assert_eq!(from_hex("abcd"), None);
+    }
+}
