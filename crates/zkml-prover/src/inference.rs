@@ -152,3 +152,25 @@ mod tests_argmax {
 pub fn run_batch(model: &Model, rows: &[Vec<FixedPoint>]) -> Vec<FixedPoint> {
     rows.iter().map(|row| run_inference(model, row)).collect()
 }
+
+#[cfg(test)]
+mod tests_batch {
+    use super::*;
+    use zkml_common::models::{LogisticRegression, Model};
+
+    #[test]
+    fn batch_matches_single() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::quantize(1.0)],
+            bias: FixedPoint::quantize(0.0),
+        });
+        let rows = vec![
+            vec![FixedPoint::quantize(0.5)],
+            vec![FixedPoint::quantize(0.9)],
+        ];
+        let batched = run_batch(&model, &rows);
+        for (row, out) in rows.iter().zip(batched.iter()) {
+            assert_eq!(run_inference(&model, row).value, out.value);
+        }
+    }
+}
