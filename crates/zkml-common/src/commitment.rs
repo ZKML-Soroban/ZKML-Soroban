@@ -63,3 +63,23 @@ mod tests_hex {
         assert_eq!(from_hex("abcd"), None);
     }
 }
+
+#[cfg(test)]
+mod tests_stability {
+    use super::*;
+
+    #[test]
+    fn commitment_is_stable() {
+        assert_eq!(commit_i64(&[1, 2, 3]), commit_i64(&[1, 2, 3]));
+    }
+
+    #[test]
+    fn commitment_is_order_sensitive() {
+        assert_ne!(commit_i64(&[1, 2, 3]), commit_i64(&[3, 2, 1]));
+    }
+
+    #[test]
+    fn empty_commitment_is_zero() {
+        assert_eq!(commit_i64(&[]), [0u8; 32]);
+    }
+}
