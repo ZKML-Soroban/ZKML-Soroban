@@ -33,3 +33,11 @@ On-chain, the verifier parses public inputs, records results, counts
 verifications, and emits an event. The remaining gap is the real cryptography:
 RISC Zero proving off-chain and the BN254 pairing check on-chain, both tracked
 for the next phase.
+
+## End of May (2026-05)
+
+Closed out May with the numeric core hardened (checked add/sub/mul/div, dot
+product, hex helpers), batch inference in the prover, and a full set of repo
+hygiene additions: CI with fmt and clippy gates, issue and PR templates,
+CODEOWNERS, Dependabot, a threat model, and security notes. The codebase is now
+contributor-ready ahead of the Phase 1 cryptography work.
