@@ -63,3 +63,16 @@ mod tests_error {
         assert!(max_quantization_error(&values) < 1e-4);
     }
 }
+
+/// Min-max scale a feature vector into the `[0, 1]` range before quantization.
+///
+/// A constant vector maps to all zeros (no information to preserve).
+pub fn scale_features(raw: &[f64]) -> Vec<f64> {
+    let min = raw.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = raw.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let range = max - min;
+    if range == 0.0 {
+        return raw.iter().map(|_| 0.0).collect();
+    }
+    raw.iter().map(|&x| (x - min) / range).collect()
+}
