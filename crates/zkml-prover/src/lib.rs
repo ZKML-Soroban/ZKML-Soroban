@@ -12,3 +12,4 @@ pub mod onnx;
 pub mod prover;
 pub mod quantization;
 pub mod model_io;
+pub mod timing;

@@ -5,6 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+# Print timing information for inference and proving steps.
+timing = []
+
 [dependencies]
 zkml-common = { path = "../zkml-common" }
 serde = { workspace = true }
