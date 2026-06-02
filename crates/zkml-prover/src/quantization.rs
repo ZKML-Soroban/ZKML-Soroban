@@ -76,3 +76,19 @@ pub fn scale_features(raw: &[f64]) -> Vec<f64> {
     }
     raw.iter().map(|&x| (x - min) / range).collect()
 }
+
+#[cfg(test)]
+mod tests_scaling {
+    use super::*;
+
+    #[test]
+    fn scaling_preserves_order() {
+        let raw = vec![10.0, -5.0, 3.0, 20.0];
+        let scaled = scale_features(&raw);
+        // The smallest raw value should map to the smallest scaled value.
+        let min_idx = 1;
+        let max_idx = 3;
+        assert!((scaled[min_idx] - 0.0).abs() < 1e-9);
+        assert!((scaled[max_idx] - 1.0).abs() < 1e-9);
+    }
+}
