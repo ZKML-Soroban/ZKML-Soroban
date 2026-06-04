@@ -158,3 +158,14 @@ mod tests {
         assert!(tree.validate().is_err());
     }
 }
+
+impl Model {
+    /// Number of input features this model expects.
+    pub fn num_features(&self) -> usize {
+        match self {
+            Model::DecisionTree(t) => t.num_features,
+            Model::LogisticRegression(lr) => lr.weights.len(),
+            Model::TinyMLP(m) => m.layers.first().map(|l| l.input_size).unwrap_or(0),
+        }
+    }
+}
