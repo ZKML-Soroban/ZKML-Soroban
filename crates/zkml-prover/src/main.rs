@@ -6,14 +6,16 @@
 //! zkml-prover <model.json> <comma,separated,inputs>
 //! ```
 //!
-//! Imports a model from the JSON exchange format, runs inference on the
-//! provided input vector, and prints the dequantized output.
+//! Imports a model from the JSON exchange format, prints the model commitment,
+//! runs inference on the provided input vector, and prints the output.
 
 use std::process::exit;
 
+use zkml_common::commitment::to_hex;
 use zkml_common::fixed_point::FixedPoint;
 use zkml_prover::inference::run_inference;
 use zkml_prover::onnx::import_onnx;
+use zkml_prover::prover::model_commitment;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -37,6 +39,8 @@ fn main() {
             exit(1);
         }
     };
+
+    println!("model commitment: {}", to_hex(&model_commitment(&model)));
 
     let inputs: Vec<FixedPoint> = args[2]
         .split(',')
