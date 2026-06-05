@@ -169,3 +169,18 @@ impl Model {
         }
     }
 }
+
+#[cfg(test)]
+mod tests_features {
+    use super::*;
+    use crate::fixed_point::FixedPoint;
+
+    #[test]
+    fn logistic_feature_count() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::quantize(0.1); 5],
+            bias: FixedPoint::quantize(0.0),
+        });
+        assert_eq!(model.num_features(), 5);
+    }
+}
