@@ -313,3 +313,15 @@ The following metrics will be tracked across development phases:
 
 Protocol 26 (Yardstick) benchmarking tools will be used to measure
 on-chain verification costs precisely.
+
+## Proof System Details
+
+Phase 1 proves inference with the RISC Zero zkVM: the inference code runs as a
+guest program, producing a STARK receipt that is then wrapped into a Groth16
+SNARK. The Groth16 proof is what the Soroban contract verifies, because BN254
+pairing checks (CAP-0074) make on-chain Groth16 verification cheap.
+
+The public inputs bind the proof to a specific model and input through Poseidon
+commitments (CAP-0075), so a valid proof cannot be replayed against a different
+model or input. Phase 2 replaces the zkVM with native BN254 and Poseidon
+circuits for smaller proofs and lower proving cost.
