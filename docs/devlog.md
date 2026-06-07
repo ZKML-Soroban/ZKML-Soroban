@@ -41,3 +41,10 @@ product, hex helpers), batch inference in the prover, and a full set of repo
 hygiene additions: CI with fmt and clippy gates, issue and PR templates,
 CODEOWNERS, Dependabot, a threat model, and security notes. The codebase is now
 contributor-ready ahead of the Phase 1 cryptography work.
+
+## Early June (2026-06)
+
+Started the polish pass: feature scaling, a model-commitment line in the CLI,
+expanded docs (model reference, doc index, proof-system details), and more unit
+tests. Next: proof bundle serialization so a bundle can be persisted and shipped
+to the verifier as a single artifact.
