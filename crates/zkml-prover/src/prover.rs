@@ -97,3 +97,13 @@ mod tests {
         assert_eq!(bundle.public_inputs.output.len(), 8);
     }
 }
+
+/// Serialize a verification bundle to a JSON string.
+pub fn bundle_to_json(bundle: &VerificationBundle) -> Result<String, String> {
+    serde_json::to_string(bundle).map_err(|e| e.to_string())
+}
+
+/// Deserialize a verification bundle from a JSON string.
+pub fn bundle_from_json(s: &str) -> Result<VerificationBundle, String> {
+    serde_json::from_str(s).map_err(|e| e.to_string())
+}
