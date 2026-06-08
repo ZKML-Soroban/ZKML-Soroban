@@ -107,3 +107,21 @@ pub fn bundle_to_json(bundle: &VerificationBundle) -> Result<String, String> {
 pub fn bundle_from_json(s: &str) -> Result<VerificationBundle, String> {
     serde_json::from_str(s).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests_json {
+    use super::*;
+    use zkml_common::models::LogisticRegression;
+
+    #[test]
+    fn bundle_json_round_trips() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::quantize(0.5)],
+            bias: FixedPoint::quantize(0.0),
+        });
+        let bundle = generate_proof(&model, &[FixedPoint::quantize(1.0)]).unwrap();
+        let json = bundle_to_json(&bundle).unwrap();
+        let restored = bundle_from_json(&json).unwrap();
+        assert_eq!(restored.public_inputs.model_hash, bundle.public_inputs.model_hash);
+    }
+}
