@@ -125,3 +125,18 @@ mod tests_json {
         assert_eq!(restored.public_inputs.model_hash, bundle.public_inputs.model_hash);
     }
 }
+
+/// A deterministic identifier for a bundle, derived from its public inputs.
+///
+/// Useful for de-duplicating or indexing submitted proofs off-chain.
+pub fn bundle_id(bundle: &VerificationBundle) -> Commitment {
+    let pi = &bundle.public_inputs;
+    let elements: Vec<i64> = pi
+        .model_hash
+        .iter()
+        .chain(pi.input_hash.iter())
+        .chain(pi.output.iter())
+        .map(|b| *b as i64)
+        .collect();
+    commit_i64(&elements)
+}
