@@ -35,3 +35,15 @@ pub struct VerificationBundle {
     /// The public inputs tied to this proof.
     pub public_inputs: PublicInputs,
 }
+
+impl PublicInputs {
+    /// Serialize the public inputs into the byte layout the verifier expects:
+    /// `model_hash (32) || input_hash (32) || output`.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(64 + self.output.len());
+        out.extend_from_slice(&self.model_hash);
+        out.extend_from_slice(&self.input_hash);
+        out.extend_from_slice(&self.output);
+        out
+    }
+}
