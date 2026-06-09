@@ -47,3 +47,21 @@ impl PublicInputs {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_inputs_serialize_with_prefix() {
+        let pi = PublicInputs {
+            model_hash: [1u8; 32],
+            input_hash: [2u8; 32],
+            output: vec![9u8; 8],
+        };
+        let bytes = pi.to_bytes();
+        assert_eq!(bytes.len(), 72);
+        assert_eq!(&bytes[0..32], &[1u8; 32]);
+        assert_eq!(&bytes[32..64], &[2u8; 32]);
+    }
+}
