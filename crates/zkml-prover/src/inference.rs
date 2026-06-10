@@ -174,3 +174,20 @@ mod tests_batch {
         }
     }
 }
+
+/// Validated inference that returns an error instead of panicking on a
+/// feature-count mismatch or empty input.
+pub fn try_run_inference(
+    model: &Model,
+    inputs: &[FixedPoint],
+) -> Result<FixedPoint, zkml_common::error::ZkmlError> {
+    use zkml_common::error::ZkmlError;
+    if inputs.is_empty() {
+        return Err(ZkmlError::FeatureCountMismatch { expected: model.num_features(), got: 0 });
+    }
+    let expected = model.num_features();
+    if expected != 0 && inputs.len() != expected {
+        return Err(ZkmlError::FeatureCountMismatch { expected, got: inputs.len() });
+    }
+    Ok(run_inference(model, inputs))
+}
