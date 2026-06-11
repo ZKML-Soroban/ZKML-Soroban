@@ -191,3 +191,18 @@ pub fn try_run_inference(
     }
     Ok(run_inference(model, inputs))
 }
+
+#[cfg(test)]
+mod tests_validated {
+    use super::*;
+    use zkml_common::models::{LogisticRegression, Model};
+
+    #[test]
+    fn empty_input_is_rejected() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::quantize(1.0)],
+            bias: FixedPoint::quantize(0.0),
+        });
+        assert!(try_run_inference(&model, &[]).is_err());
+    }
+}
