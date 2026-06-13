@@ -50,3 +50,26 @@ impl Tensor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fp(x: f64) -> FixedPoint {
+        FixedPoint::quantize(x)
+    }
+
+    #[test]
+    fn get_in_and_out_of_bounds() {
+        let t = Tensor::new(vec![fp(1.0), fp(2.0), fp(3.0), fp(4.0)], 2, 2).unwrap();
+        assert_eq!(t.get(1, 1), Some(fp(4.0)));
+        assert_eq!(t.get(2, 0), None);
+    }
+
+    #[test]
+    fn reshape_requires_matching_count() {
+        let mut t = Tensor::new(vec![fp(1.0); 6], 2, 3).unwrap();
+        assert!(t.reshape(3, 2));
+        assert!(!t.reshape(4, 2));
+    }
+}
