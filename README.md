@@ -246,3 +246,11 @@ This project is licensed under the Apache License 2.0. See
 - [Nethermind](https://nethermind.io/) for the RISC Zero zkVM deployment on
   Soroban and the `stellar-zk` reference implementation.
 - [RISC Zero](https://risczero.com/) for the general-purpose zkVM.
+
+---
+
+## Further Documentation
+
+A full documentation index is available in [docs/README.md](docs/README.md),
+covering the model format, commitments, the proving pipeline, the verifier
+interface, the threat model, and the testing guide.
