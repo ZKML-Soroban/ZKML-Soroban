@@ -80,3 +80,14 @@ impl Tensor {
         &self.data
     }
 }
+
+impl Tensor {
+    /// Borrow a single row as a slice, if in bounds.
+    pub fn row(&self, r: usize) -> Option<&[FixedPoint]> {
+        if r < self.rows {
+            Some(&self.data[r * self.cols..(r + 1) * self.cols])
+        } else {
+            None
+        }
+    }
+}
