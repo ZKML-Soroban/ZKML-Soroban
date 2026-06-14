@@ -73,3 +73,10 @@ mod tests {
         assert!(!t.reshape(4, 2));
     }
 }
+
+impl Tensor {
+    /// Borrow the underlying row-major data.
+    pub fn as_slice(&self) -> &[FixedPoint] {
+        &self.data
+    }
+}
