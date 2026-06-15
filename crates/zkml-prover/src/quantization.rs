@@ -92,3 +92,20 @@ mod tests_scaling {
         assert!((scaled[max_idx] - 1.0).abs() < 1e-9);
     }
 }
+
+/// A summary of the error introduced by quantizing a parameter set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuantizationReport {
+    /// Number of values quantized.
+    pub count: usize,
+    /// Maximum absolute reconstruction error.
+    pub max_error: f64,
+}
+
+/// Build a [`QuantizationReport`] for a set of floating-point values.
+pub fn quantization_report(values: &[f64]) -> QuantizationReport {
+    QuantizationReport {
+        count: values.len(),
+        max_error: max_quantization_error(values),
+    }
+}
