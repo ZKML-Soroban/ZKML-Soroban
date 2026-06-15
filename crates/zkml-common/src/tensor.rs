@@ -91,3 +91,16 @@ impl Tensor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests_row {
+    use super::*;
+
+    #[test]
+    fn row_returns_each_row() {
+        let data: Vec<FixedPoint> = (0..6).map(|i| FixedPoint::from_raw(i, 16)).collect();
+        let t = Tensor::new(data, 3, 2).unwrap();
+        assert_eq!(t.row(0).unwrap().len(), 2);
+        assert!(t.row(3).is_none());
+    }
+}
