@@ -109,3 +109,15 @@ pub fn quantization_report(values: &[f64]) -> QuantizationReport {
         max_error: max_quantization_error(values),
     }
 }
+
+#[cfg(test)]
+mod tests_report {
+    use super::*;
+
+    #[test]
+    fn report_within_tolerance() {
+        let report = quantization_report(&[0.1, 0.2, 0.3, -0.4]);
+        assert_eq!(report.count, 4);
+        assert!(report.max_error < 1e-4);
+    }
+}
