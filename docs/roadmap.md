@@ -136,3 +136,18 @@ integration through developer tooling, documentation, and grant funding.
 - [RISC Zero Documentation](https://dev.risczero.com/)
 - [stellar-zk by Nethermind](https://github.com/nicholasgasior/stellar-zk)
 - [Boundless x Google Cloud ZK AI Partnership](https://risczero.com/boundless)
+
+## Phase 1 Progress (2026-06)
+
+Completed in the off-chain and shared layers:
+
+- Fixed-point numeric core with checked and saturating arithmetic.
+- Quantization with error reporting and feature scaling.
+- Inference for decision trees, logistic regression, and tiny MLPs.
+- Model and input commitments plus a Merkle tree over parameters.
+- JSON model import and a prover CLI.
+- Verification bundle assembly and serialization.
+- Verifier contract: public input parsing, result recording, events, queries.
+
+Remaining for Phase 1: integrate the RISC Zero proving pipeline and the BN254
+pairing check so the placeholder proof bytes become real cryptography.
