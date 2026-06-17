@@ -48,3 +48,10 @@ Started the polish pass: feature scaling, a model-commitment line in the CLI,
 expanded docs (model reference, doc index, proof-system details), and more unit
 tests. Next: proof bundle serialization so a bundle can be persisted and shipped
 to the verifier as a single artifact.
+
+## Mid-June (2026-06)
+
+Tensor accessors, a quantization report, validated inference, and proof bundle
+serialization all landed. The repository now has a coherent end-to-end story
+that compiles and tests cleanly; what remains is swapping the placeholder
+cryptography for the real RISC Zero and BN254 integration.
