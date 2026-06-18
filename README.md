@@ -254,3 +254,10 @@ This project is licensed under the Apache License 2.0. See
 A full documentation index is available in [docs/README.md](docs/README.md),
 covering the model format, commitments, the proving pipeline, the verifier
 interface, the threat model, and the testing guide.
+
+## Status Update (June 2026)
+
+The off-chain pipeline and the on-chain interface are feature-complete for the
+supported model families and exercised by the test suite. The remaining Phase 1
+work is the cryptographic integration (RISC Zero proving and the BN254 pairing
+check), tracked in the [roadmap](docs/roadmap.md).
