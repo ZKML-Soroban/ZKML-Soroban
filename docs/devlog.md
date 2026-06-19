@@ -55,3 +55,13 @@ Tensor accessors, a quantization report, validated inference, and proof bundle
 serialization all landed. The repository now has a coherent end-to-end story
 that compiles and tests cleanly; what remains is swapping the placeholder
 cryptography for the real RISC Zero and BN254 integration.
+
+## Status: 2026-06-19
+
+Phase 1 scaffolding and the full off-chain pipeline are in place, tested, and
+documented. Next steps, in order:
+
+1. Integrate the RISC Zero proving pipeline in `prover.rs`.
+2. Implement the BN254 Groth16 pairing check in `verify_inference`.
+3. Replace the placeholder commitment with a Poseidon sponge matching CAP-0075.
+4. Add proving-time benchmarks and a testnet deployment guide.
