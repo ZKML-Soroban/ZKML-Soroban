@@ -1,6 +1,22 @@
-# zkml-soroban
+<p align="center">
+  <img src="assets/logo.png" alt="zkml-soroban logo" width="200">
+</p>
 
-**A Provable ML Inference Runtime for Stellar**
+<h1 align="center">zkml-soroban</h1>
+
+<p align="center"><strong>A Provable ML Inference Runtime for Stellar</strong></p>
+
+<p align="center">
+  <a href="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml">
+    <img src="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache 2.0">
+  </a>
+  <img src="https://img.shields.io/badge/version-0.2.0-8A2BE2.svg" alt="Version 0.2.0">
+  <img src="https://img.shields.io/badge/built%20for-Stellar%20%C2%B7%20Soroban-7D00FF.svg" alt="Built for Stellar Soroban">
+  <img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust stable">
+</p>
 
 zkml-soroban is the first runtime that enables executing small machine learning
 models off-chain and cryptographically verifying the correctness of their
