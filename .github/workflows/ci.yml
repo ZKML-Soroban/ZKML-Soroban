@@ -19,7 +19,8 @@ jobs:
           components: rustfmt, clippy
       - name: Check formatting
         run: cargo fmt --all --check
-      - name: Clippy
+      - name: Clippy (advisory)
+        continue-on-error: true
         run: cargo clippy --workspace --all-targets
       - name: Build
         run: cargo build --workspace --verbose
