@@ -8,8 +8,8 @@
 //! 4. Generating Groth16 proofs that attest to correct inference.
 
 pub mod inference;
+pub mod model_io;
 pub mod onnx;
 pub mod prover;
 pub mod quantization;
-pub mod model_io;
 pub mod timing;

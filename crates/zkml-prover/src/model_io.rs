@@ -10,17 +10,32 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum JsonModel {
-    LogisticRegression { weights: Vec<f64>, bias: f64 },
-    DecisionTree { num_features: usize, nodes: Vec<JsonTreeNode> },
-    TinyMlp { layers: Vec<JsonDenseLayer> },
+    LogisticRegression {
+        weights: Vec<f64>,
+        bias: f64,
+    },
+    DecisionTree {
+        num_features: usize,
+        nodes: Vec<JsonTreeNode>,
+    },
+    TinyMlp {
+        layers: Vec<JsonDenseLayer>,
+    },
 }
 
 /// JSON representation of a decision-tree node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum JsonTreeNode {
-    Split { feature_index: usize, threshold: f64, left: usize, right: usize },
-    Leaf { value: f64 },
+    Split {
+        feature_index: usize,
+        threshold: f64,
+        left: usize,
+        right: usize,
+    },
+    Leaf {
+        value: f64,
+    },
 }
 
 /// JSON representation of a dense layer.
@@ -53,20 +68,26 @@ impl JsonModel {
         let nodes = nodes
             .into_iter()
             .map(|n| match n {
-                JsonTreeNode::Split { feature_index, threshold, left, right } => {
-                    TreeNode::Split {
-                        feature_index,
-                        threshold: FixedPoint::quantize(threshold),
-                        left,
-                        right,
-                    }
-                }
-                JsonTreeNode::Leaf { value } => {
-                    TreeNode::Leaf { value: FixedPoint::quantize(value) }
-                }
+                JsonTreeNode::Split {
+                    feature_index,
+                    threshold,
+                    left,
+                    right,
+                } => TreeNode::Split {
+                    feature_index,
+                    threshold: FixedPoint::quantize(threshold),
+                    left,
+                    right,
+                },
+                JsonTreeNode::Leaf { value } => TreeNode::Leaf {
+                    value: FixedPoint::quantize(value),
+                },
             })
             .collect();
-        Model::DecisionTree(DecisionTree { nodes, num_features })
+        Model::DecisionTree(DecisionTree {
+            nodes,
+            num_features,
+        })
     }
 }
 
@@ -78,7 +99,12 @@ impl JsonModel {
         let layers = layers
             .into_iter()
             .map(|l| DenseLayer {
-                weights: l.weights.iter().copied().map(FixedPoint::quantize).collect(),
+                weights: l
+                    .weights
+                    .iter()
+                    .copied()
+                    .map(FixedPoint::quantize)
+                    .collect(),
                 biases: l.biases.iter().copied().map(FixedPoint::quantize).collect(),
                 input_size: l.input_size,
                 output_size: l.output_size,
@@ -90,12 +116,11 @@ impl JsonModel {
     /// Lower any JSON model into the internal `Model` representation.
     pub fn into_model(self) -> Model {
         match self {
-            JsonModel::LogisticRegression { weights, bias } => {
-                Self::into_logistic(weights, bias)
-            }
-            JsonModel::DecisionTree { num_features, nodes } => {
-                Self::into_tree(num_features, nodes)
-            }
+            JsonModel::LogisticRegression { weights, bias } => Self::into_logistic(weights, bias),
+            JsonModel::DecisionTree {
+                num_features,
+                nodes,
+            } => Self::into_tree(num_features, nodes),
             JsonModel::TinyMlp { layers } => Self::into_mlp(layers),
         }
     }

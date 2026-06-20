@@ -20,7 +20,12 @@ fn model_elements(model: &Model) -> Vec<i64> {
             out.push(tree.num_features as i64);
             for node in &tree.nodes {
                 match node {
-                    TreeNode::Split { feature_index, threshold, left, right } => {
+                    TreeNode::Split {
+                        feature_index,
+                        threshold,
+                        left,
+                        right,
+                    } => {
                         out.push(*feature_index as i64);
                         out.push(threshold.value);
                         out.push(*left as i64);
@@ -58,10 +63,7 @@ pub fn input_commitment(inputs: &[FixedPoint]) -> Commitment {
 /// The Groth16 proof bytes are a Phase 1 placeholder; the public inputs and
 /// commitments are fully computed so the on-chain interface can be exercised
 /// end to end.
-pub fn generate_proof(
-    model: &Model,
-    inputs: &[FixedPoint],
-) -> Result<VerificationBundle, String> {
+pub fn generate_proof(model: &Model, inputs: &[FixedPoint]) -> Result<VerificationBundle, String> {
     let output = crate::inference::run_inference(model, inputs);
 
     let public_inputs = PublicInputs {
@@ -73,7 +75,10 @@ pub fn generate_proof(
     // TODO: replace with a real RISC Zero receipt lowered to Groth16.
     let proof = Groth16Proof { data: Vec::new() };
 
-    Ok(VerificationBundle { proof, public_inputs })
+    Ok(VerificationBundle {
+        proof,
+        public_inputs,
+    })
 }
 
 #[cfg(test)]
@@ -122,7 +127,10 @@ mod tests_json {
         let bundle = generate_proof(&model, &[FixedPoint::quantize(1.0)]).unwrap();
         let json = bundle_to_json(&bundle).unwrap();
         let restored = bundle_from_json(&json).unwrap();
-        assert_eq!(restored.public_inputs.model_hash, bundle.public_inputs.model_hash);
+        assert_eq!(
+            restored.public_inputs.model_hash,
+            bundle.public_inputs.model_hash
+        );
     }
 }
 

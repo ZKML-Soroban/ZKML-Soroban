@@ -82,7 +82,10 @@ impl ZkmlVerifierContract {
         // TODO: Call BN254 host functions (CAP-0074) for the Groth16 pairing
         // check: e(A, B) == e(alpha, beta) * e(sum(pub_i * vk_i), gamma) * e(C, delta)
         let _ = (proof_a, proof_b, proof_c);
-        log!(&env, "Groth16 verification requested — BN254 integration pending");
+        log!(
+            &env,
+            "Groth16 verification requested — BN254 integration pending"
+        );
 
         let record = InferenceRecord {
             model_hash,

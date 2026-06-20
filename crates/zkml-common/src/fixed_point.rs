@@ -66,9 +66,10 @@ impl FixedPoint {
     /// this is checked with a debug assertion.
     pub fn checked_add(self, other: Self) -> Option<Self> {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in addition");
-        self.value
-            .checked_add(other.value)
-            .map(|value| Self { value, scale: self.scale })
+        self.value.checked_add(other.value).map(|value| Self {
+            value,
+            scale: self.scale,
+        })
     }
 }
 
@@ -96,9 +97,10 @@ impl FixedPoint {
     /// Checked subtraction of two fixed-point numbers with the same scale.
     pub fn checked_sub(self, other: Self) -> Option<Self> {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in subtraction");
-        self.value
-            .checked_sub(other.value)
-            .map(|value| Self { value, scale: self.scale })
+        self.value.checked_sub(other.value).map(|value| Self {
+            value,
+            scale: self.scale,
+        })
     }
 }
 
@@ -111,19 +113,28 @@ impl FixedPoint {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
         let wide = (self.value as i128) * (other.value as i128);
         let scaled = wide >> self.scale;
-        Self { value: scaled as i64, scale: self.scale }
+        Self {
+            value: scaled as i64,
+            scale: self.scale,
+        }
     }
 }
 
 impl FixedPoint {
     /// Saturating addition: clamps to the representable range on overflow.
     pub fn saturating_add(self, other: Self) -> Self {
-        Self { value: self.value.saturating_add(other.value), scale: self.scale }
+        Self {
+            value: self.value.saturating_add(other.value),
+            scale: self.scale,
+        }
     }
 
     /// Negate the value.
     pub fn neg(self) -> Self {
-        Self { value: -self.value, scale: self.scale }
+        Self {
+            value: -self.value,
+            scale: self.scale,
+        }
     }
 }
 
@@ -165,7 +176,10 @@ impl FixedPoint {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
         let wide = (self.value as i128) * (other.value as i128);
         let scaled = wide >> self.scale;
-        i64::try_from(scaled).ok().map(|value| Self { value, scale: self.scale })
+        i64::try_from(scaled).ok().map(|value| Self {
+            value,
+            scale: self.scale,
+        })
     }
 }
 
@@ -196,7 +210,10 @@ impl FixedPoint {
             return None;
         }
         let wide = ((self.value as i128) << self.scale) / (other.value as i128);
-        i64::try_from(wide).ok().map(|value| Self { value, scale: self.scale })
+        i64::try_from(wide).ok().map(|value| Self {
+            value,
+            scale: self.scale,
+        })
     }
 }
 

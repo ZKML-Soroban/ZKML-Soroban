@@ -6,9 +6,7 @@
 
 use zkml_common::activation::relu_vec;
 use zkml_common::fixed_point::FixedPoint;
-use zkml_common::models::{
-    DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode,
-};
+use zkml_common::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
 
 /// Run inference on a model given a vector of input features.
 ///
@@ -32,7 +30,12 @@ fn infer_decision_tree(tree: &DecisionTree, inputs: &[FixedPoint]) -> FixedPoint
     let mut node_idx = 0;
     loop {
         match &tree.nodes[node_idx] {
-            TreeNode::Split { feature_index, threshold, left, right } => {
+            TreeNode::Split {
+                feature_index,
+                threshold,
+                left,
+                right,
+            } => {
                 if inputs[*feature_index].value <= threshold.value {
                     node_idx = *left;
                 } else {
@@ -94,7 +97,10 @@ fn infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> FixedPoint {
         }
         activations = out;
     }
-    activations.first().copied().unwrap_or(FixedPoint::from_raw(0, 16))
+    activations
+        .first()
+        .copied()
+        .unwrap_or(FixedPoint::from_raw(0, 16))
 }
 
 #[cfg(test)]
@@ -115,7 +121,9 @@ mod tests_mlp {
             input_size: 1,
             output_size: 1,
         };
-        let model = Model::TinyMLP(TinyMLP { layers: vec![layer] });
+        let model = Model::TinyMLP(TinyMLP {
+            layers: vec![layer],
+        });
         let out = run_inference(&model, &[fp(0.7)]);
         assert!((out.dequantize() - 0.7).abs() < 1e-2);
     }
@@ -183,11 +191,17 @@ pub fn try_run_inference(
 ) -> Result<FixedPoint, zkml_common::error::ZkmlError> {
     use zkml_common::error::ZkmlError;
     if inputs.is_empty() {
-        return Err(ZkmlError::FeatureCountMismatch { expected: model.num_features(), got: 0 });
+        return Err(ZkmlError::FeatureCountMismatch {
+            expected: model.num_features(),
+            got: 0,
+        });
     }
     let expected = model.num_features();
     if expected != 0 && inputs.len() != expected {
-        return Err(ZkmlError::FeatureCountMismatch { expected, got: inputs.len() });
+        return Err(ZkmlError::FeatureCountMismatch {
+            expected,
+            got: inputs.len(),
+        });
     }
     Ok(run_inference(model, inputs))
 }

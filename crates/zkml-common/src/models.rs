@@ -97,7 +97,13 @@ impl DecisionTree {
     /// feature indices. Returns an error describing the first problem found.
     pub fn validate(&self) -> Result<(), crate::error::ZkmlError> {
         for (i, node) in self.nodes.iter().enumerate() {
-            if let TreeNode::Split { feature_index, left, right, .. } = node {
+            if let TreeNode::Split {
+                feature_index,
+                left,
+                right,
+                ..
+            } = node
+            {
                 if *feature_index >= self.num_features {
                     return Err(crate::error::ZkmlError::InvalidModel(format!(
                         "node {i}: feature index {feature_index} out of range"
@@ -137,8 +143,12 @@ mod tests {
                     left: 1,
                     right: 2,
                 },
-                TreeNode::Leaf { value: FixedPoint::quantize(0.0) },
-                TreeNode::Leaf { value: FixedPoint::quantize(1.0) },
+                TreeNode::Leaf {
+                    value: FixedPoint::quantize(0.0),
+                },
+                TreeNode::Leaf {
+                    value: FixedPoint::quantize(1.0),
+                },
             ],
         };
         assert!(tree.validate().is_ok());
