@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let original = 3.14159;
+        let original = 1.2345;
         let fp = FixedPoint::quantize(original);
         let recovered = fp.dequantize();
         assert!((original - recovered).abs() < 1e-4);
