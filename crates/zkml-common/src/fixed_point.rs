@@ -236,6 +236,56 @@ mod tests_div {
     }
 }
 
+impl FixedPoint {
+    /// Absolute value. Saturates `i64::MIN` to `i64::MAX` to stay in range.
+    pub fn abs(self) -> Self {
+        Self {
+            value: self.value.saturating_abs(),
+            scale: self.scale,
+        }
+    }
+
+    /// Returns `true` if the value is exactly zero.
+    pub fn is_zero(self) -> bool {
+        self.value == 0
+    }
+
+    /// Sign of the value: `-1`, `0`, or `1`.
+    pub fn signum(self) -> i64 {
+        self.value.signum()
+    }
+}
+
+#[cfg(test)]
+mod tests_sign {
+    use super::*;
+
+    #[test]
+    fn abs_of_negative_is_positive() {
+        let n = FixedPoint::quantize(-3.5);
+        assert!((n.abs().dequantize() - 3.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn abs_saturates_min() {
+        let n = FixedPoint::from_raw(i64::MIN, DEFAULT_SCALE);
+        assert_eq!(n.abs().value, i64::MAX);
+    }
+
+    #[test]
+    fn is_zero_detects_zero() {
+        assert!(FixedPoint::from_raw(0, DEFAULT_SCALE).is_zero());
+        assert!(!FixedPoint::quantize(0.1).is_zero());
+    }
+
+    #[test]
+    fn signum_reports_sign() {
+        assert_eq!(FixedPoint::quantize(2.0).signum(), 1);
+        assert_eq!(FixedPoint::quantize(-2.0).signum(), -1);
+        assert_eq!(FixedPoint::from_raw(0, DEFAULT_SCALE).signum(), 0);
+    }
+}
+
 /// Fixed-point dot product of two equal-length vectors.
 ///
 /// Panics in debug builds if the lengths differ.
