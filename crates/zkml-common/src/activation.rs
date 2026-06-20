@@ -33,6 +33,11 @@ pub fn leaky_relu(x: FixedPoint, shift: u32) -> FixedPoint {
     }
 }
 
+/// Apply leaky ReLU element-wise to a slice, returning a new vector.
+pub fn leaky_relu_vec(xs: &[FixedPoint], shift: u32) -> Vec<FixedPoint> {
+    xs.iter().copied().map(|x| leaky_relu(x, shift)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,5 +67,14 @@ mod tests {
         // Still negative, but closer to zero than the input.
         assert!(out.value < 0);
         assert!(out.value > neg.value);
+    }
+
+    #[test]
+    fn leaky_relu_vec_applies_elementwise() {
+        let xs = vec![FixedPoint::quantize(-1.0), FixedPoint::quantize(2.0)];
+        let out = leaky_relu_vec(&xs, 4);
+        assert_eq!(out.len(), 2);
+        assert!(out[0].value < 0 && out[0].value > xs[0].value);
+        assert_eq!(out[1].value, xs[1].value);
     }
 }
