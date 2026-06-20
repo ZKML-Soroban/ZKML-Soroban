@@ -189,8 +189,8 @@ mod tests_mul {
 
     #[test]
     fn checked_mul_handles_large_values() {
-        let big = FixedPoint::quantize(1_000_000.0);
-        // 1e6 * 1e6 rescaled overflows i64 -> None.
+        let big = FixedPoint::quantize(20_000_000.0);
+        // (2e7)^2 rescaled by 2^16 exceeds i64::MAX, so checked_mul -> None.
         assert!(big.checked_mul(big).is_none());
     }
 
