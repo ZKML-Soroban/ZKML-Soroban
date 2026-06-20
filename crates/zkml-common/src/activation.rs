@@ -19,6 +19,20 @@ pub fn relu_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
     xs.iter().copied().map(relu).collect()
 }
 
+/// Quantized leaky ReLU: passes positives through and scales negatives by a
+/// small slope instead of zeroing them.
+///
+/// The slope is expressed as a power-of-two right shift so it stays a cheap
+/// constraint in the circuit (a shift, not a general multiply). `shift = 4`
+/// approximates a slope of 1/16 (0.0625), within the common 0.01-0.1 range.
+pub fn leaky_relu(x: FixedPoint, shift: u32) -> FixedPoint {
+    if x.value < 0 {
+        FixedPoint::from_raw(x.value >> shift, x.scale)
+    } else {
+        x
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,5 +47,20 @@ mod tests {
     fn relu_passes_positives() {
         let pos = FixedPoint::quantize(2.0);
         assert_eq!(relu(pos).value, pos.value);
+    }
+
+    #[test]
+    fn leaky_relu_keeps_positives() {
+        let pos = FixedPoint::quantize(2.0);
+        assert_eq!(leaky_relu(pos, 4).value, pos.value);
+    }
+
+    #[test]
+    fn leaky_relu_dampens_negatives() {
+        let neg = FixedPoint::quantize(-1.0);
+        let out = leaky_relu(neg, 4);
+        // Still negative, but closer to zero than the input.
+        assert!(out.value < 0);
+        assert!(out.value > neg.value);
     }
 }
