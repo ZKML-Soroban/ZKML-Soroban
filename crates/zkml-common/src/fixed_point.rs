@@ -333,3 +333,49 @@ mod tests_dot {
         assert!((dot(&a, &b).dequantize() - 11.0).abs() < 1e-2);
     }
 }
+
+/// Sum of a slice of fixed-point values.
+///
+/// Returns zero at the default scale for an empty slice.
+pub fn sum(xs: &[FixedPoint]) -> FixedPoint {
+    let scale = xs.first().map(|x| x.scale).unwrap_or(DEFAULT_SCALE);
+    let acc: i64 = xs.iter().map(|x| x.value).sum();
+    FixedPoint::from_raw(acc, scale)
+}
+
+/// Arithmetic mean of a slice of fixed-point values.
+///
+/// Returns `None` for an empty slice (no meaningful average).
+pub fn mean(xs: &[FixedPoint]) -> Option<FixedPoint> {
+    if xs.is_empty() {
+        return None;
+    }
+    let total = sum(xs);
+    Some(FixedPoint::from_raw(total.value / xs.len() as i64, total.scale))
+}
+
+#[cfg(test)]
+mod tests_reduce {
+    use super::*;
+
+    #[test]
+    fn sum_adds_values() {
+        let xs = vec![
+            FixedPoint::quantize(1.0),
+            FixedPoint::quantize(2.0),
+            FixedPoint::quantize(3.0),
+        ];
+        assert!((sum(&xs).dequantize() - 6.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn mean_averages_values() {
+        let xs = vec![FixedPoint::quantize(2.0), FixedPoint::quantize(4.0)];
+        assert!((mean(&xs).unwrap().dequantize() - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn mean_of_empty_is_none() {
+        assert!(mean(&[]).is_none());
+    }
+}
