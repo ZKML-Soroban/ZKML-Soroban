@@ -250,6 +250,18 @@ impl FixedPoint {
         self.value == 0
     }
 
+    /// Clamp the value into the inclusive range `[min, max]`.
+    ///
+    /// All three operands must share the same scale (checked in debug builds).
+    pub fn clamp(self, min: Self, max: Self) -> Self {
+        debug_assert_eq!(self.scale, min.scale, "scale mismatch in clamp");
+        debug_assert_eq!(self.scale, max.scale, "scale mismatch in clamp");
+        Self {
+            value: self.value.clamp(min.value, max.value),
+            scale: self.scale,
+        }
+    }
+
     /// Sign of the value: `-1`, `0`, or `1`.
     pub fn signum(self) -> i64 {
         self.value.signum()
@@ -283,6 +295,15 @@ mod tests_sign {
         assert_eq!(FixedPoint::quantize(2.0).signum(), 1);
         assert_eq!(FixedPoint::quantize(-2.0).signum(), -1);
         assert_eq!(FixedPoint::from_raw(0, DEFAULT_SCALE).signum(), 0);
+    }
+
+    #[test]
+    fn clamp_bounds_value() {
+        let lo = FixedPoint::quantize(-1.0);
+        let hi = FixedPoint::quantize(1.0);
+        assert!((FixedPoint::quantize(5.0).clamp(lo, hi).dequantize() - 1.0).abs() < 1e-4);
+        assert!((FixedPoint::quantize(-5.0).clamp(lo, hi).dequantize() + 1.0).abs() < 1e-4);
+        assert!((FixedPoint::quantize(0.5).clamp(lo, hi).dequantize() - 0.5).abs() < 1e-4);
     }
 }
 
