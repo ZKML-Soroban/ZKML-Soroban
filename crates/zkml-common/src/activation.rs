@@ -63,6 +63,14 @@ pub fn hard_sigmoid(x: FixedPoint) -> FixedPoint {
         .unwrap_or_else(|| FixedPoint::from_raw(0, x.scale))
 }
 
+/// Quantized hard swish: `x * hard_sigmoid(x)`.
+///
+/// A self-gated activation that keeps the smooth-ish shape of swish while
+/// staying piecewise linear, so it remains practical to constrain in a circuit.
+pub fn hard_swish(x: FixedPoint) -> FixedPoint {
+    x.mul(hard_sigmoid(x))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +135,23 @@ mod tests {
     fn hard_sigmoid_saturates() {
         assert!((hard_sigmoid(FixedPoint::quantize(10.0)).dequantize() - 1.0).abs() < 1e-3);
         assert!(hard_sigmoid(FixedPoint::quantize(-10.0)).dequantize().abs() < 1e-3);
+    }
+
+    #[test]
+    fn hard_swish_zero_at_origin() {
+        assert!(hard_swish(FixedPoint::quantize(0.0)).dequantize().abs() < 1e-3);
+    }
+
+    #[test]
+    fn hard_swish_approaches_identity_for_large_positive() {
+        // For x >= 3, hard_sigmoid saturates to 1, so hard_swish(x) == x.
+        let x = FixedPoint::quantize(8.0);
+        assert!((hard_swish(x).dequantize() - 8.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn hard_swish_small_negative_is_negative() {
+        let out = hard_swish(FixedPoint::quantize(-1.0));
+        assert!(out.dequantize() < 0.0);
     }
 }
