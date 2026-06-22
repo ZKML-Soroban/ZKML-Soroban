@@ -49,6 +49,20 @@ pub fn relu6(x: FixedPoint) -> FixedPoint {
     x.clamp(zero, six)
 }
 
+/// Quantized hard sigmoid: `relu6(x + 3) / 6`, an output in `[0, 1]`.
+///
+/// This is the piecewise-linear approximation of the logistic sigmoid used in
+/// quantized mobile networks. Unlike the true sigmoid (an exponential, hostile
+/// to ZK circuits) it is a shift, a clamp, and a constant division.
+pub fn hard_sigmoid(x: FixedPoint) -> FixedPoint {
+    let three = FixedPoint::from_raw(3i64 << x.scale, x.scale);
+    let six = FixedPoint::from_raw(6i64 << x.scale, x.scale);
+    let bounded = relu6(x.saturating_add(three));
+    bounded
+        .checked_div(six)
+        .unwrap_or_else(|| FixedPoint::from_raw(0, x.scale))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +116,16 @@ mod tests {
     #[test]
     fn relu6_passes_mid_range() {
         assert!((relu6(FixedPoint::quantize(3.5)).dequantize() - 3.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn hard_sigmoid_centers_at_half() {
+        assert!((hard_sigmoid(FixedPoint::quantize(0.0)).dequantize() - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn hard_sigmoid_saturates() {
+        assert!((hard_sigmoid(FixedPoint::quantize(10.0)).dequantize() - 1.0).abs() < 1e-3);
+        assert!(hard_sigmoid(FixedPoint::quantize(-10.0)).dequantize().abs() < 1e-3);
     }
 }
