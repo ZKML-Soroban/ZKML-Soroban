@@ -38,6 +38,17 @@ pub fn leaky_relu_vec(xs: &[FixedPoint], shift: u32) -> Vec<FixedPoint> {
     xs.iter().copied().map(|x| leaky_relu(x, shift)).collect()
 }
 
+/// Quantized ReLU6: `min(max(0, x), 6)`.
+///
+/// The upper bound keeps activations in a fixed range, which is common in
+/// mobile-grade quantized networks and bounds the witness size in the circuit.
+/// It reduces to two comparisons and a select, all ZK-friendly.
+pub fn relu6(x: FixedPoint) -> FixedPoint {
+    let zero = FixedPoint::from_raw(0, x.scale);
+    let six = FixedPoint::from_raw(6i64 << x.scale, x.scale);
+    x.clamp(zero, six)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,5 +87,20 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert!(out[0].value < 0 && out[0].value > xs[0].value);
         assert_eq!(out[1].value, xs[1].value);
+    }
+
+    #[test]
+    fn relu6_clamps_negatives_to_zero() {
+        assert_eq!(relu6(FixedPoint::quantize(-2.0)).value, 0);
+    }
+
+    #[test]
+    fn relu6_caps_at_six() {
+        assert!((relu6(FixedPoint::quantize(9.0)).dequantize() - 6.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn relu6_passes_mid_range() {
+        assert!((relu6(FixedPoint::quantize(3.5)).dequantize() - 3.5).abs() < 1e-4);
     }
 }
