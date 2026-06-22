@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `FixedPoint::abs`, `is_zero`, and `signum` helpers.
+- `FixedPoint::clamp` for range saturation.
 - ZK-friendly `leaky_relu` activation with a power-of-two slope.
+- `relu6` bounded activation for quantized networks.
 - Initial workspace scaffold with `zkml-common`, `zkml-prover`, and
   `zkml-verifier` crates.
 
