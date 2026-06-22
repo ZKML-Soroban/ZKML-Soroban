@@ -351,7 +351,10 @@ pub fn mean(xs: &[FixedPoint]) -> Option<FixedPoint> {
         return None;
     }
     let total = sum(xs);
-    Some(FixedPoint::from_raw(total.value / xs.len() as i64, total.scale))
+    Some(FixedPoint::from_raw(
+        total.value / xs.len() as i64,
+        total.scale,
+    ))
 }
 
 #[cfg(test)]
