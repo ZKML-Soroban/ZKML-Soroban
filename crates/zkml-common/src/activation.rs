@@ -71,6 +71,21 @@ pub fn hard_swish(x: FixedPoint) -> FixedPoint {
     x.mul(hard_sigmoid(x))
 }
 
+/// Quantized hard tanh: `clamp(x, -1, 1)`.
+///
+/// The piecewise-linear stand-in for `tanh`. Like `relu6` it is two
+/// comparisons and a select, so it stays cheap to constrain, but it is
+/// symmetric around zero and saturates to `[-1, 1]`.
+pub fn hardtanh(x: FixedPoint) -> FixedPoint {
+    let one = FixedPoint::from_raw(1i64 << x.scale, x.scale);
+    x.clamp(one.neg(), one)
+}
+
+/// Apply hard tanh element-wise to a slice, returning a new vector.
+pub fn hardtanh_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
+    xs.iter().copied().map(hardtanh).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +168,25 @@ mod tests {
     fn hard_swish_small_negative_is_negative() {
         let out = hard_swish(FixedPoint::quantize(-1.0));
         assert!(out.dequantize() < 0.0);
+    }
+
+    #[test]
+    fn hardtanh_passes_mid_range() {
+        assert!((hardtanh(FixedPoint::quantize(0.5)).dequantize() - 0.5).abs() < 1e-4);
+    }
+
+    #[test]
+    fn hardtanh_saturates_both_ends() {
+        assert!((hardtanh(FixedPoint::quantize(4.0)).dequantize() - 1.0).abs() < 1e-4);
+        assert!((hardtanh(FixedPoint::quantize(-4.0)).dequantize() + 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn hardtanh_vec_applies_elementwise() {
+        let xs = vec![FixedPoint::quantize(2.0), FixedPoint::quantize(-0.25)];
+        let out = hardtanh_vec(&xs);
+        assert_eq!(out.len(), 2);
+        assert!((out[0].dequantize() - 1.0).abs() < 1e-4);
+        assert!((out[1].dequantize() + 0.25).abs() < 1e-4);
     }
 }

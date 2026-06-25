@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ZK-friendly `leaky_relu` activation with a power-of-two slope.
 - `relu6` bounded activation for quantized networks.
 - `hard_sigmoid` and `hard_swish` piecewise-linear activations.
+- `hardtanh` bounded activation clamping to `[-1, 1]`.
 - Initial workspace scaffold with `zkml-common`, `zkml-prover`, and
   `zkml-verifier` crates.
 
