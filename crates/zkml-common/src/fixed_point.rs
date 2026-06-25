@@ -357,6 +357,38 @@ pub fn mean(xs: &[FixedPoint]) -> Option<FixedPoint> {
     ))
 }
 
+/// Largest value in a slice.
+///
+/// Returns `None` for an empty slice. Used by max-pooling layers.
+pub fn max(xs: &[FixedPoint]) -> Option<FixedPoint> {
+    xs.iter()
+        .copied()
+        .reduce(|a, b| if b.value > a.value { b } else { a })
+}
+
+/// Smallest value in a slice.
+///
+/// Returns `None` for an empty slice.
+pub fn min(xs: &[FixedPoint]) -> Option<FixedPoint> {
+    xs.iter()
+        .copied()
+        .reduce(|a, b| if b.value < a.value { b } else { a })
+}
+
+/// Index of the largest value in a slice.
+///
+/// Returns `None` for an empty slice. On ties the lowest index wins, which
+/// matches the usual argmax convention for classification outputs.
+pub fn argmax(xs: &[FixedPoint]) -> Option<usize> {
+    let mut best: Option<(usize, i64)> = None;
+    for (i, x) in xs.iter().enumerate() {
+        if best.map_or(true, |(_, v)| x.value > v) {
+            best = Some((i, x.value));
+        }
+    }
+    best.map(|(i, _)| i)
+}
+
 #[cfg(test)]
 mod tests_reduce {
     use super::*;
@@ -380,5 +412,52 @@ mod tests_reduce {
     #[test]
     fn mean_of_empty_is_none() {
         assert!(mean(&[]).is_none());
+    }
+
+    #[test]
+    fn max_picks_largest() {
+        let xs = vec![
+            FixedPoint::quantize(-1.0),
+            FixedPoint::quantize(3.5),
+            FixedPoint::quantize(2.0),
+        ];
+        assert!((max(&xs).unwrap().dequantize() - 3.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn min_picks_smallest() {
+        let xs = vec![
+            FixedPoint::quantize(-1.0),
+            FixedPoint::quantize(3.5),
+            FixedPoint::quantize(2.0),
+        ];
+        assert!((min(&xs).unwrap().dequantize() + 1.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn max_and_min_of_empty_are_none() {
+        assert!(max(&[]).is_none());
+        assert!(min(&[]).is_none());
+    }
+
+    #[test]
+    fn argmax_reports_index() {
+        let xs = vec![
+            FixedPoint::quantize(0.1),
+            FixedPoint::quantize(0.7),
+            FixedPoint::quantize(0.2),
+        ];
+        assert_eq!(argmax(&xs), Some(1));
+    }
+
+    #[test]
+    fn argmax_breaks_ties_low() {
+        let xs = vec![FixedPoint::quantize(1.0), FixedPoint::quantize(1.0)];
+        assert_eq!(argmax(&xs), Some(0));
+    }
+
+    #[test]
+    fn argmax_of_empty_is_none() {
+        assert!(argmax(&[]).is_none());
     }
 }
