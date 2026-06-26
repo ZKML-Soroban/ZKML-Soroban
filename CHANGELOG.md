@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `relu6` bounded activation for quantized networks.
 - `hard_sigmoid` and `hard_swish` piecewise-linear activations.
 - `hardtanh` bounded activation clamping to `[-1, 1]`.
+- Element-wise `relu6_vec`, `hard_sigmoid_vec`, and `hard_swish_vec` helpers.
 - Initial workspace scaffold with `zkml-common`, `zkml-prover`, and
   `zkml-verifier` crates.
 

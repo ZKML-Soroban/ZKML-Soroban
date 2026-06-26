@@ -49,6 +49,11 @@ pub fn relu6(x: FixedPoint) -> FixedPoint {
     x.clamp(zero, six)
 }
 
+/// Apply ReLU6 element-wise to a slice, returning a new vector.
+pub fn relu6_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
+    xs.iter().copied().map(relu6).collect()
+}
+
 /// Quantized hard sigmoid: `relu6(x + 3) / 6`, an output in `[0, 1]`.
 ///
 /// This is the piecewise-linear approximation of the logistic sigmoid used in
@@ -63,12 +68,22 @@ pub fn hard_sigmoid(x: FixedPoint) -> FixedPoint {
         .unwrap_or_else(|| FixedPoint::from_raw(0, x.scale))
 }
 
+/// Apply hard sigmoid element-wise to a slice, returning a new vector.
+pub fn hard_sigmoid_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
+    xs.iter().copied().map(hard_sigmoid).collect()
+}
+
 /// Quantized hard swish: `x * hard_sigmoid(x)`.
 ///
 /// A self-gated activation that keeps the smooth-ish shape of swish while
 /// staying piecewise linear, so it remains practical to constrain in a circuit.
 pub fn hard_swish(x: FixedPoint) -> FixedPoint {
     x.mul(hard_sigmoid(x))
+}
+
+/// Apply hard swish element-wise to a slice, returning a new vector.
+pub fn hard_swish_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
+    xs.iter().copied().map(hard_swish).collect()
 }
 
 /// Quantized hard tanh: `clamp(x, -1, 1)`.
@@ -188,5 +203,32 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert!((out[0].dequantize() - 1.0).abs() < 1e-4);
         assert!((out[1].dequantize() + 0.25).abs() < 1e-4);
+    }
+
+    #[test]
+    fn relu6_vec_applies_elementwise() {
+        let xs = vec![FixedPoint::quantize(-1.0), FixedPoint::quantize(9.0)];
+        let out = relu6_vec(&xs);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].value, 0);
+        assert!((out[1].dequantize() - 6.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn hard_sigmoid_vec_applies_elementwise() {
+        let xs = vec![FixedPoint::quantize(0.0), FixedPoint::quantize(10.0)];
+        let out = hard_sigmoid_vec(&xs);
+        assert_eq!(out.len(), 2);
+        assert!((out[0].dequantize() - 0.5).abs() < 1e-3);
+        assert!((out[1].dequantize() - 1.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn hard_swish_vec_applies_elementwise() {
+        let xs = vec![FixedPoint::quantize(0.0), FixedPoint::quantize(8.0)];
+        let out = hard_swish_vec(&xs);
+        assert_eq!(out.len(), 2);
+        assert!(out[0].dequantize().abs() < 1e-3);
+        assert!((out[1].dequantize() - 8.0).abs() < 1e-2);
     }
 }
