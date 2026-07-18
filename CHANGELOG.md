@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `PartialOrd` / `Ord` for `FixedPoint` (same-scale raw integer comparison).
+- `Add`, `Sub`, and `Mul` operators as panicking wrappers over checked arithmetic.
+- `Neg` for `FixedPoint` so negation uses the standard unary operator.
 - `FixedPoint::abs`, `is_zero`, and `signum` helpers.
 - `FixedPoint::clamp` for range saturation.
 - `sum` and `mean` slice reductions for pooling layers.
