@@ -78,7 +78,7 @@ pub fn hard_sigmoid_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
 /// A self-gated activation that keeps the smooth-ish shape of swish while
 /// staying piecewise linear, so it remains practical to constrain in a circuit.
 pub fn hard_swish(x: FixedPoint) -> FixedPoint {
-    x.mul(hard_sigmoid(x))
+    x * hard_sigmoid(x)
 }
 
 /// Apply hard swish element-wise to a slice, returning a new vector.
@@ -93,7 +93,7 @@ pub fn hard_swish_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
 /// symmetric around zero and saturates to `[-1, 1]`.
 pub fn hardtanh(x: FixedPoint) -> FixedPoint {
     let one = FixedPoint::from_raw(1i64 << x.scale, x.scale);
-    x.clamp(one.neg(), one)
+    x.clamp(-one, one)
 }
 
 /// Apply hard tanh element-wise to a slice, returning a new vector.
