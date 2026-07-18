@@ -169,21 +169,28 @@ impl FixedPoint {
     }
 }
 
-/// Compares the raw scaled integers.
+/// Compares the raw scaled integers, then scale as a tie-break.
 ///
 /// Both operands must share the same scale; mismatched scales are a
-/// programming error and are checked with a debug assertion.
+/// programming error and are checked with a debug assertion. The scale
+/// tie-break keeps this order consistent with the derived [`PartialEq`].
 impl PartialOrd for FixedPoint {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-/// Total order over the raw scaled integers (same-scale operands only).
+/// Total order over raw scaled integers, then scale as a tie-break.
+///
+/// Same-scale comparison (the only supported case) orders by `value` alone.
+/// When scales differ, `scale` breaks ties so `Ord` agrees with [`Eq`] even
+/// in release builds where the debug assertion is compiled out.
 impl Ord for FixedPoint {
     fn cmp(&self, other: &Self) -> Ordering {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in comparison");
-        self.value.cmp(&other.value)
+        self.value
+            .cmp(&other.value)
+            .then(self.scale.cmp(&other.scale))
     }
 }
 
@@ -352,6 +359,38 @@ mod tests_arithmetic_ops {
         assert!(pos.cmp(&pos).is_eq());
         assert_eq!(pos.cmp(&neg), Ordering::Greater);
         assert!(pos > neg);
+    }
+
+    #[test]
+    fn ord_agrees_with_eq() {
+        // Ord's contract: a.cmp(b) == Equal iff a == b (derived PartialEq/Eq).
+        let a = FixedPoint::from_raw(100, DEFAULT_SCALE);
+        let b = FixedPoint::from_raw(100, DEFAULT_SCALE);
+        let c = FixedPoint::from_raw(50, DEFAULT_SCALE);
+        assert_eq!(a, b);
+        assert!(a.cmp(&b).is_eq());
+        assert_ne!(a, c);
+        assert!(!a.cmp(&c).is_eq());
+        assert_eq!(a.cmp(&c), c.cmp(&a).reverse());
+
+        // Same raw value, different scale: PartialEq is false. Ord keeps a
+        // debug_assert on scale mismatch (panics in debug), and uses scale as
+        // a tie-break so release builds also report non-Equal for this pair.
+        let d = FixedPoint::from_raw(100, 8);
+        assert_ne!(a, d);
+        assert_ne!(a.scale, d.scale);
+    }
+
+    /// In release, `debug_assert` is compiled out; the scale tie-break must
+    /// keep `Ord` consistent with `PartialEq` for mismatched scales.
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn ord_scale_tie_break_matches_eq_in_release() {
+        let a = FixedPoint::from_raw(100, 16);
+        let b = FixedPoint::from_raw(100, 8);
+        assert_ne!(a, b);
+        assert!(!a.cmp(&b).is_eq());
+        assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
     }
 }
 
