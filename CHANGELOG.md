@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- ONNX importer foundation: protobuf parse, opset >= 17 validation, operator
+  allowlist, and typed `OnnxImportError` (parameter extraction deferred to #5/#6).
+- `model_io::import_json` for the JSON exchange path used by the CLI and demos.
 - `PartialOrd` / `Ord` for `FixedPoint` (same-scale raw integer comparison).
 - `Add`, `Sub`, and `Mul` operators as panicking wrappers over checked arithmetic.
 - `Neg` for `FixedPoint` so negation uses the standard unary operator.
