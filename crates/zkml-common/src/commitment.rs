@@ -8,11 +8,26 @@
 /// A 32-byte commitment value.
 pub type Commitment = [u8; 32];
 
+/// Canonical commitment over little-endian `i64` field elements.
+///
+/// Host and zkVM guest must call this same function so journal public inputs
+/// match native cross-checks.
+///
+/// # TODO (issue #13)
+///
+/// Replace the body with a Poseidon sponge matching CAP-0075 on-chain
+/// host functions. The current implementation is a deterministic stand-in
+/// so prover and tests agree until Poseidon lands.
+pub fn commitment_hash(elements: &[i64]) -> Commitment {
+    // TODO(#13): Poseidon commitments for model and input binding (CAP-0075).
+    commit_i64(elements)
+}
+
 /// Fold a sequence of little-endian `i64` field elements into a commitment.
 ///
 /// This is a placeholder construction (a simple mixing function) that will be
-/// replaced by a Poseidon sponge matching the on-chain host function. It is
-/// deterministic so the prover and tests agree.
+/// replaced by a Poseidon sponge matching the on-chain host function. Prefer
+/// [`commitment_hash`] at call sites that must stay aligned with the guest.
 pub fn commit_i64(elements: &[i64]) -> Commitment {
     let mut state: [u8; 32] = [0u8; 32];
     for (k, e) in elements.iter().enumerate() {
