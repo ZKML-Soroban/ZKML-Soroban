@@ -7,8 +7,8 @@
 <p align="center"><strong>A Provable ML Inference Runtime for Stellar</strong></p>
 
 <p align="center">
-  <a href="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml">
-    <img src="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/zinodict121/ZKML-Soroban/actions/workflows/ci.yml">
+    <img src="https://github.com/zinodict121/ZKML-Soroban/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache 2.0">

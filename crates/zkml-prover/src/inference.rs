@@ -77,6 +77,7 @@ fn dense_forward(layer: &DenseLayer, inputs: &[FixedPoint]) -> Vec<FixedPoint> {
     let mut out = Vec::with_capacity(layer.output_size);
     for j in 0..layer.output_size {
         let mut acc: i64 = layer.biases[j].value;
+        #[allow(clippy::needless_range_loop)]
         for i in 0..layer.input_size {
             let w = layer.weights[j * layer.input_size + i].value;
             acc += (w * inputs[i].value) >> scale;
