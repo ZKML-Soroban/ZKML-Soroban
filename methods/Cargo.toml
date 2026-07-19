@@ -1,0 +1,13 @@
+[package]
+name = "zkml-methods"
+description = "RISC Zero method ELF and image ID for zkml-prover guest inference"
+version = "0.2.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[build-dependencies]
+# Pinned exactly: RISC Zero API changes are a tracked project risk.
+risc0-build = "=3.0.6"
+
+[package.metadata.risc0]
+methods = ["guest"]
