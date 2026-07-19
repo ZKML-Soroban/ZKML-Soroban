@@ -18,5 +18,5 @@ serde_json = "1"
 # Phase 1: RISC Zero zkVM (uncomment when integrating)
 # risc0-zkvm = "1"
 
-# ONNX model import (uncomment when integrating)
-# prost = "0.13"
+# ONNX protobuf decoding (pinned; API surface used by the importer foundation).
+prost = "=0.13.5"
