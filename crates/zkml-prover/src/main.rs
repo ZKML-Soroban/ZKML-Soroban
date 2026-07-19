@@ -14,7 +14,7 @@ use std::process::exit;
 use zkml_common::commitment::to_hex;
 use zkml_common::fixed_point::FixedPoint;
 use zkml_prover::inference::run_inference;
-use zkml_prover::onnx::import_onnx;
+use zkml_prover::model_io::import_json;
 use zkml_prover::prover::model_commitment;
 
 fn main() {
@@ -32,7 +32,7 @@ fn main() {
         }
     };
 
-    let model = match import_onnx(&bytes) {
+    let model = match import_json(&bytes) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("failed to import model: {e}");
