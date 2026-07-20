@@ -5,6 +5,10 @@ members = [
     "crates/zkml-prover",
     "crates/zkml-verifier",
 ]
+# methods/ is pulled in as a path dependency when the `zkvm` feature is enabled
+# on zkml-prover (keeps default workspace builds free of the RISC Zero toolchain).
+# Guest is its own workspace (standard RISC Zero layout).
+exclude = ["methods", "methods/guest"]
 
 [workspace.package]
 version = "0.2.0"
@@ -14,3 +18,6 @@ repository = "https://github.com/diegoveme/ZKML-Soroban"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
+# Pinned exactly: RISC Zero API changes are a tracked project risk (roadmap).
+risc0-zkvm = { version = "=3.0.6" }
+risc0-build = { version = "=3.0.6" }

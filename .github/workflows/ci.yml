@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Pin RISC Zero components to match Cargo.toml (=3.0.6).
+  RISC0_VERSION: "3.0.6"
 
 jobs:
   test:
@@ -26,3 +28,26 @@ jobs:
         run: cargo build --workspace --verbose
       - name: Test
         run: cargo test --workspace --verbose
+
+  zkvm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install rzup
+        run: curl -L https://risczero.com/install | bash
+      - name: Install RISC Zero toolchain
+        run: |
+          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.risc0/bin:$PATH"
+          rzup install cargo-risczero "${RISC0_VERSION}"
+          rzup install r0vm "${RISC0_VERSION}"
+          rzup install rust
+      - name: Test zkVM guest (dev mode)
+        env:
+          RISC0_DEV_MODE: "1"
+        run: |
+          export PATH="$HOME/.risc0/bin:$PATH"
+          cargo test -p zkml-prover --features zkvm --verbose
