@@ -1,7 +1,11 @@
 # JSON Model Exchange Format
 
-The prover imports models from a JSON document while full ONNX support is under
-construction. The schema mirrors the in-memory model types.
+The CLI and example models use a JSON exchange format via
+`model_io::import_json`. The ONNX protobuf foundation (`import_onnx`) already
+validates opset and operators; parameter extraction is tracked in issues #5 /
+#6. See [onnx-import.md](onnx-import.md).
+
+The JSON schema mirrors the in-memory model types.
 
 ## Logistic Regression
 
