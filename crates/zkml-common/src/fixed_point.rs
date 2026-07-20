@@ -4,6 +4,9 @@
 //! floating-point numbers. This module provides fixed-point representations
 //! that map model weights and activations into field-compatible integers.
 
+use core::cmp::Ordering;
+use core::ops::{Add, Mul, Neg, Sub};
+
 use serde::{Deserialize, Serialize};
 
 /// Number of fractional bits used in the fixed-point representation.
@@ -95,6 +98,9 @@ mod tests_add {
 
 impl FixedPoint {
     /// Checked subtraction of two fixed-point numbers with the same scale.
+    ///
+    /// Returns `None` on overflow. Both operands must share the same scale;
+    /// this is checked with a debug assertion.
     pub fn checked_sub(self, other: Self) -> Option<Self> {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in subtraction");
         self.value.checked_sub(other.value).map(|value| Self {
@@ -105,34 +111,10 @@ impl FixedPoint {
 }
 
 impl FixedPoint {
-    /// Multiply two fixed-point numbers, rescaling the result.
-    ///
-    /// Uses an `i128` intermediate to avoid overflow before the shift back
-    /// down by `scale` fractional bits.
-    pub fn mul(self, other: Self) -> Self {
-        debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
-        let wide = (self.value as i128) * (other.value as i128);
-        let scaled = wide >> self.scale;
-        Self {
-            value: scaled as i64,
-            scale: self.scale,
-        }
-    }
-}
-
-impl FixedPoint {
     /// Saturating addition: clamps to the representable range on overflow.
     pub fn saturating_add(self, other: Self) -> Self {
         Self {
             value: self.value.saturating_add(other.value),
-            scale: self.scale,
-        }
-    }
-
-    /// Negate the value.
-    pub fn neg(self) -> Self {
-        Self {
-            value: -self.value,
             scale: self.scale,
         }
     }
@@ -153,7 +135,7 @@ mod tests_overflow {
     fn mul_round_trips_small_values() {
         let a = FixedPoint::quantize(1.5);
         let b = FixedPoint::quantize(2.0);
-        assert!((a.mul(b).dequantize() - 3.0).abs() < 1e-3);
+        assert!((a.checked_mul(b).unwrap().dequantize() - 3.0).abs() < 1e-3);
     }
 }
 
@@ -170,8 +152,12 @@ impl From<i32> for FixedPoint {
 }
 
 impl FixedPoint {
-    /// Checked multiplication, returning `None` if the rescaled result does
-    /// not fit in an `i64`.
+    /// Checked multiplication of two fixed-point numbers with the same scale.
+    ///
+    /// Computes the product in an `i128` intermediate, shifts right by
+    /// `scale` fractional bits, then returns `None` if the rescaled result
+    /// does not fit in an `i64`. Both operands must share the same scale;
+    /// this is checked with a debug assertion.
     pub fn checked_mul(self, other: Self) -> Option<Self> {
         debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
         let wide = (self.value as i128) * (other.value as i128);
@@ -180,6 +166,88 @@ impl FixedPoint {
             value,
             scale: self.scale,
         })
+    }
+}
+
+/// Compares the raw scaled integers, then scale as a tie-break.
+///
+/// Both operands must share the same scale; mismatched scales are a
+/// programming error and are checked with a debug assertion. The scale
+/// tie-break keeps this order consistent with the derived [`PartialEq`].
+impl PartialOrd for FixedPoint {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Total order over raw scaled integers, then scale as a tie-break.
+///
+/// Same-scale comparison (the only supported case) orders by `value` alone.
+/// When scales differ, `scale` breaks ties so `Ord` agrees with [`Eq`] even
+/// in release builds where the debug assertion is compiled out.
+impl Ord for FixedPoint {
+    fn cmp(&self, other: &Self) -> Ordering {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in comparison");
+        self.value
+            .cmp(&other.value)
+            .then(self.scale.cmp(&other.scale))
+    }
+}
+
+/// Panicking addition. Prefer [`FixedPoint::checked_add`] when overflow is possible.
+///
+/// # Panics
+///
+/// Panics if the sum overflows `i64`.
+impl Add for FixedPoint {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        self.checked_add(rhs).expect("FixedPoint addition overflow")
+    }
+}
+
+/// Panicking subtraction. Prefer [`FixedPoint::checked_sub`] when overflow is possible.
+///
+/// # Panics
+///
+/// Panics if the difference overflows `i64`.
+impl Sub for FixedPoint {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        self.checked_sub(rhs)
+            .expect("FixedPoint subtraction overflow")
+    }
+}
+
+/// Panicking multiplication with Q-format rescaling.
+///
+/// Prefer [`FixedPoint::checked_mul`] when overflow is possible. Uses an
+/// `i128` intermediate, shifts right by `scale`, then panics if the result
+/// does not fit in an `i64`.
+///
+/// # Panics
+///
+/// Panics if the rescaled product does not fit in an `i64`.
+impl Mul for FixedPoint {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self {
+        self.checked_mul(rhs)
+            .expect("FixedPoint multiplication overflow")
+    }
+}
+
+/// Negates the fixed-point value (same scale).
+impl Neg for FixedPoint {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self {
+            value: -self.value,
+            scale: self.scale,
+        }
     }
 }
 
@@ -199,6 +267,130 @@ mod tests_mul {
         let a = FixedPoint::quantize(2.0);
         let b = FixedPoint::quantize(3.0);
         assert!((a.checked_mul(b).unwrap().dequantize() - 6.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn checked_mul_scale_correctness_two_point_five_times_four() {
+        // Acceptance criterion from issue #2: 2.5 * 4.0 == 10.0 in Q16.16.
+        let a = FixedPoint::quantize(2.5);
+        let b = FixedPoint::quantize(4.0);
+        let product = a.checked_mul(b).expect("no overflow");
+        assert!((product.dequantize() - 10.0).abs() < 1e-3);
+    }
+}
+
+#[cfg(test)]
+mod tests_arithmetic_ops {
+    use super::*;
+
+    #[test]
+    fn additive_identity() {
+        let a = FixedPoint::quantize(3.25);
+        let zero = FixedPoint::from_raw(0, DEFAULT_SCALE);
+        let sum = a.checked_add(zero).expect("no overflow");
+        assert_eq!(sum.value, a.value);
+        assert_eq!((a + zero).value, a.value);
+    }
+
+    #[test]
+    fn add_sub_round_trip() {
+        let a = FixedPoint::quantize(7.5);
+        let b = FixedPoint::quantize(2.25);
+        let back = (a.checked_add(b).expect("add") - b).dequantize();
+        assert!((back - 7.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn negative_add_and_sub() {
+        let a = FixedPoint::quantize(-1.5);
+        let b = FixedPoint::quantize(2.0);
+        assert!((a.checked_add(b).unwrap().dequantize() - 0.5).abs() < 1e-4);
+        assert!(
+            (FixedPoint::quantize(1.0)
+                .checked_sub(FixedPoint::quantize(2.5))
+                .unwrap()
+                .dequantize()
+                + 1.5)
+                .abs()
+                < 1e-4
+        );
+    }
+
+    #[test]
+    fn negative_mul() {
+        let a = FixedPoint::quantize(-2.0);
+        let b = FixedPoint::quantize(3.0);
+        assert!((a.checked_mul(b).unwrap().dequantize() + 6.0).abs() < 1e-3);
+        assert!(
+            (a.checked_mul(FixedPoint::quantize(-3.0))
+                .unwrap()
+                .dequantize()
+                - 6.0)
+                .abs()
+                < 1e-3
+        );
+    }
+
+    #[test]
+    fn sub_overflow_returns_none() {
+        let a = FixedPoint::from_raw(i64::MIN, DEFAULT_SCALE);
+        let b = FixedPoint::from_raw(1, DEFAULT_SCALE);
+        assert!(a.checked_sub(b).is_none());
+    }
+
+    #[test]
+    fn operators_match_checked_variants() {
+        let a = FixedPoint::quantize(1.5);
+        let b = FixedPoint::quantize(2.5);
+        assert_eq!((a + b).value, a.checked_add(b).unwrap().value);
+        assert_eq!((a - b).value, a.checked_sub(b).unwrap().value);
+        assert_eq!((a * b).value, a.checked_mul(b).unwrap().value);
+        assert_eq!((-a).value, -a.value);
+    }
+
+    #[test]
+    fn ordering_compares_raw_values() {
+        let neg = FixedPoint::quantize(-1.0);
+        let zero = FixedPoint::from_raw(0, DEFAULT_SCALE);
+        let pos = FixedPoint::quantize(2.0);
+        assert!(neg < zero);
+        assert!(zero < pos);
+        assert!(neg < pos);
+        assert!(pos.cmp(&pos).is_eq());
+        assert_eq!(pos.cmp(&neg), Ordering::Greater);
+        assert!(pos > neg);
+    }
+
+    #[test]
+    fn ord_agrees_with_eq() {
+        // Ord's contract: a.cmp(b) == Equal iff a == b (derived PartialEq/Eq).
+        let a = FixedPoint::from_raw(100, DEFAULT_SCALE);
+        let b = FixedPoint::from_raw(100, DEFAULT_SCALE);
+        let c = FixedPoint::from_raw(50, DEFAULT_SCALE);
+        assert_eq!(a, b);
+        assert!(a.cmp(&b).is_eq());
+        assert_ne!(a, c);
+        assert!(!a.cmp(&c).is_eq());
+        assert_eq!(a.cmp(&c), c.cmp(&a).reverse());
+
+        // Same raw value, different scale: PartialEq is false. Ord keeps a
+        // debug_assert on scale mismatch (panics in debug), and uses scale as
+        // a tie-break so release builds also report non-Equal for this pair.
+        let d = FixedPoint::from_raw(100, 8);
+        assert_ne!(a, d);
+        assert_ne!(a.scale, d.scale);
+    }
+
+    /// In release, `debug_assert` is compiled out; the scale tie-break must
+    /// keep `Ord` consistent with `PartialEq` for mismatched scales.
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn ord_scale_tie_break_matches_eq_in_release() {
+        let a = FixedPoint::from_raw(100, 16);
+        let b = FixedPoint::from_raw(100, 8);
+        assert_ne!(a, b);
+        assert!(!a.cmp(&b).is_eq());
+        assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
     }
 }
 
@@ -382,7 +574,7 @@ pub fn min(xs: &[FixedPoint]) -> Option<FixedPoint> {
 pub fn argmax(xs: &[FixedPoint]) -> Option<usize> {
     let mut best: Option<(usize, i64)> = None;
     for (i, x) in xs.iter().enumerate() {
-        if best.map_or(true, |(_, v)| x.value > v) {
+        if best.is_none_or(|(_, v)| x.value > v) {
             best = Some((i, x.value));
         }
     }

@@ -12,12 +12,15 @@ yields roughly 4 to 5 decimal digits of precision.
 
 ## Operations
 
-| Operation      | Notes                                                        |
-| -------------- | ------------------------------------------------------------ |
-| `checked_add`  | Same-scale addition, `None` on overflow.                     |
-| `checked_sub`  | Same-scale subtraction, `None` on overflow.                  |
-| `mul`          | Uses an `i128` intermediate, then shifts right by `scale`.   |
-| `saturating_add` | Clamps to the representable range instead of overflowing.  |
+| Operation        | Notes                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| `checked_add`    | Same-scale addition, `None` on overflow.                              |
+| `checked_sub`    | Same-scale subtraction, `None` on overflow.                           |
+| `checked_mul`    | Product in `i128`, shift right by `scale`, `None` if result exceeds `i64`. |
+| `+` / `-` / `*`  | Panicking wrappers over the checked variants (for readable inference). |
+| `PartialOrd`/`Ord` | Compare raw scaled integers; operands must share the same scale.   |
+| `Neg` (`-x`)     | Negates the value, preserving scale.                                  |
+| `saturating_add` | Clamps to the representable range instead of overflowing.           |
 
 ## Determinism
 
