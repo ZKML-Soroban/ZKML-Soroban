@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  check:
+  test:
     name: Checks
     runs-on: ubuntu-latest
     steps:
