@@ -1,8 +1,11 @@
 //! JSON model exchange format.
 //!
-//! Until full ONNX protobuf support lands, models are imported from a simple
-//! JSON representation that mirrors the `zkml-common` model types. Tools that
-//! export from scikit-learn or PyTorch can target this schema directly.
+//! Companion to the ONNX protobuf importer in [`crate::onnx`]. JSON remains the
+//! practical path for demos and golden models under `examples/models/` while
+//! ONNX parameter extraction (issues #5 / #6) is incomplete.
+//!
+//! Tools that export from scikit-learn or PyTorch can target this schema
+//! directly; see `docs/model-format.md`.
 
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +52,18 @@ pub struct JsonDenseLayer {
 
 use zkml_common::fixed_point::FixedPoint;
 use zkml_common::models::{LogisticRegression, Model};
+
+/// Import a model from the JSON exchange format.
+///
+/// # Errors
+///
+/// Returns a descriptive error string if the bytes cannot be parsed as JSON
+/// matching [`JsonModel`].
+pub fn import_json(bytes: &[u8]) -> Result<Model, String> {
+    let doc: JsonModel =
+        serde_json::from_slice(bytes).map_err(|e| format!("model parse error: {e}"))?;
+    Ok(doc.into_model())
+}
 
 impl JsonModel {
     /// Convert a logistic regression JSON document into the internal model.
