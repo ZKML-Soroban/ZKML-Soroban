@@ -111,10 +111,36 @@ impl FixedPoint {
 }
 
 impl FixedPoint {
+    /// Multiply two fixed-point numbers, rescaling the result.
+    ///
+    /// Uses an `i128` intermediate to avoid overflow before the shift back
+    /// down by `scale` fractional bits.
+    #[allow(clippy::should_implement_trait)]
+    pub fn mul(self, other: Self) -> Self {
+        debug_assert_eq!(self.scale, other.scale, "scale mismatch in multiply");
+        let wide = (self.value as i128) * (other.value as i128);
+        let scaled = wide >> self.scale;
+        Self {
+            value: scaled as i64,
+            scale: self.scale,
+        }
+    }
+}
+
+impl FixedPoint {
     /// Saturating addition: clamps to the representable range on overflow.
     pub fn saturating_add(self, other: Self) -> Self {
         Self {
             value: self.value.saturating_add(other.value),
+            scale: self.scale,
+        }
+    }
+
+    /// Negate the value.
+    #[allow(clippy::should_implement_trait)]
+    pub fn neg(self) -> Self {
+        Self {
+            value: -self.value,
             scale: self.scale,
         }
     }
