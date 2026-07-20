@@ -2,12 +2,14 @@
 //!
 //! Default tests expect `RISC0_DEV_MODE=1` (fake proofs, fast). Real proving
 //! is gated behind `#[ignore]` — see `crates/zkml-prover/README.md`.
+//!
+//! Native golden vectors live in `golden_vectors.rs` so they run without the
+//! `zkvm` feature in the default CI job.
 
 #![cfg(feature = "zkvm")]
 
 use serde::Deserialize;
 use zkml_common::fixed_point::FixedPoint;
-use zkml_common::inference::run_inference;
 use zkml_prover::model_io::JsonModel;
 use zkml_prover::prover::{generate_receipt, input_commitment, model_commitment};
 
@@ -43,20 +45,6 @@ fn case_to_model_inputs(case: &VectorCase) -> (zkml_common::models::Model, Vec<F
         .map(FixedPoint::quantize)
         .collect();
     (model, inputs)
-}
-
-#[test]
-fn native_vectors_match_expected_raw() {
-    let file = load_tree_vectors();
-    for case in &file.cases {
-        let (model, inputs) = case_to_model_inputs(case);
-        let out = run_inference(&model, &inputs);
-        assert_eq!(
-            out.value, case.expected_output_raw,
-            "case {} native mismatch",
-            case.name
-        );
-    }
 }
 
 #[test]
