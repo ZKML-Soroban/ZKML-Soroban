@@ -3,20 +3,31 @@
 use super::error::OnnxImportError;
 use super::proto::{GraphProto, ModelProto};
 
-/// Domains whose opset version we enforce against the minimum.
+/// Minimum opset for the core ONNX domain (`""` / `ai.onnx`).
+pub const MIN_OPSET_CORE: i64 = 17;
+
+/// Minimum opset for the classic ML domain (`ai.onnx.ml`).
 ///
-/// - empty / `ai.onnx`: core operators (`MatMul`, `Add`, `Relu`, …)
-/// - `ai.onnx.ml`: classic ML operators (`TreeEnsembleClassifier`,
-///   `LinearClassifier`)
-fn is_relevant_domain(domain: &str) -> bool {
-    domain.is_empty() || domain == "ai.onnx" || domain == "ai.onnx.ml"
+/// This domain versions independently of the core domain (current range is
+/// roughly 1–5). There is no `ai.onnx.ml` opset 17.
+pub const MIN_OPSET_ML: i64 = 1;
+
+/// Per-domain opset floor.
+///
+/// Returns `None` for domains we do not enforce (e.g. vendor extensions).
+pub fn min_version_for_domain(domain: &str) -> Option<i64> {
+    match domain {
+        "" | "ai.onnx" => Some(MIN_OPSET_CORE),
+        "ai.onnx.ml" => Some(MIN_OPSET_ML),
+        _ => None,
+    }
 }
 
-/// Ensure every relevant opset import is at least `min_version`.
+/// Ensure every known domain's opset import meets its floor.
 ///
 /// If the model declares no opset imports at all, treat that as malformed:
 /// well-formed ONNX models always list their opset requirements.
-pub fn check_opset(model: &ModelProto, min_version: i64) -> Result<(), OnnxImportError> {
+pub fn check_opset(model: &ModelProto) -> Result<(), OnnxImportError> {
     if model.opset_import.is_empty() {
         return Err(OnnxImportError::MalformedModel(
             "model declares no opset_import entries".into(),
@@ -25,14 +36,14 @@ pub fn check_opset(model: &ModelProto, min_version: i64) -> Result<(), OnnxImpor
 
     let mut saw_relevant = false;
     for entry in &model.opset_import {
-        if !is_relevant_domain(&entry.domain) {
+        let Some(required) = min_version_for_domain(&entry.domain) else {
             continue;
-        }
+        };
         saw_relevant = true;
-        if entry.version < min_version {
+        if entry.version < required {
             return Err(OnnxImportError::UnsupportedOpset {
                 found: entry.version,
-                required: min_version,
+                required,
             });
         }
     }
@@ -116,7 +127,7 @@ mod tests {
     fn rejects_empty_opset_list() {
         let model = ModelProto::default();
         assert!(matches!(
-            check_opset(&model, 17),
+            check_opset(&model),
             Err(OnnxImportError::MalformedModel(_))
         ));
     }
@@ -136,7 +147,73 @@ mod tests {
             ],
             ..Default::default()
         };
-        assert!(check_opset(&model, 17).is_ok());
+        assert!(check_opset(&model).is_ok());
+    }
+
+    #[test]
+    fn accepts_realistic_ml_opset_with_core_17() {
+        let model = ModelProto {
+            opset_import: vec![
+                OperatorSetIdProto {
+                    domain: String::new(),
+                    version: 17,
+                },
+                OperatorSetIdProto {
+                    domain: "ai.onnx.ml".into(),
+                    version: 3,
+                },
+            ],
+            ..Default::default()
+        };
+        assert!(check_opset(&model).is_ok());
+    }
+
+    #[test]
+    fn rejects_core_below_floor() {
+        let model = ModelProto {
+            opset_import: vec![
+                OperatorSetIdProto {
+                    domain: String::new(),
+                    version: 13,
+                },
+                OperatorSetIdProto {
+                    domain: "ai.onnx.ml".into(),
+                    version: 3,
+                },
+            ],
+            ..Default::default()
+        };
+        match check_opset(&model).unwrap_err() {
+            OnnxImportError::UnsupportedOpset { found, required } => {
+                assert_eq!(found, 13);
+                assert_eq!(required, MIN_OPSET_CORE);
+            }
+            other => panic!("unexpected: {other}"),
+        }
+    }
+
+    #[test]
+    fn rejects_ml_below_floor() {
+        let model = ModelProto {
+            opset_import: vec![
+                OperatorSetIdProto {
+                    domain: String::new(),
+                    version: 17,
+                },
+                OperatorSetIdProto {
+                    domain: "ai.onnx.ml".into(),
+                    version: 0,
+                },
+            ],
+            ..Default::default()
+        };
+        match check_opset(&model).unwrap_err() {
+            OnnxImportError::UnsupportedOpset { found, required } => {
+                assert_eq!(found, 0);
+                assert_eq!(required, MIN_OPSET_ML);
+            }
+            other => panic!("unexpected: {other}"),
+        }
     }
 
     #[test]

@@ -26,16 +26,16 @@ mod validate;
 
 pub use error::OnnxImportError;
 pub use proto::{GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
+pub use validate::{MIN_OPSET_CORE, MIN_OPSET_ML};
 
 use prost::Message;
 use validate::{check_operators, check_opset, detect_architecture};
 use zkml_common::models::Model;
 
-/// Minimum ONNX opset version accepted by this importer.
+/// Minimum core ONNX opset version (`""` / `ai.onnx`).
 ///
-/// Matches the project compatibility target documented in
-/// `docs/technical-overview.md` (ONNX Compatibility).
-pub const MIN_OPSET_VERSION: i64 = 17;
+/// Alias of [`MIN_OPSET_CORE`] for callers that still use the historical name.
+pub const MIN_OPSET_VERSION: i64 = MIN_OPSET_CORE;
 
 /// Operators currently allowed by the importer foundation.
 ///
@@ -50,16 +50,16 @@ pub const SUPPORTED_OPERATORS: &[&str] = &[
 
 /// Import an ONNX model from a protobuf byte slice.
 ///
-/// Performs protobuf decoding, opset validation (`>= 17`), and operator
-/// allowlist checks. When validation succeeds, returns
-/// [`OnnxImportError::ExtractionNotImplemented`] until parameter extraction
-/// lands in issues #5 / #6.
+/// Performs protobuf decoding, per-domain opset validation (core `>= 17`,
+/// `ai.onnx.ml` `>= 1`), and operator allowlist checks. When validation
+/// succeeds, returns [`OnnxImportError::ExtractionNotImplemented`] until
+/// parameter extraction lands in issues #5 / #6.
 ///
 /// # Errors
 ///
 /// - [`OnnxImportError::MalformedModel`] if the bytes are not a valid
 ///   `ModelProto` or the graph is missing / empty.
-/// - [`OnnxImportError::UnsupportedOpset`] if any relevant opset is below 17.
+/// - [`OnnxImportError::UnsupportedOpset`] if a known domain is below its floor.
 /// - [`OnnxImportError::UnsupportedOperator`] if a graph node uses an op
 ///   outside the allowlist.
 /// - [`OnnxImportError::ExtractionNotImplemented`] after successful validation.
@@ -83,7 +83,7 @@ pub fn parse_model_proto(bytes: &[u8]) -> Result<ModelProto, OnnxImportError> {
 
 /// Validate opset version and operator allowlist on an already-decoded model.
 pub fn validate_model(model: &ModelProto) -> Result<(), OnnxImportError> {
-    check_opset(model, MIN_OPSET_VERSION)?;
+    check_opset(model)?;
     let graph = model
         .graph
         .as_ref()
@@ -108,17 +108,18 @@ mod tests {
         buf
     }
 
-    fn model_with(opset: i64, ops: &[&str]) -> ModelProto {
+    /// Build a model with independent core and ML domain versions.
+    fn model_with(core_opset: i64, ml_opset: i64, ops: &[&str]) -> ModelProto {
         ModelProto {
             ir_version: 8,
             opset_import: vec![
                 OperatorSetIdProto {
                     domain: String::new(),
-                    version: opset,
+                    version: core_opset,
                 },
                 OperatorSetIdProto {
                     domain: "ai.onnx.ml".into(),
-                    version: opset,
+                    version: ml_opset,
                 },
             ],
             graph: Some(GraphProto {
@@ -145,7 +146,8 @@ mod tests {
 
     #[test]
     fn valid_tree_reaches_extraction_not_implemented() {
-        let bytes = encode(&model_with(17, &["TreeEnsembleClassifier"]));
+        // Realistic skl2onnx-like pair: core 17 + ml 3.
+        let bytes = encode(&model_with(17, 3, &["TreeEnsembleClassifier"]));
         let err = import_onnx(&bytes).unwrap_err();
         match err {
             OnnxImportError::ExtractionNotImplemented { architecture_hint } => {
@@ -160,7 +162,8 @@ mod tests {
 
     #[test]
     fn valid_linear_reaches_extraction_not_implemented() {
-        let bytes = encode(&model_with(18, &["LinearClassifier"]));
+        // LinearClassifier has only ever been ai.onnx.ml version 1.
+        let bytes = encode(&model_with(18, 1, &["LinearClassifier"]));
         let err = import_onnx(&bytes).unwrap_err();
         assert!(matches!(
             err,
@@ -170,7 +173,7 @@ mod tests {
 
     #[test]
     fn valid_mlp_ops_reaches_extraction_not_implemented() {
-        let bytes = encode(&model_with(17, &["MatMul", "Add", "Relu"]));
+        let bytes = encode(&model_with(17, 1, &["MatMul", "Add", "Relu"]));
         let err = import_onnx(&bytes).unwrap_err();
         assert!(matches!(
             err,
@@ -180,7 +183,7 @@ mod tests {
 
     #[test]
     fn unsupported_operator_names_offender() {
-        let bytes = encode(&model_with(17, &["Conv"]));
+        let bytes = encode(&model_with(17, 1, &["Conv"]));
         let err = import_onnx(&bytes).unwrap_err();
         match err {
             OnnxImportError::UnsupportedOperator { op_type } => assert_eq!(op_type, "Conv"),
@@ -189,16 +192,26 @@ mod tests {
     }
 
     #[test]
-    fn low_opset_is_rejected() {
-        let bytes = encode(&model_with(13, &["TreeEnsembleClassifier"]));
+    fn low_core_opset_is_rejected() {
+        let bytes = encode(&model_with(13, 3, &["TreeEnsembleClassifier"]));
         let err = import_onnx(&bytes).unwrap_err();
         match err {
             OnnxImportError::UnsupportedOpset { found, required } => {
                 assert_eq!(found, 13);
-                assert_eq!(required, MIN_OPSET_VERSION);
+                assert_eq!(required, MIN_OPSET_CORE);
             }
             other => panic!("unexpected error: {other}"),
         }
+    }
+
+    #[test]
+    fn realistic_ml_opset_is_accepted() {
+        let bytes = encode(&model_with(17, 5, &["TreeEnsembleClassifier"]));
+        let err = import_onnx(&bytes).unwrap_err();
+        assert!(
+            matches!(err, OnnxImportError::ExtractionNotImplemented { .. }),
+            "got {err}"
+        );
     }
 
     #[test]
@@ -242,10 +255,11 @@ mod tests {
 
     #[test]
     fn parse_model_proto_round_trips() {
-        let original = model_with(17, &["Add", "Relu"]);
+        let original = model_with(17, 1, &["Add", "Relu"]);
         let bytes = encode(&original);
         let decoded = parse_model_proto(&bytes).unwrap();
         assert_eq!(decoded.opset_import[0].version, 17);
+        assert_eq!(decoded.opset_import[1].version, 1);
         assert_eq!(decoded.graph.as_ref().unwrap().node.len(), 2);
     }
 }
