@@ -1,0 +1,17 @@
+[package]
+name = "zkml-guest"
+version = "0.2.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+# Guest uses the shared, Soroban/RISC Zero-free crate for models + inference.
+zkml-common = { path = "../../crates/zkml-common" }
+# Pinned exactly to match host `risc0-zkvm` and `risc0-build`.
+risc0-zkvm = { version = "=3.0.6", default-features = false, features = ["std"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+
+[profile.release]
+lto = true
+opt-level = 3

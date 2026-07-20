@@ -1,0 +1,64 @@
+{
+  "description": "Minimal golden vectors for RISC Zero guest cross-check (issue #10). Compatible shape for the fuller suite in issue #8.",
+  "scale": 16,
+  "cases": [
+    {
+      "name": "depth1_left_branch",
+      "comment": "feature 0.3 <= threshold 0.5 takes left leaf 0.0",
+      "model": {
+        "kind": "decision_tree",
+        "num_features": 1,
+        "nodes": [
+          { "type": "split", "feature_index": 0, "threshold": 0.5, "left": 1, "right": 2 },
+          { "type": "leaf", "value": 0.0 },
+          { "type": "leaf", "value": 1.0 }
+        ]
+      },
+      "inputs": [0.3],
+      "expected_output_raw": 0
+    },
+    {
+      "name": "depth1_right_branch",
+      "comment": "feature 0.9 > threshold 0.5 takes right leaf 1.0",
+      "model": {
+        "kind": "decision_tree",
+        "num_features": 1,
+        "nodes": [
+          { "type": "split", "feature_index": 0, "threshold": 0.5, "left": 1, "right": 2 },
+          { "type": "leaf", "value": 0.0 },
+          { "type": "leaf", "value": 1.0 }
+        ]
+      },
+      "inputs": [0.9],
+      "expected_output_raw": 65536
+    },
+    {
+      "name": "threshold_boundary_leq",
+      "comment": "feature exactly equal to threshold uses left child (BRANCH_LEQ)",
+      "model": {
+        "kind": "decision_tree",
+        "num_features": 1,
+        "nodes": [
+          { "type": "split", "feature_index": 0, "threshold": 0.5, "left": 1, "right": 2 },
+          { "type": "leaf", "value": 0.0 },
+          { "type": "leaf", "value": 1.0 }
+        ]
+      },
+      "inputs": [0.5],
+      "expected_output_raw": 0
+    },
+    {
+      "name": "single_leaf_root",
+      "comment": "degenerate tree: root is a leaf",
+      "model": {
+        "kind": "decision_tree",
+        "num_features": 1,
+        "nodes": [
+          { "type": "leaf", "value": 0.25 }
+        ]
+      },
+      "inputs": [0.0],
+      "expected_output_raw": 16384
+    }
+  ]
+}

@@ -8,9 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- ONNX importer foundation: protobuf parse, opset >= 17 validation, operator
-  allowlist, and typed `OnnxImportError` (parameter extraction deferred to #5/#6).
+- ONNX importer foundation: protobuf parse, per-domain opset validation
+  (core >= 17, ai.onnx.ml >= 1), operator allowlist, and typed
+  `OnnxImportError` (parameter extraction deferred to #5/#6).
 - `model_io::import_json` for the JSON exchange path used by the CLI and demos.
+- RISC Zero guest program and host `generate_receipt` with journal
+  cross-checks (dev-mode CI; real proving documented and `#[ignore]`d).
+- Shared inference engine in `zkml-common` for native and guest paths.
+- `commitment_hash` abstraction over model/input binding (Poseidon: #13).
+- Minimal golden vectors under `crates/zkml-prover/tests/vectors/`.
 - `PartialOrd` / `Ord` for `FixedPoint` (same-scale raw integer comparison).
 - `Add`, `Sub`, and `Mul` operators as panicking wrappers over checked arithmetic.
 - `Neg` for `FixedPoint` so negation uses the standard unary operator.
