@@ -20,6 +20,20 @@ pub fn run_inference(model: &Model, inputs: &[FixedPoint]) -> FixedPoint {
 }
 
 /// Traverse a decision tree and return the leaf value.
+///
+/// # Threshold Semantics
+///
+/// Decision tree splits use **less-than-or-equal** (`<=`) semantics:
+/// - If `inputs[feature_index] <= threshold`, traverse to the **left** child.
+/// - If `inputs[feature_index] > threshold`, traverse to the **right** child.
+///
+/// This matches ONNX's `BRANCH_LEQ` operator semantics and is critical for
+/// consistency between the inference engine, ONNX importer, and ZK circuits.
+///
+/// # Boundary Behavior
+///
+/// When an input value is exactly equal to the threshold, the left branch is taken.
+/// This behavior is tested in the golden vector suite (see `decision_tree_boundary.json`).
 fn infer_decision_tree(tree: &DecisionTree, inputs: &[FixedPoint]) -> FixedPoint {
     assert_eq!(
         inputs.len(),
