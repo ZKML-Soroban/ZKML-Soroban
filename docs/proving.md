@@ -35,6 +35,17 @@ Committed in order by the guest:
 | `input_hash` | `[u8; 32]` | `commitment_hash` over input raw values |
 | `output` | `i64` | Raw `FixedPoint::value` inference result |
 
+
+## Security note: `commitment_hash`
+
+Journal fields `model_hash` and `input_hash` are produced by
+`zkml_common::commitment::commitment_hash`. **That function is not
+collision-resistant** today (wrapping add/multiply mixer). It must not gate any
+on-chain trust or access decision until issue #13 replaces it with Poseidon
+(CAP-0075). Phase 1 uses it only so host and guest agree during development and
+dev-mode receipt cross-checks.
+
+
 ## Dev mode vs real proving
 
 | Mode | Env | Use |
