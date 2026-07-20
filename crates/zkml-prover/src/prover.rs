@@ -10,49 +10,11 @@
 
 use zkml_common::commitment::{commit_i64, commitment_hash, Commitment};
 use zkml_common::fixed_point::FixedPoint;
-use zkml_common::models::{Model, TreeNode};
+use zkml_common::models::Model;
 use zkml_common::proof::{Groth16Proof, PublicInputs, VerificationBundle};
 
-/// Flatten model parameters into commitment elements.
-///
-/// Must stay in lockstep with the guest's `model_elements` helper.
-pub fn model_elements(model: &Model) -> Vec<i64> {
-    let mut out = Vec::new();
-    match model {
-        Model::LogisticRegression(lr) => {
-            out.extend(lr.weights.iter().map(|w| w.value));
-            out.push(lr.bias.value);
-        }
-        Model::DecisionTree(tree) => {
-            out.push(tree.num_features as i64);
-            for node in &tree.nodes {
-                match node {
-                    TreeNode::Split {
-                        feature_index,
-                        threshold,
-                        left,
-                        right,
-                    } => {
-                        out.push(*feature_index as i64);
-                        out.push(threshold.value);
-                        out.push(*left as i64);
-                        out.push(*right as i64);
-                    }
-                    TreeNode::Leaf { value } => out.push(value.value),
-                }
-            }
-        }
-        Model::TinyMLP(mlp) => {
-            for layer in &mlp.layers {
-                out.extend(layer.weights.iter().map(|w| w.value));
-                out.extend(layer.biases.iter().map(|b| b.value));
-                out.push(layer.input_size as i64);
-                out.push(layer.output_size as i64);
-            }
-        }
-    }
-    out
-}
+/// Flatten model parameters for commitments (shared with the guest).
+pub use zkml_common::commitment::model_elements;
 
 /// Commit to a model's parameters (the on-chain `initialize` value).
 pub fn model_commitment(model: &Model) -> Commitment {

@@ -10,10 +10,10 @@
 
 use risc0_zkvm::guest::env;
 use serde::{Deserialize, Serialize};
-use zkml_common::commitment::{commitment_hash, Commitment};
+use zkml_common::commitment::{commitment_hash, model_elements, Commitment};
 use zkml_common::fixed_point::FixedPoint;
 use zkml_common::inference::run_inference;
-use zkml_common::models::{Model, TreeNode};
+use zkml_common::models::Model;
 
 risc0_zkvm::guest::entry!(main);
 
@@ -41,42 +41,3 @@ fn main() {
     });
 }
 
-/// Flatten model parameters into the same element stream the host uses for
-/// `model_commitment`. Must stay in lockstep with `zkml_prover::prover`.
-fn model_elements(model: &Model) -> Vec<i64> {
-    let mut out = Vec::new();
-    match model {
-        Model::LogisticRegression(lr) => {
-            out.extend(lr.weights.iter().map(|w| w.value));
-            out.push(lr.bias.value);
-        }
-        Model::DecisionTree(tree) => {
-            out.push(tree.num_features as i64);
-            for node in &tree.nodes {
-                match node {
-                    TreeNode::Split {
-                        feature_index,
-                        threshold,
-                        left,
-                        right,
-                    } => {
-                        out.push(*feature_index as i64);
-                        out.push(threshold.value);
-                        out.push(*left as i64);
-                        out.push(*right as i64);
-                    }
-                    TreeNode::Leaf { value } => out.push(value.value),
-                }
-            }
-        }
-        Model::TinyMLP(mlp) => {
-            for layer in &mlp.layers {
-                out.extend(layer.weights.iter().map(|w| w.value));
-                out.extend(layer.biases.iter().map(|b| b.value));
-                out.push(layer.input_size as i64);
-                out.push(layer.output_size as i64);
-            }
-        }
-    }
-    out
-}
