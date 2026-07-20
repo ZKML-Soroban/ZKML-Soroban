@@ -7,17 +7,17 @@ foundation (protobuf parse, opset check, operator allowlist).
 
 | File | Purpose |
 | ---- | ------- |
-| `decision_tree_valid.onnx` | Opset 17 + `TreeEnsembleClassifier`. Validation passes; import returns `ExtractionNotImplemented` until issue #5. |
-| `linear_classifier_valid.onnx` | Opset 18 + `LinearClassifier`. Same extraction deferral (issue #6). |
-| `unsupported_conv.onnx` | Opset 17 + `Conv`. Must fail with `UnsupportedOperator { op_type: "Conv" }`. |
-| `low_opset_tree.onnx` | Opset 13 + `TreeEnsembleClassifier`. Must fail with `UnsupportedOpset`. |
+| `decision_tree_valid.onnx` | Core opset 17 + `ai.onnx.ml` 3 + `TreeEnsembleClassifier`. Validation passes; import returns `ExtractionNotImplemented` until issue #5. |
+| `skl2onnx_like_tree.onnx` | Same realistic opset pair with an skl2onnx-style producer/graph name. Guards against regressing to an ml=17 floor. |
+| `linear_classifier_valid.onnx` | Core 18 + `ai.onnx.ml` 1 + `LinearClassifier`. Extraction deferred (issue #6). |
+| `unsupported_conv.onnx` | Core 17 + `Conv`. Must fail with `UnsupportedOperator { op_type: "Conv" }`. |
+| `low_opset_tree.onnx` | Core 13 + ml 3 + tree op. Must fail with `UnsupportedOpset` on the core domain. |
 
 ## How these fixtures were generated
 
 The committed binaries are **synthetic `ModelProto` encodings** written with
-the same `prost` field tags as official ONNX. They deliberately omit full
-attribute / initializer payloads because parameter extraction is out of scope
-for the foundation issue.
+the same `prost` field tags as official ONNX. Opset pairs mirror real
+exporters: **never** set `ai.onnx.ml` to 17 (that domain tops out around 5).
 
 Regenerate them with:
 
@@ -46,7 +46,8 @@ clf = DecisionTreeClassifier(max_depth=2, random_state=0).fit(X, y)
 onx = convert_sklearn(
     clf,
     initial_types=[("X", FloatTensorType([None, X.shape[1]]))],
-    target_opset={"": 17, "ai.onnx.ml": 17},
+    # Core domain 17; ml domain stays in 1–5 (skl2onnx rejects ml=17).
+    target_opset={"": 17, "ai.onnx.ml": 3},
 )
 with open("decision_tree_skl2onnx.onnx", "wb") as f:
     f.write(onx.SerializeToString())
