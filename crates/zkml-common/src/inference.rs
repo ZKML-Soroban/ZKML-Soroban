@@ -86,9 +86,9 @@ fn dense_forward(layer: &DenseLayer, inputs: &[FixedPoint]) -> Vec<FixedPoint> {
     let mut out = Vec::with_capacity(layer.output_size);
     for j in 0..layer.output_size {
         let mut acc: i64 = layer.biases[j].value;
-        for i in 0..layer.input_size {
+        for (i, input) in inputs.iter().enumerate().take(layer.input_size) {
             let w = layer.weights[j * layer.input_size + i].value;
-            acc += (w * inputs[i].value) >> scale;
+            acc += (w * input.value) >> scale;
         }
         out.push(FixedPoint::from_raw(acc, scale));
     }
