@@ -1,12 +1,13 @@
 //! Model inference engine.
 //!
-//! Re-exports the shared implementation from `zkml-common` so existing
-//! `zkml_prover::inference` call sites keep working. The proven guest path
-//! uses the same `zkml_common::inference` module directly.
+//! Executes quantized ML models using fixed-point arithmetic. The same
+//! logic runs both natively (for testing) and inside the RISC Zero zkVM
+//! guest (for proof generation). Keeping inference in `zkml-common` avoids
+//! duplicating the proven path between host and guest.
 
-use zkml_common::activation::relu_vec;
-use zkml_common::fixed_point::FixedPoint;
-use zkml_common::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
+use crate::activation::relu_vec;
+use crate::fixed_point::FixedPoint;
+use crate::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
 
 /// Run inference on a model given a vector of input features.
 ///
@@ -20,6 +21,14 @@ pub fn run_inference(model: &Model, inputs: &[FixedPoint]) -> FixedPoint {
 }
 
 /// Traverse a decision tree and return the leaf value.
+///
+/// # Threshold semantics
+///
+/// A sample takes the **left** child when
+/// `feature[feature_index].value <= threshold.value` (inclusive / `BRANCH_LEQ`).
+/// Values strictly greater than the threshold take the right child. This
+/// matches typical ONNX `TreeEnsembleClassifier` `BRANCH_LEQ` behavior and
+/// must stay aligned with any future circuit encoding.
 fn infer_decision_tree(tree: &DecisionTree, inputs: &[FixedPoint]) -> FixedPoint {
     assert_eq!(
         inputs.len(),
@@ -77,7 +86,6 @@ fn dense_forward(layer: &DenseLayer, inputs: &[FixedPoint]) -> Vec<FixedPoint> {
     let mut out = Vec::with_capacity(layer.output_size);
     for j in 0..layer.output_size {
         let mut acc: i64 = layer.biases[j].value;
-        #[allow(clippy::needless_range_loop)]
         for i in 0..layer.input_size {
             let w = layer.weights[j * layer.input_size + i].value;
             acc += (w * inputs[i].value) >> scale;
@@ -107,7 +115,7 @@ fn infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> FixedPoint {
 #[cfg(test)]
 mod tests_mlp {
     use super::*;
-    use zkml_common::models::{DenseLayer, Model, TinyMLP};
+    use crate::models::{DenseLayer, Model, TinyMLP};
 
     fn fp(x: f64) -> FixedPoint {
         FixedPoint::quantize(x)
@@ -165,7 +173,7 @@ pub fn run_batch(model: &Model, rows: &[Vec<FixedPoint>]) -> Vec<FixedPoint> {
 #[cfg(test)]
 mod tests_batch {
     use super::*;
-    use zkml_common::models::{LogisticRegression, Model};
+    use crate::models::{LogisticRegression, Model};
 
     #[test]
     fn batch_matches_single() {
@@ -189,8 +197,8 @@ mod tests_batch {
 pub fn try_run_inference(
     model: &Model,
     inputs: &[FixedPoint],
-) -> Result<FixedPoint, zkml_common::error::ZkmlError> {
-    use zkml_common::error::ZkmlError;
+) -> Result<FixedPoint, crate::error::ZkmlError> {
+    use crate::error::ZkmlError;
     if inputs.is_empty() {
         return Err(ZkmlError::FeatureCountMismatch {
             expected: model.num_features(),
@@ -210,7 +218,7 @@ pub fn try_run_inference(
 #[cfg(test)]
 mod tests_validated {
     use super::*;
-    use zkml_common::models::{LogisticRegression, Model};
+    use crate::models::{LogisticRegression, Model};
 
     #[test]
     fn empty_input_is_rejected() {
