@@ -160,7 +160,7 @@ mod test_verify {
     use super::*;
     use soroban_sdk::Env;
 
-    fn setup(env: &Env) -> ZkmlVerifierContractClient {
+    fn setup(env: &Env) -> ZkmlVerifierContractClient<'_> {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);

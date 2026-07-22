@@ -59,7 +59,7 @@ mod tests_error {
 
     #[test]
     fn error_within_tolerance() {
-        let values = vec![0.1, -0.25, 3.14159, 100.5, -42.0];
+        let values = vec![0.1, -0.25, std::f64::consts::PI, 100.5, -42.0];
         assert!(max_quantization_error(&values) < 1e-4);
     }
 }
