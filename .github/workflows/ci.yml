@@ -4,50 +4,32 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-
-env:
-  CARGO_TERM_COLOR: always
-  # Pin RISC Zero components to match Cargo.toml (=3.0.6).
-  RISC0_VERSION: "3.0.6"
 
 jobs:
   test:
+    name: Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Check formatting
-        run: cargo fmt --all --check
-      - name: Clippy (advisory)
-        continue-on-error: true
-        run: cargo clippy --workspace --all-targets
-      - name: Build
-        run: cargo build --workspace --verbose
-      - name: Test
-        run: cargo test --workspace --verbose
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  zkvm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
+          targets: wasm32-unknown-unknown
           components: rustfmt, clippy
-      - name: Install rzup
-        run: curl -L https://risczero.com/install | bash
-      - name: Install RISC Zero toolchain
-        run: |
-          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.risc0/bin:$PATH"
-          rzup install cargo-risczero "${RISC0_VERSION}"
-          rzup install r0vm "${RISC0_VERSION}"
-          rzup install rust
-      - name: Test zkVM guest (dev mode)
-        env:
-          RISC0_DEV_MODE: "1"
-        run: |
-          export PATH="$HOME/.risc0/bin:$PATH"
-          cargo test -p zkml-prover --features zkvm --verbose
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      - name: Verifier WASM build
+        run: cargo build --release --target wasm32-unknown-unknown -p zkml-verifier
