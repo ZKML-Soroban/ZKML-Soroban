@@ -50,7 +50,9 @@ enum TreeNodeJson {
         left: usize,
         right: usize,
     },
-    Leaf { value: FixedPointJson },
+    Leaf {
+        value: FixedPointJson,
+    },
 }
 
 impl From<TreeNodeJson> for TreeNode {
@@ -109,10 +111,12 @@ impl TryFrom<ModelJson> for Model {
                 nodes: tree.nodes.into_iter().map(|n| n.into()).collect(),
                 num_features: tree.num_features,
             })),
-            ModelJson::LogisticRegression(lr) => Ok(Model::LogisticRegression(LogisticRegression {
-                weights: lr.weights.into_iter().map(|w| w.into()).collect(),
-                bias: lr.bias.into(),
-            })),
+            ModelJson::LogisticRegression(lr) => {
+                Ok(Model::LogisticRegression(LogisticRegression {
+                    weights: lr.weights.into_iter().map(|w| w.into()).collect(),
+                    bias: lr.bias.into(),
+                }))
+            }
         }
     }
 }
@@ -149,18 +153,17 @@ fn vector_path(filename: &str) -> PathBuf {
 fn load_test_vector(path: &Path) -> TestVectorJson {
     let content = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
-    serde_json::from_str(&content).unwrap_or_else(|e| {
-        panic!(
-            "Failed to parse JSON from {}: {}",
-            path.display(),
-            e
-        )
-    })
+    serde_json::from_str(&content)
+        .unwrap_or_else(|e| panic!("Failed to parse JSON from {}: {}", path.display(), e))
 }
 
 /// Run a single test case and verify the result.
 fn run_test_case(model: &Model, test_case: &TestCaseJson) {
-    let inputs: Vec<FixedPoint> = test_case.inputs.iter().map(|fp| fp.clone().into()).collect();
+    let inputs: Vec<FixedPoint> = test_case
+        .inputs
+        .iter()
+        .map(|fp| fp.clone().into())
+        .collect();
 
     if let Some(expected_error) = &test_case.expected_error {
         // This test case should error
@@ -168,7 +171,7 @@ fn run_test_case(model: &Model, test_case: &TestCaseJson) {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             try_run_inference(model, &inputs)
         }));
-        
+
         match result {
             Ok(Ok(_)) => panic!(
                 "Expected error '{}' but inference succeeded for: {}",
@@ -182,7 +185,7 @@ fn run_test_case(model: &Model, test_case: &TestCaseJson) {
                         expected_error, error_str
                     );
                 }
-            },
+            }
             Err(panic_info) => {
                 // Test panicked - check if panic message contains expected error
                 let panic_msg = if let Some(s) = panic_info.downcast_ref::<String>() {
@@ -192,8 +195,9 @@ fn run_test_case(model: &Model, test_case: &TestCaseJson) {
                 } else {
                     "Unknown panic".to_string()
                 };
-                
-                if !panic_msg.contains(expected_error) && !panic_msg.contains("index out of bounds") {
+
+                if !panic_msg.contains(expected_error) && !panic_msg.contains("index out of bounds")
+                {
                     panic!(
                         "Expected error containing '{}' but panic got: {}",
                         expected_error, panic_msg
@@ -228,10 +232,10 @@ macro_rules! generate_vector_tests {
             fn $file() {
                 let path = vector_path(concat!(stringify!($file), ".json"));
                 let vector = load_test_vector(&path);
-                
+
                 let model: Model = vector.model.try_into()
                     .unwrap_or_else(|e| panic!("Failed to convert model: {}", e));
-                
+
                 // Validate decision trees if applicable
                 // Skip validation only if test expects runtime errors (not InvalidModel)
                 let has_invalid_model_error = vector.test_cases.iter().any(|tc| {
@@ -244,7 +248,7 @@ macro_rules! generate_vector_tests {
                         });
                     }
                 }
-                
+
                 for test_case in &vector.test_cases {
                     run_test_case(&model, test_case);
                 }
