@@ -55,9 +55,15 @@ fn create_test_tree_onnx() -> Vec<u8> {
                 input: vec!["X".into()],
                 output: vec!["Y".into()],
                 attribute: vec![
+                    // Tree structure attributes
                     AttributeProto {
-                        name: "n_trees".into(),
-                        ints: vec![1],
+                        name: "nodes_treeids".into(),
+                        ints: vec![0, 0, 0], // All nodes in tree 0
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "nodes_nodeids".into(),
+                        ints: vec![0, 1, 2], // Node IDs
                         ..Default::default()
                     },
                     AttributeProto {
@@ -67,7 +73,7 @@ fn create_test_tree_onnx() -> Vec<u8> {
                     },
                     AttributeProto {
                         name: "nodes_values".into(),
-                        floats: vec![0.5, 0.0, 1.0], // 3 nodes
+                        floats: vec![0.5, 0.0, 0.0], // Thresholds (leaf values are 0 in ONNX)
                         ..Default::default()
                     },
                     AttributeProto {
@@ -77,22 +83,33 @@ fn create_test_tree_onnx() -> Vec<u8> {
                     },
                     AttributeProto {
                         name: "nodes_truenodeids".into(),
-                        ints: vec![1, 0, 0],
+                        ints: vec![1, 0, 0], // Child node IDs (not indices)
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "nodes_falsenodeids".into(),
-                        ints: vec![2, 0, 0],
+                        ints: vec![2, 0, 0], // Child node IDs (not indices)
                         ..Default::default()
                     },
+                    // Class attributes for leaf values
                     AttributeProto {
                         name: "class_ids".into(),
-                        ints: vec![0, 0, 0],
+                        ints: vec![0, 1], // Class indices
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "class_weights".into(),
-                        floats: vec![0.0, 1.0],
+                        floats: vec![0.0, 1.0], // Actual leaf values
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_nodeids".into(),
+                        ints: vec![1, 2], // Which leaf nodes these weights belong to
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_treeids".into(),
+                        ints: vec![0, 0], // All in tree 0
                         ..Default::default()
                     },
                 ],
@@ -222,45 +239,61 @@ fn test_reject_multi_tree_ensemble() {
                 input: vec!["X".into()],
                 output: vec!["Y".into()],
                 attribute: vec![
+                    // Two trees indicated by nodes_treeids
                     AttributeProto {
-                        name: "n_trees".into(),
-                        ints: vec![2], // Multi-tree ensemble
+                        name: "nodes_treeids".into(),
+                        ints: vec![0, 1], // Node 0 in tree 0, node 1 in tree 1
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "nodes_nodeids".into(),
+                        ints: vec![0, 1],
                         ..Default::default()
                     },
                     // Minimal other attributes to pass parsing
                     AttributeProto {
                         name: "nodes_featureids".into(),
-                        ints: vec![0],
+                        ints: vec![0, 0],
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "nodes_values".into(),
-                        floats: vec![0.5],
+                        floats: vec![0.5, 0.0],
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "nodes_modes".into(),
-                        strings: vec!["LEAF".into()],
+                        strings: vec!["LEAF".into(), "LEAF".into()],
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "nodes_truenodeids".into(),
-                        ints: vec![0],
+                        ints: vec![0, 0],
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "nodes_falsenodeids".into(),
-                        ints: vec![0],
+                        ints: vec![0, 0],
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "class_ids".into(),
-                        ints: vec![0],
+                        ints: vec![0, 0],
                         ..Default::default()
                     },
                     AttributeProto {
                         name: "class_weights".into(),
-                        floats: vec![0.0],
+                        floats: vec![0.0, 0.0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_nodeids".into(),
+                        ints: vec![0, 1],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_treeids".into(),
+                        ints: vec![0, 1], // Different trees
                         ..Default::default()
                     },
                 ],
@@ -319,8 +352,13 @@ fn test_reject_unsupported_node_mode() {
                 output: vec!["Y".into()],
                 attribute: vec![
                     AttributeProto {
-                        name: "n_trees".into(),
-                        ints: vec![1],
+                        name: "nodes_treeids".into(),
+                        ints: vec![0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "nodes_nodeids".into(),
+                        ints: vec![0],
                         ..Default::default()
                     },
                     AttributeProto {
@@ -356,6 +394,16 @@ fn test_reject_unsupported_node_mode() {
                     AttributeProto {
                         name: "class_weights".into(),
                         floats: vec![0.0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_nodeids".into(),
+                        ints: vec![0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_treeids".into(),
+                        ints: vec![0],
                         ..Default::default()
                     },
                 ],
@@ -414,8 +462,13 @@ fn test_reject_out_of_bounds_child_index() {
                 output: vec!["Y".into()],
                 attribute: vec![
                     AttributeProto {
-                        name: "n_trees".into(),
-                        ints: vec![1],
+                        name: "nodes_treeids".into(),
+                        ints: vec![0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "nodes_nodeids".into(),
+                        ints: vec![0],
                         ..Default::default()
                     },
                     AttributeProto {
@@ -435,7 +488,7 @@ fn test_reject_out_of_bounds_child_index() {
                     },
                     AttributeProto {
                         name: "nodes_truenodeids".into(),
-                        ints: vec![99], // Out of bounds
+                        ints: vec![99], // Node ID 99 doesn't exist
                         ..Default::default()
                     },
                     AttributeProto {
@@ -453,6 +506,16 @@ fn test_reject_out_of_bounds_child_index() {
                         floats: vec![0.0],
                         ..Default::default()
                     },
+                    AttributeProto {
+                        name: "class_nodeids".into(),
+                        ints: vec![0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_treeids".into(),
+                        ints: vec![0],
+                        ..Default::default()
+                    },
                 ],
             }],
         }),
@@ -461,7 +524,7 @@ fn test_reject_out_of_bounds_child_index() {
 
     let onnx_bytes = model.encode_to_vec();
     let err = onnx::import_onnx(&onnx_bytes).unwrap_err();
-    assert!(err.to_string().contains("out of bounds"));
+    assert!(err.to_string().contains("not found in nodes_nodeids"));
 }
 
 #[test]
@@ -510,8 +573,13 @@ fn test_reject_cycle_in_tree() {
                 output: vec!["Y".into()],
                 attribute: vec![
                     AttributeProto {
-                        name: "n_trees".into(),
-                        ints: vec![1],
+                        name: "nodes_treeids".into(),
+                        ints: vec![0, 0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "nodes_nodeids".into(),
+                        ints: vec![0, 1],
                         ..Default::default()
                     },
                     AttributeProto {
@@ -547,6 +615,16 @@ fn test_reject_cycle_in_tree() {
                     AttributeProto {
                         name: "class_weights".into(),
                         floats: vec![0.0, 0.0],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_nodeids".into(),
+                        ints: vec![0, 1],
+                        ..Default::default()
+                    },
+                    AttributeProto {
+                        name: "class_treeids".into(),
+                        ints: vec![0, 0],
                         ..Default::default()
                     },
                 ],
