@@ -225,10 +225,12 @@ mod tests {
             node: vec![
                 NodeProto {
                     op_type: "MatMul".into(),
+                    attribute: vec![],
                     ..Default::default()
                 },
                 NodeProto {
                     op_type: "Softmax".into(),
+                    attribute: vec![],
                     ..Default::default()
                 },
             ],
