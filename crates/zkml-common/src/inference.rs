@@ -5,6 +5,7 @@
 //! guest (for proof generation). Keeping inference in `zkml-common` avoids
 //! duplicating the proven path between host and guest.
 
+use crate::activation::relu_vec;
 use crate::error::ZkmlError;
 use crate::fixed_point::FixedPoint;
 use crate::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
@@ -130,15 +131,10 @@ fn try_infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> Result<FixedPoint
     for (idx, layer) in mlp.layers.iter().enumerate() {
         let mut out = dense_forward(layer, &activations)?;
         if idx != last {
-            // Quantized ReLU is a signed comparison on the raw Q16.16 integer:
-            // if x.value < 0 { zero } else { x }. This mirrors the circuit
-            // comparison + conditional-select gadget described in
-            // docs/roadmap.md → Phase 2 Technical Notes.
-            for x in &mut out {
-                if x.value < 0 {
-                    *x = FixedPoint::from_raw(0, x.scale);
-                }
-            }
+            // Quantized ReLU after every hidden layer. The single shared
+            // implementation lives in `crate::activation` so the native
+            // prover and the guest apply the exact same activation.
+            out = relu_vec(&out);
         }
         activations = out;
     }
