@@ -179,7 +179,7 @@ fn main() {
             node: vec![linear_classifier_node(
                 "linear",
                 vec![0.5, -0.3, 0.8], // 3 coefficients
-                vec![0.1], // 1 intercept (binary)
+                vec![0.1],            // 1 intercept (binary)
             )],
         }),
         ..Default::default()

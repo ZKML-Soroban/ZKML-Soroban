@@ -130,9 +130,9 @@ fn linear_classifier_round_trip_with_20_samples() {
         .map(|i| {
             let base = i as f64 / 20.0;
             vec![
-                FixedPoint::quantize(base),           // feature 0
-                FixedPoint::quantize(1.0 - base),      // feature 1
-                FixedPoint::quantize(base * 0.5),      // feature 2
+                FixedPoint::quantize(base),       // feature 0
+                FixedPoint::quantize(1.0 - base), // feature 1
+                FixedPoint::quantize(base * 0.5), // feature 2
             ]
         })
         .collect();

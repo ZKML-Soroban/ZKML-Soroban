@@ -2,47 +2,39 @@
 
 use super::error::OnnxImportError;
 use super::proto::NodeProto;
-use zkml_common::models::LogisticRegression;
 use zkml_common::fixed_point::FixedPoint;
+use zkml_common::models::LogisticRegression;
 
 /// Extract a binary logistic regression model from a LinearClassifier node.
 ///
 /// # Arguments
 ///
 /// * `node` - The LinearClassifier node to extract from
-/// * `input_dim` - The expected input dimension from the model's input tensor shape
 ///
 /// # Errors
 ///
 /// - Returns an error if the model is multi-class (more than 2 classes)
 /// - Returns an error if required attributes (coefficients, intercepts) are missing
-/// - Returns an error if weight dimensions don't match input dimension
 /// - Returns an error if post_transform is not NONE or LOGISTIC
-pub fn extract_linear_classifier(
-    node: &NodeProto,
-    input_dim: usize,
-) -> Result<LogisticRegression, OnnxImportError> {
+pub fn extract_linear_classifier(node: &NodeProto) -> Result<LogisticRegression, OnnxImportError> {
     // Extract coefficients (weights)
-    let coefficients = get_floats_attribute(node, "coefficients")
-        .ok_or_else(|| OnnxImportError::MalformedModel(
-            "LinearClassifier missing 'coefficients' attribute".into()
-        ))?;
+    let coefficients = get_floats_attribute(node, "coefficients").ok_or_else(|| {
+        OnnxImportError::MalformedModel("LinearClassifier missing 'coefficients' attribute".into())
+    })?;
 
     // Extract intercepts (bias)
-    let intercepts = get_floats_attribute(node, "intercepts")
-        .ok_or_else(|| OnnxImportError::MalformedModel(
-            "LinearClassifier missing 'intercepts' attribute".into()
-        ))?;
+    let intercepts = get_floats_attribute(node, "intercepts").ok_or_else(|| {
+        OnnxImportError::MalformedModel("LinearClassifier missing 'intercepts' attribute".into())
+    })?;
 
     // Check for multi-class (more than 1 coefficient vector)
     // For binary classification, skl2onnx stores coefficients as [num_features]
     // For multi-class, it stores as [num_classes * num_features]
-    let num_features = coefficients.len();
-    
+
     // Check if this is multi-class by looking at classlabels attributes
     let classlabels_ints = get_ints_attribute(node, "classlabels_ints");
     let classlabels_strings = get_strings_attribute(node, "classlabels_strings");
-    
+
     let num_classes = if let Some(labels) = classlabels_ints {
         labels.len()
     } else if let Some(labels) = classlabels_strings {
@@ -57,14 +49,6 @@ pub fn extract_linear_classifier(
         return Err(OnnxImportError::MalformedModel(format!(
             "Multi-class LinearClassifier ({} classes) is not supported yet. Binary classification only. See issue #6 for multi-class support.",
             num_classes
-        )));
-    }
-
-    // Validate weight dimension matches input dimension
-    if num_features != input_dim {
-        return Err(OnnxImportError::MalformedModel(format!(
-            "LinearClassifier weight dimension ({}) does not match input dimension ({})",
-            num_features, input_dim
         )));
     }
 
@@ -93,7 +77,10 @@ pub fn extract_linear_classifier(
     let bias_f64 = intercepts[0] as f64;
 
     // Quantize using existing helpers
-    let quantized_weights = weights_f64.iter().map(|&w| FixedPoint::quantize(w)).collect();
+    let quantized_weights = weights_f64
+        .iter()
+        .map(|&w| FixedPoint::quantize(w))
+        .collect();
     let quantized_bias = FixedPoint::quantize(bias_f64);
 
     Ok(LogisticRegression {
@@ -103,15 +90,13 @@ pub fn extract_linear_classifier(
 }
 
 /// Helper to get a list of floats from an attribute.
-fn get_floats_attribute(node: &NodeProto, name: &str) -> Option<Vec<f32>> {
-    node.attribute.iter()
+pub(crate) fn get_floats_attribute(node: &NodeProto, name: &str) -> Option<Vec<f32>> {
+    node.attribute
+        .iter()
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.floats.is_empty() {
                 Some(attr.floats.clone())
-            } else if attr.f != 0.0 || node.attribute.iter().any(|a| a.name == name) {
-                // Single value stored in 'f' field
-                Some(vec![attr.f])
             } else {
                 None
             }
@@ -120,14 +105,12 @@ fn get_floats_attribute(node: &NodeProto, name: &str) -> Option<Vec<f32>> {
 
 /// Helper to get a list of ints from an attribute.
 fn get_ints_attribute(node: &NodeProto, name: &str) -> Option<Vec<i64>> {
-    node.attribute.iter()
+    node.attribute
+        .iter()
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.ints.is_empty() {
                 Some(attr.ints.clone())
-            } else if attr.i != 0 || node.attribute.iter().any(|a| a.name == name) {
-                // Single value stored in 'i' field
-                Some(vec![attr.i])
             } else {
                 None
             }
@@ -136,13 +119,17 @@ fn get_ints_attribute(node: &NodeProto, name: &str) -> Option<Vec<i64>> {
 
 /// Helper to get a list of strings from an attribute.
 fn get_strings_attribute(node: &NodeProto, name: &str) -> Option<Vec<String>> {
-    node.attribute.iter()
+    node.attribute
+        .iter()
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.strings.is_empty() {
-                Some(attr.strings.iter()
-                    .filter_map(|bytes| String::from_utf8(bytes.clone()).ok())
-                    .collect())
+                Some(
+                    attr.strings
+                        .iter()
+                        .filter_map(|bytes| String::from_utf8(bytes.clone()).ok())
+                        .collect(),
+                )
             } else if !attr.s.is_empty() {
                 // Single value stored in 's' field
                 String::from_utf8(attr.s.clone()).ok().map(|s| vec![s])
@@ -154,11 +141,13 @@ fn get_strings_attribute(node: &NodeProto, name: &str) -> Option<Vec<String>> {
 
 /// Helper to get a single string from an attribute.
 fn get_string_attribute(node: &NodeProto, name: &str) -> Option<String> {
-    node.attribute.iter()
+    node.attribute
+        .iter()
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.strings.is_empty() {
-                attr.strings.first()
+                attr.strings
+                    .first()
                     .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
             } else if !attr.s.is_empty() {
                 String::from_utf8(attr.s.clone()).ok()
@@ -214,23 +203,10 @@ mod tests {
     #[test]
     fn extract_binary_classifier_succeeds() {
         let node = make_node_with_coefficients(vec![0.5, -0.3, 0.8], vec![0.1]);
-        let result = extract_linear_classifier(&node, 3);
+        let result = extract_linear_classifier(&node);
         assert!(result.is_ok());
         let lr = result.unwrap();
         assert_eq!(lr.weights.len(), 3);
-    }
-
-    #[test]
-    fn dimension_mismatch_fails() {
-        let node = make_node_with_coefficients(vec![0.5, -0.3], vec![0.1]);
-        let result = extract_linear_classifier(&node, 3);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            OnnxImportError::MalformedModel(msg) => {
-                assert!(msg.contains("weight dimension"));
-            }
-            _ => panic!("Expected MalformedModel error"),
-        }
     }
 
     #[test]
@@ -249,7 +225,7 @@ mod tests {
             sparse_tensor: None,
             r#type: 0,
         });
-        let result = extract_linear_classifier(&node, 3);
+        let result = extract_linear_classifier(&node);
         assert!(result.is_err());
         match result.unwrap_err() {
             OnnxImportError::MalformedModel(msg) => {

@@ -133,21 +133,21 @@ mod tests_quantization_accuracy {
         const MAX_ALLOWED_ERROR: f64 = 1.0 / 65536.0; // 2⁻¹⁶
 
         let test_values = vec![
-            0.0, 1.0, -1.0, 0.5, -0.5,
-            0.1, -0.1, 0.25, -0.25,
-            100.0, -100.0, 0.01, -0.01,
-            3.14159, -3.14159,
+            0.0, 1.0, -1.0, 0.5, -0.5, 0.1, -0.1, 0.25, -0.25, 100.0, -100.0, 0.01, -0.01, 3.14159,
+            -3.14159,
         ];
 
         for &value in &test_values {
             let quantized = FixedPoint::quantize(value);
             let dequantized = quantized.dequantize();
             let error = (value - dequantized).abs();
-            
+
             assert!(
                 error < MAX_ALLOWED_ERROR,
                 "Quantization error {} for value {} exceeds 2⁻¹⁶ ({})",
-                error, value, MAX_ALLOWED_ERROR
+                error,
+                value,
+                MAX_ALLOWED_ERROR
             );
         }
     }
@@ -162,11 +162,12 @@ mod tests_quantization_accuracy {
         for (orig, q) in weights.iter().zip(quantized.iter()) {
             let dequantized = q.dequantize();
             let error = (orig - dequantized).abs();
-            
+
             assert!(
                 error < MAX_ALLOWED_ERROR,
                 "Weight quantization error {} for original {} exceeds 2⁻¹⁶",
-                error, orig
+                error,
+                orig
             );
         }
     }
@@ -179,7 +180,7 @@ mod tests_quantization_accuracy {
         let quantized = quantize_bias(bias);
         let dequantized = quantized.dequantize();
         let error = (bias - dequantized).abs();
-        
+
         assert!(
             error < MAX_ALLOWED_ERROR,
             "Bias quantization error {} exceeds 2⁻¹⁶",
