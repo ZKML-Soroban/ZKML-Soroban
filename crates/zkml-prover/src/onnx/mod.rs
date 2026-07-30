@@ -27,12 +27,11 @@ mod tree_extractor;
 mod validate;
 
 pub use error::OnnxImportError;
+pub use extract::extract_linear_classifier;
 pub use proto::{
     AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorDataType,
     TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
 };
-pub use extract::extract_linear_classifier;
-pub use proto::{AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
 pub use validate::{MIN_OPSET_CORE, MIN_OPSET_ML};
 
 use prost::Message;
@@ -144,12 +143,6 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
         return Err(OnnxImportError::MalformedModel(
             "only single-operator models are supported".into(),
         ));
-    // For now, we only support single-operator graphs
-    if graph.node.len() != 1 {
-        return Err(OnnxImportError::MalformedModel(format!(
-            "Expected exactly 1 node, found {}",
-            graph.node.len()
-        )));
     }
 
     let node = &graph.node[0];
@@ -160,31 +153,16 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
             let tree = tree_extractor::extract_tree(node, num_features)?;
             Ok(Model::DecisionTree(tree))
         }
-        "LinearClassifier" => Err(OnnxImportError::ExtractionNotImplemented {
-            architecture_hint: architecture,
-        }),
+        "LinearClassifier" => {
+            let lr = extract_linear_classifier(node)?;
+            Ok(Model::LogisticRegression(lr))
+        }
         "MatMul" | "Add" | "Relu" => Err(OnnxImportError::ExtractionNotImplemented {
             architecture_hint: architecture,
         }),
         _ => Err(OnnxImportError::UnsupportedOperator {
             op_type: node.op_type.clone(),
         }),
-        "LinearClassifier" => {
-            let lr = extract_linear_classifier(node)?;
-            Ok(Model::LogisticRegression(lr))
-        }
-        "TreeEnsembleClassifier" => {
-            let hint = detect_architecture(&model);
-            Err(OnnxImportError::ExtractionNotImplemented {
-                architecture_hint: hint,
-            })
-        }
-        _ => {
-            let hint = detect_architecture(&model);
-            Err(OnnxImportError::ExtractionNotImplemented {
-                architecture_hint: hint,
-            })
-        }
     }
 }
 
