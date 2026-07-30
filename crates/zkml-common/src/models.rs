@@ -74,6 +74,13 @@ pub struct DenseLayer {
 }
 
 /// A small multi-layer perceptron with quantized ReLU activations.
+///
+/// # Activation convention
+///
+/// Inference applies quantized ReLU (`max(0, x)`) after every dense layer
+/// except the last. The final layer emits raw linear scores; argmax or
+/// thresholding is the caller's concern (same rationale as omitting the
+/// sigmoid for [`LogisticRegression`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TinyMLP {
     /// Ordered list of dense layers.

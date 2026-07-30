@@ -5,7 +5,6 @@
 //! guest (for proof generation). Keeping inference in `zkml-common` avoids
 //! duplicating the proven path between host and guest.
 
-use crate::activation::relu_vec;
 use crate::error::ZkmlError;
 use crate::fixed_point::FixedPoint;
 use crate::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
@@ -108,11 +107,28 @@ fn dense_forward(
 }
 
 /// Run a forward pass through a tiny MLP using quantized ReLU between layers.
+///
+/// # Activation convention
+///
+/// Quantized ReLU (`max(0, x)`) is applied after **every layer except the
+/// last**. The final layer returns raw linear scores (no sigmoid/softmax),
+/// matching logistic regression's "omit the sigmoid" convention.
+/// [`run_inference`] exposes the first output neuron of that final layer;
+/// multi-class callers can use [`argmax`] on a full logits vector when the
+/// layer width is greater than one.
+///
+/// # Panics
+///
+/// Panics if a checked fixed-point multiply or add overflows. Prefer
+/// [`try_run_inference`] when overflow must be handled as an error.
 fn infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> FixedPoint {
     try_infer_tiny_mlp(mlp, inputs).expect("TinyMLP inference overflow")
 }
 
 /// Fallible TinyMLP forward used by [`try_run_inference`].
+///
+/// See [`infer_tiny_mlp`] for the ReLU-after-hidden / raw-final-layer
+/// convention.
 fn try_infer_tiny_mlp(
     mlp: &TinyMLP,
     inputs: &[FixedPoint],
@@ -122,7 +138,15 @@ fn try_infer_tiny_mlp(
     for (idx, layer) in mlp.layers.iter().enumerate() {
         let mut out = dense_forward(layer, &activations)?;
         if idx != last {
-            out = relu_vec(&out);
+            // Quantized ReLU is a signed comparison on the raw Q16.16 integer:
+            // if x.value < 0 { zero } else { x }. This mirrors the circuit
+            // comparison + conditional-select gadget described in
+            // docs/roadmap.md → Phase 2 Technical Notes.
+            for x in &mut out {
+                if x.value < 0 {
+                    *x = FixedPoint::from_raw(0, x.scale);
+                }
+            }
         }
         activations = out;
     }
