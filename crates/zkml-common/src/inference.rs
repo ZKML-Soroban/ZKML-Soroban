@@ -213,12 +213,12 @@ mod tests_batch {
 }
 
 /// Validated inference that returns an error instead of panicking on a
-/// feature-count mismatch or empty input.
+/// feature-count mismatch, empty input, invalid TinyMLP topology, or
+/// fixed-point overflow.
 pub fn try_run_inference(
     model: &Model,
     inputs: &[FixedPoint],
-) -> Result<FixedPoint, crate::error::ZkmlError> {
-    use crate::error::ZkmlError;
+) -> Result<FixedPoint, ZkmlError> {
     if inputs.is_empty() {
         return Err(ZkmlError::FeatureCountMismatch {
             expected: model.num_features(),
@@ -232,7 +232,13 @@ pub fn try_run_inference(
             got: inputs.len(),
         });
     }
-    Ok(run_inference(model, inputs))
+    match model {
+        Model::TinyMLP(mlp) => {
+            mlp.validate()?;
+            try_infer_tiny_mlp(mlp, inputs)
+        }
+        _ => Ok(run_inference(model, inputs)),
+    }
 }
 
 #[cfg(test)]

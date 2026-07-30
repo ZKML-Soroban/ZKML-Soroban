@@ -80,6 +80,50 @@ pub struct TinyMLP {
     pub layers: Vec<DenseLayer>,
 }
 
+impl TinyMLP {
+    /// Validate layer weight/bias lengths and that consecutive layers chain.
+    ///
+    /// Checks, before any arithmetic:
+    /// - at least one layer is present;
+    /// - each layer has `weights.len() == input_size * output_size` and
+    ///   `biases.len() == output_size`;
+    /// - `layer[n].output_size == layer[n + 1].input_size` for every pair.
+    pub fn validate(&self) -> Result<(), crate::error::ZkmlError> {
+        if self.layers.is_empty() {
+            return Err(crate::error::ZkmlError::InvalidModel(
+                "TinyMLP must have at least one layer".into(),
+            ));
+        }
+        for (i, layer) in self.layers.iter().enumerate() {
+            let expected_weights = layer.input_size.saturating_mul(layer.output_size);
+            if layer.weights.len() != expected_weights {
+                return Err(crate::error::ZkmlError::InvalidModel(format!(
+                    "layer {i}: expected {expected_weights} weights, got {}",
+                    layer.weights.len()
+                )));
+            }
+            if layer.biases.len() != layer.output_size {
+                return Err(crate::error::ZkmlError::InvalidModel(format!(
+                    "layer {i}: expected {} biases, got {}",
+                    layer.output_size,
+                    layer.biases.len()
+                )));
+            }
+        }
+        for i in 0..self.layers.len().saturating_sub(1) {
+            let out = self.layers[i].output_size;
+            let next_in = self.layers[i + 1].input_size;
+            if out != next_in {
+                return Err(crate::error::ZkmlError::InvalidModel(format!(
+                    "layer {i} output_size {out} does not match layer {} input_size {next_in}",
+                    i + 1
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Unified enum
 // ---------------------------------------------------------------------------
