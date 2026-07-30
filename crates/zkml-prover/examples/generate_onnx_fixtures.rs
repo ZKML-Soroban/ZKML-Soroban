@@ -41,7 +41,7 @@ fn linear_classifier_node(name: &str, coefficients: Vec<f32>, intercepts: Vec<f3
         attribute: vec![
             AttributeProto {
                 name: "coefficients".into(),
-                floats: coefficients,
+                floats: coefficients.iter().map(|&x| x as f64).collect(),
                 f: 0.0,
                 i: 0,
                 ints: vec![],
@@ -49,12 +49,15 @@ fn linear_classifier_node(name: &str, coefficients: Vec<f32>, intercepts: Vec<f3
                 strings: vec![],
                 t: None,
                 g: None,
+                floats_f32: vec![],
+                ints_extra: vec![],
+                strings_bytes: vec![],
                 sparse_tensor: None,
                 r#type: 0,
             },
             AttributeProto {
                 name: "intercepts".into(),
-                floats: intercepts,
+                floats: intercepts.iter().map(|&x| x as f64).collect(),
                 f: 0.0,
                 i: 0,
                 ints: vec![],
@@ -62,6 +65,9 @@ fn linear_classifier_node(name: &str, coefficients: Vec<f32>, intercepts: Vec<f3
                 strings: vec![],
                 t: None,
                 g: None,
+                floats_f32: vec![],
+                ints_extra: vec![],
+                strings_bytes: vec![],
                 sparse_tensor: None,
                 r#type: 0,
             },
@@ -75,6 +81,9 @@ fn linear_classifier_node(name: &str, coefficients: Vec<f32>, intercepts: Vec<f3
                 strings: vec![],
                 t: None,
                 g: None,
+                floats_f32: vec![],
+                ints_extra: vec![],
+                strings_bytes: vec![],
                 sparse_tensor: None,
                 r#type: 0,
             },
@@ -186,7 +195,6 @@ fn main() {
             name: "logistic".into(),
             input: vec![],
             output: vec![],
-            node: vec![node("linear", "LinearClassifier", "ai.onnx.ml")],
             node: vec![linear_classifier_node(
                 "linear",
                 vec![0.5, -0.3, 0.8], // 3 coefficients

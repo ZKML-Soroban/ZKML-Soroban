@@ -167,49 +167,45 @@ pub struct NodeProto {
 
 /// Operator attribute (`AttributeProto`).
 ///
-/// Used to extract TreeEnsembleClassifier parameters like node thresholds,
-/// feature indices, and class weights.
-/// Attribute definition (`AttributeProto`).
-///
 /// Used to store operator parameters such as weights, biases, and configuration.
 #[derive(Clone, PartialEq, Message)]
 pub struct AttributeProto {
     /// Attribute name.
     #[prost(string, tag = "1")]
     pub name: String,
-    /// Float values (for thresholds, leaf values, class weights).
-    #[prost(double, repeated, tag = "5")]
-    pub floats: Vec<f64>,
-    /// Integer values (for feature indices, node IDs, class IDs).
-    #[prost(int64, repeated, tag = "6")]
-    pub ints: Vec<i64>,
-    /// String values (for node modes like "BRANCH_LEQ").
-    #[prost(string, repeated, tag = "8")]
-    pub strings: Vec<String>,
     /// Single float value.
     #[prost(float, tag = "2")]
     pub f: f32,
-    /// List of float values.
-    #[prost(float, repeated, tag = "11")]
-    pub floats: Vec<f32>,
     /// Single int64 value.
     #[prost(int64, tag = "3")]
     pub i: i64,
-    /// List of int64 values.
-    #[prost(int64, repeated, tag = "12")]
-    pub ints: Vec<i64>,
     /// Single string value (as bytes).
     #[prost(bytes, tag = "4")]
     pub s: Vec<u8>,
-    /// List of string values (as bytes).
-    #[prost(bytes, repeated, tag = "13")]
-    pub strings: Vec<Vec<u8>>,
     /// Tensor value (for weights/biases stored as tensors).
     #[prost(message, optional, tag = "5")]
     pub t: Option<TensorProto>,
     /// Graph value (for nested graphs).
     #[prost(message, optional, tag = "6")]
     pub g: Option<GraphProto>,
+    /// Float values (for thresholds, leaf values, class weights).
+    #[prost(double, repeated, tag = "7")]
+    pub floats: Vec<f64>,
+    /// Integer values (for feature indices, node IDs, class IDs).
+    #[prost(int64, repeated, tag = "8")]
+    pub ints: Vec<i64>,
+    /// String values (for node modes like "BRANCH_LEQ").
+    #[prost(string, repeated, tag = "9")]
+    pub strings: Vec<String>,
+    /// List of float values (f32).
+    #[prost(float, repeated, tag = "11")]
+    pub floats_f32: Vec<f32>,
+    /// List of int64 values.
+    #[prost(int64, repeated, tag = "12")]
+    pub ints_extra: Vec<i64>,
+    /// List of string values (as bytes).
+    #[prost(bytes, repeated, tag = "13")]
+    pub strings_bytes: Vec<Vec<u8>>,
     /// Sparse tensor value.
     #[prost(message, optional, tag = "14")]
     pub sparse_tensor: Option<SparseTensorProto>,

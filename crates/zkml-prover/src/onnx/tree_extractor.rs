@@ -238,7 +238,7 @@ mod tests {
                 },
                 AttributeProto {
                     name: "nodes_values".into(),
-                    floats: vec![0.5, 0.0, 1.0], // 3 nodes
+                    floats: vec![0.5, 0.0, 1.0], // 3 nodes (f64)
                     ..Default::default()
                 },
                 AttributeProto {
