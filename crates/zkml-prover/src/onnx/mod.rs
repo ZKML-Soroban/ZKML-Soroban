@@ -189,6 +189,7 @@ mod tests {
                         },
                         input: vec!["X".into()],
                         output: vec![format!("Y{i}")],
+                        attribute: vec![],
                     })
                     .collect(),
             }),
@@ -229,9 +230,10 @@ mod tests {
     fn valid_mlp_ops_reaches_extraction_not_implemented() {
         let bytes = encode(&model_with(17, 1, &["MatMul", "Add", "Relu"]));
         let err = import_onnx(&bytes).unwrap_err();
+        // MLP has multiple nodes, which is not supported yet (single-operator graphs only)
         assert!(matches!(
             err,
-            OnnxImportError::ExtractionNotImplemented { .. }
+            OnnxImportError::MalformedModel(_) // Expected exactly 1 node, found 3
         ));
     }
 

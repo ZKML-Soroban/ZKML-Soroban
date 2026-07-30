@@ -171,7 +171,7 @@ fn get_string_attribute(node: &NodeProto, name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::proto::AttributeProto;
+    use crate::onnx::proto::AttributeProto;
 
     fn make_node_with_coefficients(coeffs: Vec<f32>, intercepts: Vec<f32>) -> NodeProto {
         NodeProto {
