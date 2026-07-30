@@ -20,7 +20,10 @@ use zkml_common::models::{DecisionTree, TreeNode};
 /// - Returns an error if the operator is not a single tree (ensembles are rejected)
 /// - Returns an error if node modes are unsupported (only BRANCH_LEQ is supported)
 /// - Returns an error if structural validation fails (index bounds, cycles, leaf reachability)
-pub fn extract_tree(node: &NodeProto, num_features: usize) -> Result<DecisionTree, OnnxImportError> {
+pub fn extract_tree(
+    node: &NodeProto,
+    num_features: usize,
+) -> Result<DecisionTree, OnnxImportError> {
     // Reject ensembles (only single trees supported for now)
     let num_trees = get_int_attribute(node, "n_trees").unwrap_or(1);
     if num_trees > 1 {
@@ -307,7 +310,11 @@ mod tests {
     fn test_detect_out_of_bounds_child() {
         let mut node = make_tree_node();
         // Set left child to invalid index
-        if let Some(attr) = node.attribute.iter_mut().find(|a| a.name == "nodes_truenodeids") {
+        if let Some(attr) = node
+            .attribute
+            .iter_mut()
+            .find(|a| a.name == "nodes_truenodeids")
+        {
             attr.ints[0] = 99;
         }
         let err = extract_tree(&node, 1).unwrap_err();

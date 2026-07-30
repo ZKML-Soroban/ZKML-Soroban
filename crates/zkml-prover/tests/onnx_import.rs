@@ -63,7 +63,10 @@ fn fixture_linear_validates_then_defers_extraction() {
 
     let err = import_onnx(&bytes).unwrap_err();
     // LinearClassifier extraction is not implemented yet
-    assert!(matches!(err, OnnxImportError::ExtractionNotImplemented { .. }));
+    assert!(matches!(
+        err,
+        OnnxImportError::ExtractionNotImplemented { .. }
+    ));
 }
 
 #[test]

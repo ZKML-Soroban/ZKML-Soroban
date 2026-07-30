@@ -77,7 +77,7 @@ fn extract_num_features(model: &ModelProto) -> Result<usize, OnnxImportError> {
     // For 1D tensors [num_features], use the only dimension
     // For 2D tensors [batch_size, num_features], use the last dimension
     let last_dim = &shape.dim[shape.dim.len() - 1];
-    
+
     if last_dim.dim_value > 0 {
         Ok(last_dim.dim_value as usize)
     } else if !last_dim.dim_param.is_empty() {
@@ -134,7 +134,7 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
 
     // Determine the architecture and extract accordingly
     let architecture = detect_architecture(&model);
-    
+
     // For now, only support single-operator models
     if graph.node.len() != 1 {
         return Err(OnnxImportError::MalformedModel(
@@ -150,16 +150,12 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
             let tree = tree_extractor::extract_tree(node, num_features)?;
             Ok(Model::DecisionTree(tree))
         }
-        "LinearClassifier" => {
-            Err(OnnxImportError::ExtractionNotImplemented {
-                architecture_hint: architecture,
-            })
-        }
-        "MatMul" | "Add" | "Relu" => {
-            Err(OnnxImportError::ExtractionNotImplemented {
-                architecture_hint: architecture,
-            })
-        }
+        "LinearClassifier" => Err(OnnxImportError::ExtractionNotImplemented {
+            architecture_hint: architecture,
+        }),
+        "MatMul" | "Add" | "Relu" => Err(OnnxImportError::ExtractionNotImplemented {
+            architecture_hint: architecture,
+        }),
         _ => Err(OnnxImportError::UnsupportedOperator {
             op_type: node.op_type.clone(),
         }),
@@ -271,10 +267,7 @@ mod tests {
         let bytes = encode(&model_with(17, 1, &["MatMul", "Add", "Relu"]));
         let err = import_onnx(&bytes).unwrap_err();
         // Now expects MalformedModel because model lacks input tensors and has multiple operators
-        assert!(matches!(
-            err,
-            OnnxImportError::MalformedModel(_)
-        ));
+        assert!(matches!(err, OnnxImportError::MalformedModel(_)));
     }
 
     #[test]

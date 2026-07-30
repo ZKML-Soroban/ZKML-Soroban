@@ -156,25 +156,34 @@ fn test_tree_inference_matches_expected() {
     // Test inference with feature value <= 0.5 (should go left to leaf 0.0)
     let inputs = vec![FixedPoint::quantize(0.3)];
     let output = run_inference(&model, &inputs);
-    assert!((output.dequantize() - 0.0).abs() < 1e-4, "Feature 0.3 should output 0.0");
+    assert!(
+        (output.dequantize() - 0.0).abs() < 1e-4,
+        "Feature 0.3 should output 0.0"
+    );
 
     // Test inference with feature value > 0.5 (should go right to leaf 1.0)
     let inputs = vec![FixedPoint::quantize(0.7)];
     let output = run_inference(&model, &inputs);
-    assert!((output.dequantize() - 1.0).abs() < 1e-4, "Feature 0.7 should output 1.0");
+    assert!(
+        (output.dequantize() - 1.0).abs() < 1e-4,
+        "Feature 0.7 should output 1.0"
+    );
 
     // Test boundary case: feature value == 0.5 (should go left per BRANCH_LEQ)
     let inputs = vec![FixedPoint::quantize(0.5)];
     let output = run_inference(&model, &inputs);
-    assert!((output.dequantize() - 0.0).abs() < 1e-4, "Feature 0.5 should output 0.0 (LEQ)");
+    assert!(
+        (output.dequantize() - 0.0).abs() < 1e-4,
+        "Feature 0.5 should output 0.0 (LEQ)"
+    );
 }
 
 #[test]
 fn test_reject_multi_tree_ensemble() {
     use prost::Message;
     use zkml_prover::onnx::{
-        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto,
-        TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
+        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorShapeProto,
+        TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
     };
 
     let model = ModelProto {
@@ -269,8 +278,8 @@ fn test_reject_multi_tree_ensemble() {
 fn test_reject_unsupported_node_mode() {
     use prost::Message;
     use zkml_prover::onnx::{
-        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto,
-        TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
+        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorShapeProto,
+        TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
     };
 
     let model = ModelProto {
@@ -364,8 +373,8 @@ fn test_reject_unsupported_node_mode() {
 fn test_reject_out_of_bounds_child_index() {
     use prost::Message;
     use zkml_prover::onnx::{
-        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto,
-        TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
+        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorShapeProto,
+        TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
     };
 
     let model = ModelProto {
@@ -459,8 +468,8 @@ fn test_reject_out_of_bounds_child_index() {
 fn test_reject_cycle_in_tree() {
     use prost::Message;
     use zkml_prover::onnx::{
-        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto,
-        TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
+        AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorShapeProto,
+        TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
     };
 
     // Create a cycle: node 0 -> node 1 -> node 0
