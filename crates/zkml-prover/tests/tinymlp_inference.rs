@@ -96,30 +96,62 @@ fn shape_mismatch_layer_chain_returns_error() {
     assert!(matches!(err, ZkmlError::InvalidModel(_)));
 }
 
-/// Maximum allowed |fixed − float| for the golden 2→2→1 network.
+/// Maximum allowed absolute deviation between the fixed-point output and the
+/// f64 reference for the golden network.
 ///
-/// Bound rationale: each Q16.16 multiply/quantize introduces at most
-/// ~0.5 ULP ≈ `0.5 / 2^16` absolute error; across two dense layers plus
-/// quantization of inputs/weights we pad to `2 / 2^16 ≈ 3.05e-5`, then
-/// round up to a comfortable documented ceiling of `1e-4`.
+/// Bound rationale: each Q16.16 quantize or multiply-shift introduces at most
+/// about 1 ULP (`1 / 2^16` ~= 1.5e-5) of absolute error; across two dense
+/// layers the accumulated error stays well under the documented ceiling.
 const GOLDEN_ABS_ERR_BOUND: f64 = 1e-4;
 
-fn float_mlp_2_2_1(inputs: &[f64; 2]) -> f64 {
-    // Same weights as `network_2_2_1`, evaluated in f64.
-    let h0 = 1.0 * inputs[0] + 0.0 * inputs[1] + 0.0;
-    let h1 = 0.0 * inputs[0] + 1.0 * inputs[1] + (-1.0);
+/// Golden network chosen so the fixed-point path actually rounds. The weights
+/// (0.3, -0.2, 0.1, 0.4, 0.6, 0.2) are not exact multiples of `2^-16`, and the
+/// negative weight drives a negative product whose arithmetic shift floors
+/// toward negative infinity. That is the case most likely to diverge between a
+/// naive float model and the proven fixed-point path, so it is the one worth
+/// pinning with a golden reference.
+fn golden_network() -> TinyMLP {
+    TinyMLP {
+        layers: vec![
+            DenseLayer {
+                weights: vec![fp(0.3), fp(-0.2), fp(0.1), fp(0.4)],
+                biases: vec![fp(0.1), fp(-0.5)],
+                input_size: 2,
+                output_size: 2,
+            },
+            DenseLayer {
+                weights: vec![fp(0.6), fp(0.2)],
+                biases: vec![fp(0.05)],
+                input_size: 2,
+                output_size: 1,
+            },
+        ],
+    }
+}
+
+fn float_golden(inputs: &[f64; 2]) -> f64 {
+    // Same weights as `golden_network`, evaluated in f64. ReLU on the hidden
+    // layer, raw score on the output.
+    let h0 = 0.3 * inputs[0] + (-0.2) * inputs[1] + 0.1;
+    let h1 = 0.1 * inputs[0] + 0.4 * inputs[1] + (-0.5);
     let a0 = h0.max(0.0);
     let a1 = h1.max(0.0);
-    0.5 * a0 + 1.0 * a1 + 0.25
+    0.6 * a0 + 0.2 * a1 + 0.05
 }
 
 #[test]
 fn golden_float_reference_within_documented_bound() {
-    let model = Model::TinyMLP(network_2_2_1());
-    let inputs_f = [2.0_f64, 0.5];
+    let model = Model::TinyMLP(golden_network());
+    let inputs_f = [0.5_f64, 0.5];
     let fixed_out = run_inference(&model, &[fp(inputs_f[0]), fp(inputs_f[1])]).dequantize();
-    let float_out = float_mlp_2_2_1(&inputs_f);
+    let float_out = float_golden(&inputs_f);
     let err = (fixed_out - float_out).abs();
+    // The network is chosen so quantization actually rounds: the deviation must
+    // be nonzero (otherwise the bound proves nothing) yet within the ceiling.
+    assert!(
+        err > 0.0,
+        "expected a nonzero rounding deviation, got fixed={fixed_out} float={float_out}"
+    );
     assert!(
         err <= GOLDEN_ABS_ERR_BOUND,
         "fixed={fixed_out} float={float_out} abs_err={err} exceeds bound {GOLDEN_ABS_ERR_BOUND}"
