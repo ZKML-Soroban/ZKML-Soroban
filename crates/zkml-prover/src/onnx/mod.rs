@@ -21,6 +21,7 @@
 //! silently ignoring nodes.
 
 mod error;
+mod extract;
 mod proto;
 mod tree_extractor;
 mod validate;
@@ -30,6 +31,8 @@ pub use proto::{
     AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorDataType,
     TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
 };
+pub use extract::extract_linear_classifier;
+pub use proto::{AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
 pub use validate::{MIN_OPSET_CORE, MIN_OPSET_ML};
 
 use prost::Message;
@@ -123,6 +126,7 @@ pub const SUPPORTED_OPERATORS: &[&str] = &[
 /// - [`OnnxImportError::UnsupportedOperator`] if a graph node uses an op
 ///   outside the allowlist.
 /// - [`OnnxImportError::ExtractionNotImplemented`] for operators not yet implemented.
+/// - [`OnnxImportError::MalformedModel`] if parameter extraction fails.
 pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
     let model = parse_model_proto(bytes)?;
     validate_model(&model)?;
@@ -140,6 +144,12 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
         return Err(OnnxImportError::MalformedModel(
             "only single-operator models are supported".into(),
         ));
+    // For now, we only support single-operator graphs
+    if graph.node.len() != 1 {
+        return Err(OnnxImportError::MalformedModel(format!(
+            "Expected exactly 1 node, found {}",
+            graph.node.len()
+        )));
     }
 
     let node = &graph.node[0];
@@ -163,6 +173,22 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
         _ => Err(OnnxImportError::UnsupportedOperator {
             op_type: node.op_type.clone(),
         }),
+        "LinearClassifier" => {
+            let lr = extract_linear_classifier(node)?;
+            Ok(Model::LogisticRegression(lr))
+        }
+        "TreeEnsembleClassifier" => {
+            let hint = detect_architecture(&model);
+            Err(OnnxImportError::ExtractionNotImplemented {
+                architecture_hint: hint,
+            })
+        }
+        _ => {
+            let hint = detect_architecture(&model);
+            Err(OnnxImportError::ExtractionNotImplemented {
+                architecture_hint: hint,
+            })
+        }
     }
 }
 
@@ -256,13 +282,15 @@ mod tests {
     }
 
     #[test]
-    fn valid_linear_reaches_extraction_not_implemented() {
+    fn linear_classifier_without_attributes_fails() {
         // LinearClassifier has only ever been ai.onnx.ml version 1.
+        // This test verifies that a LinearClassifier without coefficients/intercepts
+        // attributes fails with a MalformedModel error.
         let bytes = encode(&model_with(18, 1, &["LinearClassifier"]));
         let err = import_onnx(&bytes).unwrap_err();
         assert!(matches!(
             err,
-            OnnxImportError::ExtractionNotImplemented { .. }
+            OnnxImportError::MalformedModel(_) // Fails due to missing attributes
         ));
     }
 
@@ -274,6 +302,10 @@ mod tests {
         assert!(matches!(
             err,
             OnnxImportError::MalformedModel(_)
+        // MLP has multiple nodes, which is not supported yet (single-operator graphs only)
+        assert!(matches!(
+            err,
+            OnnxImportError::MalformedModel(_) // Expected exactly 1 node, found 3
         ));
     }
 
