@@ -94,12 +94,30 @@ struct LogisticRegressionJson {
     bias: FixedPointJson,
 }
 
+/// Dense layer representation for TinyMLP.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DenseLayerJson {
+    weights: Vec<FixedPointJson>,
+    biases: Vec<FixedPointJson>,
+    input_size: usize,
+    output_size: usize,
+}
+
+/// TinyMLP model representation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TinyMLPJson {
+    #[serde(rename = "type")]
+    model_type: String,
+    layers: Vec<DenseLayerJson>,
+}
+
 /// Model representation (enum over all supported types).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum ModelJson {
     DecisionTree(DecisionTreeJson),
     LogisticRegression(LogisticRegressionJson),
+    TinyMLP(TinyMLPJson),
 }
 
 impl TryFrom<ModelJson> for Model {
@@ -115,6 +133,24 @@ impl TryFrom<ModelJson> for Model {
                 Ok(Model::LogisticRegression(LogisticRegression {
                     weights: lr.weights.into_iter().map(|w| w.into()).collect(),
                     bias: lr.bias.into(),
+                }))
+            }
+            ModelJson::TinyMLP(mlp) => {
+                use zkml_common::models::DenseLayer;
+                let layers: Result<Vec<DenseLayer>, String> = mlp
+                    .layers
+                    .into_iter()
+                    .map(|l| {
+                        Ok(DenseLayer {
+                            weights: l.weights.into_iter().map(|w| w.into()).collect(),
+                            biases: l.biases.into_iter().map(|b| b.into()).collect(),
+                            input_size: l.input_size,
+                            output_size: l.output_size,
+                        })
+                    })
+                    .collect();
+                Ok(Model::TinyMLP(zkml_common::models::TinyMLP {
+                    layers: layers?,
                 }))
             }
         }
@@ -166,41 +202,43 @@ fn run_test_case(model: &Model, test_case: &TestCaseJson) {
         .collect();
 
     if let Some(expected_error) = &test_case.expected_error {
-        // This test case should error
-        // Use catch_unwind for tests that may panic (e.g., invalid models)
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            try_run_inference(model, &inputs)
-        }));
+        // This test case should error - route through try_run_inference for typed errors
+        // For InvalidModel errors, validate the model first
+        if expected_error.contains("InvalidModel") {
+            if let Model::DecisionTree(tree) = model {
+                let result = tree.validate();
+                match result {
+                    Ok(_) => panic!(
+                        "Expected InvalidModel error but validation succeeded for: {}",
+                        test_case.description
+                    ),
+                    Err(e) => {
+                        let error_str = format!("{:?}", e);
+                        if !error_str.contains(expected_error) {
+                            panic!(
+                                "Expected error containing '{}' but got: {}",
+                                expected_error, error_str
+                            );
+                        }
+                    }
+                }
+                return;
+            }
+        }
+
+        let result = try_run_inference(model, &inputs);
 
         match result {
-            Ok(Ok(_)) => panic!(
+            Ok(_) => panic!(
                 "Expected error '{}' but inference succeeded for: {}",
                 expected_error, test_case.description
             ),
-            Ok(Err(e)) => {
+            Err(e) => {
                 let error_str = format!("{:?}", e);
                 if !error_str.contains(expected_error) {
                     panic!(
                         "Expected error containing '{}' but got: {}",
                         expected_error, error_str
-                    );
-                }
-            }
-            Err(panic_info) => {
-                // Test panicked - check if panic message contains expected error
-                let panic_msg = if let Some(s) = panic_info.downcast_ref::<String>() {
-                    s.clone()
-                } else if let Some(s) = panic_info.downcast_ref::<&str>() {
-                    s.to_string()
-                } else {
-                    "Unknown panic".to_string()
-                };
-
-                if !panic_msg.contains(expected_error) && !panic_msg.contains("index out of bounds")
-                {
-                    panic!(
-                        "Expected error containing '{}' but panic got: {}",
-                        expected_error, panic_msg
                     );
                 }
             }
@@ -236,8 +274,8 @@ macro_rules! generate_vector_tests {
                 let model: Model = vector.model.try_into()
                     .unwrap_or_else(|e| panic!("Failed to convert model: {}", e));
 
-                // Validate decision trees if applicable
-                // Skip validation only if test expects runtime errors (not InvalidModel)
+                // Validate decision trees - this catches InvalidModel errors before inference
+                // For InvalidModel tests, we validate during the test case itself
                 let has_invalid_model_error = vector.test_cases.iter().any(|tc| {
                     tc.expected_error.as_ref().map(|e| e.contains("InvalidModel")).unwrap_or(false)
                 });
@@ -266,6 +304,7 @@ generate_vector_tests!(
     logistic_regression_positive,
     logistic_regression_negative,
     logistic_regression_zero,
+    logistic_regression_rounding,
     error_feature_mismatch,
     error_out_of_range_child
 );
