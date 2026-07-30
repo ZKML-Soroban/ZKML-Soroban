@@ -25,7 +25,7 @@ inference on the Stellar network through Soroban smart contracts.
 The project leverages the zero-knowledge cryptographic primitives introduced in
 Stellar Protocol 25 (X-Ray) -- specifically BN254 elliptic curve operations
 (CAP-0074) and Poseidon hash functions (CAP-0075) -- to build a complete
-pipeline from model import to on-chain proof verification..
+pipeline from model import to on-chain proof verification.
 
 ---
 
