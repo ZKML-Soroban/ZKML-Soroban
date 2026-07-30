@@ -6,6 +6,7 @@
 //! duplicating the proven path between host and guest.
 
 use crate::activation::relu_vec;
+use crate::error::ZkmlError;
 use crate::fixed_point::FixedPoint;
 use crate::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
 
@@ -81,35 +82,54 @@ fn infer_logistic_regression(lr: &LogisticRegression, inputs: &[FixedPoint]) -> 
 /// Compute one dense layer: `out[j] = sum_i(weight[j,i] * in[i]) + bias[j]`.
 ///
 /// Weights are stored row-major as `weights[j * input_size + i]`.
-fn dense_forward(layer: &DenseLayer, inputs: &[FixedPoint]) -> Vec<FixedPoint> {
+/// Products use [`FixedPoint::checked_mul`] (i128 intermediate) and the
+/// accumulator uses [`FixedPoint::checked_add`].
+fn dense_forward(
+    layer: &DenseLayer,
+    inputs: &[FixedPoint],
+) -> Result<Vec<FixedPoint>, ZkmlError> {
     let scale = inputs.first().map(|x| x.scale).unwrap_or(16);
     let mut out = Vec::with_capacity(layer.output_size);
     for j in 0..layer.output_size {
-        let mut acc: i64 = layer.biases[j].value;
+        let mut acc = layer.biases[j];
         for i in 0..layer.input_size {
-            let w = layer.weights[j * layer.input_size + i].value;
-            acc += (w * inputs[i].value) >> scale;
+            let w = layer.weights[j * layer.input_size + i];
+            let product = w
+                .checked_mul(inputs[i])
+                .ok_or(ZkmlError::ArithmeticOverflow)?;
+            acc = acc
+                .checked_add(product)
+                .ok_or(ZkmlError::ArithmeticOverflow)?;
         }
-        out.push(FixedPoint::from_raw(acc, scale));
+        // Preserve caller scale when bias/weights share it (the normal case).
+        out.push(FixedPoint::from_raw(acc.value, scale));
     }
-    out
+    Ok(out)
 }
 
 /// Run a forward pass through a tiny MLP using quantized ReLU between layers.
 fn infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> FixedPoint {
+    try_infer_tiny_mlp(mlp, inputs).expect("TinyMLP inference overflow")
+}
+
+/// Fallible TinyMLP forward used by [`try_run_inference`].
+fn try_infer_tiny_mlp(
+    mlp: &TinyMLP,
+    inputs: &[FixedPoint],
+) -> Result<FixedPoint, ZkmlError> {
     let mut activations: Vec<FixedPoint> = inputs.to_vec();
     let last = mlp.layers.len().saturating_sub(1);
     for (idx, layer) in mlp.layers.iter().enumerate() {
-        let mut out = dense_forward(layer, &activations);
+        let mut out = dense_forward(layer, &activations)?;
         if idx != last {
             out = relu_vec(&out);
         }
         activations = out;
     }
-    activations
+    Ok(activations
         .first()
         .copied()
-        .unwrap_or(FixedPoint::from_raw(0, 16))
+        .unwrap_or(FixedPoint::from_raw(0, 16)))
 }
 
 #[cfg(test)]
