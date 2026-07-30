@@ -83,19 +83,14 @@ fn infer_logistic_regression(lr: &LogisticRegression, inputs: &[FixedPoint]) -> 
 /// Weights are stored row-major as `weights[j * input_size + i]`.
 /// Products use [`FixedPoint::checked_mul`] (i128 intermediate) and the
 /// accumulator uses [`FixedPoint::checked_add`].
-fn dense_forward(
-    layer: &DenseLayer,
-    inputs: &[FixedPoint],
-) -> Result<Vec<FixedPoint>, ZkmlError> {
+fn dense_forward(layer: &DenseLayer, inputs: &[FixedPoint]) -> Result<Vec<FixedPoint>, ZkmlError> {
     let scale = inputs.first().map(|x| x.scale).unwrap_or(16);
     let mut out = Vec::with_capacity(layer.output_size);
     for j in 0..layer.output_size {
         let mut acc = layer.biases[j];
-        for i in 0..layer.input_size {
+        for (i, x) in inputs.iter().enumerate().take(layer.input_size) {
             let w = layer.weights[j * layer.input_size + i];
-            let product = w
-                .checked_mul(inputs[i])
-                .ok_or(ZkmlError::ArithmeticOverflow)?;
+            let product = w.checked_mul(*x).ok_or(ZkmlError::ArithmeticOverflow)?;
             acc = acc
                 .checked_add(product)
                 .ok_or(ZkmlError::ArithmeticOverflow)?;
@@ -129,10 +124,7 @@ fn infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> FixedPoint {
 ///
 /// See [`infer_tiny_mlp`] for the ReLU-after-hidden / raw-final-layer
 /// convention.
-fn try_infer_tiny_mlp(
-    mlp: &TinyMLP,
-    inputs: &[FixedPoint],
-) -> Result<FixedPoint, ZkmlError> {
+fn try_infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> Result<FixedPoint, ZkmlError> {
     let mut activations: Vec<FixedPoint> = inputs.to_vec();
     let last = mlp.layers.len().saturating_sub(1);
     for (idx, layer) in mlp.layers.iter().enumerate() {
@@ -239,10 +231,7 @@ mod tests_batch {
 /// Validated inference that returns an error instead of panicking on a
 /// feature-count mismatch, empty input, invalid TinyMLP topology, or
 /// fixed-point overflow.
-pub fn try_run_inference(
-    model: &Model,
-    inputs: &[FixedPoint],
-) -> Result<FixedPoint, ZkmlError> {
+pub fn try_run_inference(model: &Model, inputs: &[FixedPoint]) -> Result<FixedPoint, ZkmlError> {
     if inputs.is_empty() {
         return Err(ZkmlError::FeatureCountMismatch {
             expected: model.num_features(),

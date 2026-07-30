@@ -89,10 +89,7 @@ fn shape_mismatch_layer_chain_returns_error() {
             },
         ],
     };
-    assert!(matches!(
-        mlp.validate(),
-        Err(ZkmlError::InvalidModel(_))
-    ));
+    assert!(matches!(mlp.validate(), Err(ZkmlError::InvalidModel(_))));
     let model = Model::TinyMLP(mlp);
     let err = try_run_inference(&model, &[fp(1.0), fp(2.0)])
         .expect_err("unchained layers must be rejected before arithmetic");
