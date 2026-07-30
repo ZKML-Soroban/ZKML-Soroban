@@ -27,6 +27,7 @@ fn node(name: &str, op_type: &str, domain: &str) -> NodeProto {
         domain: domain.into(),
         input: vec!["X".into()],
         output: vec!["Y".into()],
+        attribute: vec![],
     }
 }
 
@@ -55,6 +56,8 @@ fn main() {
         opset_import: opsets(17, 3),
         graph: Some(GraphProto {
             name: "decision_tree".into(),
+            input: vec![],
+            output: vec![],
             node: vec![node(
                 "tree_ensemble",
                 "TreeEnsembleClassifier",
@@ -73,6 +76,8 @@ fn main() {
         opset_import: opsets(17, 3),
         graph: Some(GraphProto {
             name: "SklearnDecisionTreeClassifier".into(),
+            input: vec![],
+            output: vec![],
             node: vec![node(
                 "TreeEnsembleClassifier",
                 "TreeEnsembleClassifier",
@@ -93,6 +98,8 @@ fn main() {
         }],
         graph: Some(GraphProto {
             name: "cnn".into(),
+            input: vec![],
+            output: vec![],
             node: vec![node("conv0", "Conv", "")],
         }),
         ..Default::default()
@@ -106,6 +113,8 @@ fn main() {
         opset_import: opsets(13, 3),
         graph: Some(GraphProto {
             name: "old_tree".into(),
+            input: vec![],
+            output: vec![],
             node: vec![node(
                 "tree_ensemble",
                 "TreeEnsembleClassifier",
@@ -123,6 +132,8 @@ fn main() {
         opset_import: opsets(18, 1),
         graph: Some(GraphProto {
             name: "logistic".into(),
+            input: vec![],
+            output: vec![],
             node: vec![node("linear", "LinearClassifier", "ai.onnx.ml")],
         }),
         ..Default::default()
