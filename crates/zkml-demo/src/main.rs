@@ -17,9 +17,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 use zkml_common::commitment::to_hex;
 use zkml_common::fixed_point::FixedPoint;
+use zkml_common::proof::VerificationBundle;
 use zkml_prover::inference::run_inference;
 use zkml_prover::model_io::import_json;
-use zkml_common::proof::VerificationBundle;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -69,10 +69,8 @@ fn main() {
     // Step 1: Import model
     println!("Step 1: Importing model...");
     let import_start = Instant::now();
-    let model_bytes = std::fs::read(&args.model)
-        .expect("Failed to read model file");
-    let model = import_json(&model_bytes)
-        .expect("Failed to import model");
+    let model_bytes = std::fs::read(&args.model).expect("Failed to read model file");
+    let model = import_json(&model_bytes).expect("Failed to import model");
     let import_duration = import_start.elapsed().as_millis();
     println!("✓ Model imported in {} ms", import_duration);
     println!("  Model type: {:?}", std::mem::discriminant(&model));
@@ -99,7 +97,11 @@ fn main() {
         .collect();
 
     if inputs.len() != model.num_features() {
-        eprintln!("Error: Expected {} features, got {}", model.num_features(), inputs.len());
+        eprintln!(
+            "Error: Expected {} features, got {}",
+            model.num_features(),
+            inputs.len()
+        );
         std::process::exit(1);
     }
     println!("✓ Processed {} features", inputs.len());
@@ -115,7 +117,7 @@ fn main() {
     println!("✓ Inference completed in {} ms", inference_duration);
     println!("  Output (raw): {}", output.value);
     println!("  Output (dequantized): {}", output.dequantize());
-    
+
     // Map output to risk tier
     let risk_tier = if output.dequantize() < 0.5 {
         0
@@ -124,7 +126,11 @@ fn main() {
     } else {
         2
     };
-    println!("  Risk tier: {} ({})", risk_tier, ["Low", "Medium", "High"][risk_tier as usize]);
+    println!(
+        "  Risk tier: {} ({})",
+        risk_tier,
+        ["Low", "Medium", "High"][risk_tier as usize]
+    );
 
     // Step 5: Generate proof
     println!("\nStep 5: Generating ZK proof...");
@@ -134,28 +140,33 @@ fn main() {
     println!("    - #11: STARK-to-Groth16 wrapping");
     println!("    - #12: BN254 host functions integration");
     println!("    - #13: Poseidon commitments");
-    
+
     let proof_start = Instant::now();
-    
+
     // Create a placeholder verification bundle
     let bundle = VerificationBundle {
-        proof: zkml_common::proof::Groth16Proof { data: vec![0u8; 128] }, // Placeholder 128-byte proof
+        proof: zkml_common::proof::Groth16Proof {
+            data: vec![0u8; 128],
+        }, // Placeholder 128-byte proof
         public_inputs: zkml_common::proof::PublicInputs {
             model_hash,
             input_hash: [0u8; 32], // Placeholder
             output: output.value.to_le_bytes().to_vec(),
         },
     };
-    
+
     let proof_duration = proof_start.elapsed().as_millis();
     println!("✓ Proof generated in {} ms", proof_duration);
-    
+
     let proof_size = bundle.proof.data.len();
     println!("  Proof size: {} bytes", proof_size);
-    
+
     let public_inputs_size = bundle.public_inputs.to_bytes().len();
     println!("  Public inputs size: {} bytes", public_inputs_size);
-    println!("  Total bundle size: {} bytes", proof_size + public_inputs_size);
+    println!(
+        "  Total bundle size: {} bytes",
+        proof_size + public_inputs_size
+    );
 
     // Step 6: Submit to contract (if not local mode)
     let contract_submission_duration = if args.local {
@@ -166,7 +177,7 @@ fn main() {
         if let Some(ref contract_id) = args.contract {
             println!("\nStep 6: Submitting to contract...");
             let submit_start = Instant::now();
-            
+
             match submit_to_contract(contract_id, &bundle) {
                 Ok(_) => {
                     let submit_duration = submit_start.elapsed().as_millis();
@@ -219,22 +230,37 @@ fn main() {
 
     // Check success criteria
     println!("\n=== Success Criteria Check ===");
-    
+
     // Proof size < 500 bytes
     let proof_size_ok = proof_size < 500;
-    println!("Proof size < 500 bytes: {} ({} bytes)", 
-        if proof_size_ok { "✓ PASS" } else { "✗ FAIL" }, 
-        proof_size);
-    
+    println!(
+        "Proof size < 500 bytes: {} ({} bytes)",
+        if proof_size_ok {
+            "✓ PASS"
+        } else {
+            "✗ FAIL"
+        },
+        proof_size
+    );
+
     // End-to-end latency < 60 seconds
     let latency_ok = total_duration < 60000;
-    println!("End-to-end latency < 60s: {} ({} ms)", 
-        if latency_ok { "✓ PASS" } else { "✗ FAIL" }, 
-        total_duration);
-    
+    println!(
+        "End-to-end latency < 60s: {} ({} ms)",
+        if latency_ok { "✓ PASS" } else { "✗ FAIL" },
+        total_duration
+    );
+
     // Overall result
     let all_pass = proof_size_ok && latency_ok;
-    println!("\nOverall: {}", if all_pass { "✓ ALL CRITERIA PASS" } else { "✗ SOME CRITERIA FAIL" });
+    println!(
+        "\nOverall: {}",
+        if all_pass {
+            "✓ ALL CRITERIA PASS"
+        } else {
+            "✗ SOME CRITERIA FAIL"
+        }
+    );
 
     if !all_pass {
         std::process::exit(1);
@@ -249,19 +275,22 @@ fn submit_to_contract(contract_id: &str, bundle: &VerificationBundle) -> Result<
     // 2. Sign it with the source account
     // 3. Submit to the network
     // 4. Wait for confirmation
-    
+
     // For now, we simulate the submission
     println!("  Contract ID: {}", contract_id);
     println!("  Submitting proof with {} bytes", bundle.proof.data.len());
-    println!("  Public inputs: {} bytes", bundle.public_inputs.to_bytes().len());
-    
+    println!(
+        "  Public inputs: {} bytes",
+        bundle.public_inputs.to_bytes().len()
+    );
+
     // TODO: Implement actual Stellar RPC submission
     // This requires:
     // - soroban-rpc client setup
     // - Transaction building with soroban-sdk
     // - Account management and signing
     // - Network submission and polling
-    
+
     Ok(())
 }
 
@@ -271,7 +300,7 @@ fn query_result(_contract_id: &str) -> Result<VerifiedResult, String> {
     // In a real implementation, this would use soroban-rpc to:
     // 1. Call get_result on the contract
     // 2. Parse the InferenceRecord
-    
+
     // For now, return a mock result
     Ok(VerifiedResult {
         model_hash: [0u8; 32],
