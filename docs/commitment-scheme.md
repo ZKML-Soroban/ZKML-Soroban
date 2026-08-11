@@ -186,6 +186,10 @@ assert_eq!(stored_model_hash, public_model_hash);
 
 The contract does not recompute the hash on-chain (to avoid gas costs). Instead, it verifies that the model_hash public input matches the pre-computed commitment stored during initialization.
 
+### Public Input Byte Order
+
+The flat public-input buffer passed to `verify_inference` is `model_hash (32 bytes) || input_hash (32 bytes) || output`, and every field is **little-endian**, matching this scheme (`to_bytes_le`) and the prover (`i64::to_le_bytes`). soroban's `U256` parses big-endian only, so the verifier's `bytes_to_fr` zero-extends each field to 32 bytes (low order first) and reverses it into big-endian before parsing. Any future circuit or prover integration (issue #11) MUST keep emitting little-endian public inputs so the on-chain scalars match.
+
 ## Security Properties
 
 ### Collision Resistance

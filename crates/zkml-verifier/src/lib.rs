@@ -271,23 +271,27 @@ impl ZkmlVerifierContract {
         Ok(Bn254G1Affine::from_array(env, &array))
     }
 
-    /// Convert bytes to a Bn254Fr scalar field element.
+    /// Convert little-endian public-input bytes to a Bn254Fr scalar field element.
     ///
-    /// Byte-to-field mapping: Right-aligned big-endian interpretation.
-    /// If bytes.len() > 32, the leftmost bytes are truncated (only the rightmost 32 bytes are used).
-    /// If bytes.len() < 32, the value is effectively zero-padded on the left.
-    ///
-    /// IMPORTANT: The prover MUST use the same byte-to-field mapping when computing public inputs.
-    /// The 32-byte value is interpreted as a big-endian integer and reduced modulo the BN254
-    /// scalar field order r by the Bn254Fr constructor. This is the standard reduction.
+    /// Public inputs are little-endian: `model_hash` and `input_hash` come from
+    /// `Commitment` (`poseidon_commit` emits `to_bytes_le`, see
+    /// docs/commitment-scheme.md) and the output is `i64::to_le_bytes`. soroban's
+    /// `U256` only parses big-endian, so the bytes are zero-extended to 32 (low
+    /// order first) and reversed into big-endian before parsing. Values >= the
+    /// BN254 scalar field order r are reduced by the Bn254Fr constructor.
+    /// If bytes.len() > 32, only the low-order 32 bytes are used.
     fn bytes_to_fr(env: &Env, bytes: &Bytes) -> Bn254Fr {
-        let mut array = [0u8; 32];
+        let mut le = [0u8; 32];
         let len = bytes.len().min(32);
-        // Right-align into the array (zero-pad left for big-endian scalar)
-        let start = 32 - len as usize;
+        // Little-endian: low-order bytes first, zero-padded on the right.
         let src = bytes.slice(0..len);
-        src.copy_into_slice(&mut array[start..]);
-        let bytes_ref = Bytes::from_slice(env, &array);
+        src.copy_into_slice(&mut le[..len as usize]);
+        // soroban U256 parses big-endian only, so reverse into a big-endian buffer.
+        let mut be = [0u8; 32];
+        for i in 0..32 {
+            be[i] = le[31 - i];
+        }
+        let bytes_ref = Bytes::from_slice(env, &be);
         U256::from_be_bytes(env, &bytes_ref).into()
     }
 
