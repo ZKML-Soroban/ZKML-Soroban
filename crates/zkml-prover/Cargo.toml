@@ -24,3 +24,11 @@ zkml-methods = { path = "../../methods", optional = true }
 
 # ONNX protobuf decoding (pinned; API surface used by the importer foundation).
 prost = "=0.13.5"
+
+# Groth16 fixture generation (for testing)
+ark-bn254 = "0.5"
+ark-groth16 = "0.5"
+ark-relations = "0.5"
+ark-serialize = "0.5"
+ark-snark = "0.5"
+ark-std = "0.4"

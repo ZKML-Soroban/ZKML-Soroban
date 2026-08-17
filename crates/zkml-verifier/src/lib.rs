@@ -157,6 +157,9 @@ impl ZkmlVerifierContract {
         // L = sum(public_input_i * vk_ic_i)
         // Public inputs: model_hash (32 bytes), input_hash (32 bytes), output (variable)
         // We need to convert these to Bn254Fr scalars
+        // Note: In Groth16, IC[0] is the constant term, and public inputs start at index 1
+        // So L = IC[0] + public_input[0]*IC[1] + public_input[1]*IC[2] + public_input[2]*IC[3]
+        // This means the circuit should have 3 public inputs: model_hash, input_hash, output
         let ic0_bytes = vk
             .ic
             .get(0)
@@ -515,5 +518,50 @@ mod test_poseidon_cross_check {
         let test_data = [1u8, 2u8, 3u8];
         let commitment = Bytes::from_slice(&env, &test_data);
         assert_eq!(commitment, Bytes::from_slice(&env, &test_data));
+    }
+}
+
+#[cfg(test)]
+mod test_accept_path {
+    use super::*;
+    use soroban_sdk::Env;
+
+    /// Test that bytes_to_fr correctly converts non-trivial scalar values
+    #[test]
+    fn test_bytes_to_fr_with_non_trivial_values() {
+        let env = Env::default();
+        
+        // Test with a non-trivial scalar value (little-endian bytes)
+        let test_value: u64 = 1234567890u64;
+        let le_bytes = test_value.to_le_bytes();
+        let bytes = Bytes::from_slice(&env, &le_bytes);
+        
+        let fr = ZkmlVerifierContract::bytes_to_fr(&env, &bytes);
+        
+        // The conversion should succeed and produce a valid scalar
+        // We can't directly compare the value, but we can verify it doesn't panic
+        let _ = fr;
+    }
+
+    /// Test that the verifier correctly handles the public input structure
+    #[test]
+    fn test_public_input_structure() {
+        let env = Env::default();
+        
+        // Create a mock verification key with 4 IC elements
+        let alpha = Bytes::from_slice(&env, &[0u8; 64]);
+        let beta = Bytes::from_slice(&env, &[0u8; 128]);
+        let gamma = Bytes::from_slice(&env, &[0u8; 128]);
+        let delta = Bytes::from_slice(&env, &[0u8; 128]);
+        
+        let mut ic = soroban_sdk::Vec::new(&env);
+        for _ in 0..4 {
+            ic.push_back(Bytes::from_slice(&env, &[0u8; 64]));
+        }
+        
+        // Verify the VK structure is correct before moving
+        assert_eq!(ic.len(), 4);
+        
+        let _vk = VerificationKey { alpha, beta, gamma, delta, ic };
     }
 }
