@@ -107,10 +107,7 @@ pub fn generate_proof(leaves: &[Commitment], index: usize) -> Option<MerkleProof
         level = next;
     }
 
-    Some(MerkleProof {
-        siblings,
-        index,
-    })
+    Some(MerkleProof { siblings, index })
 }
 
 /// Verify a Merkle proof.
@@ -225,11 +222,11 @@ mod tests {
         // With domain separation, this should be impossible
         let leaf = [1u8; 32];
         let leaf_hash = hash_leaf(&leaf);
-        
+
         // Try to create a tree where the leaf hash appears as an internal node
         let leaves = vec![leaf, [2u8; 32]];
         let root = merkle_root(&leaves);
-        
+
         // The leaf hash should not equal any internal node hash
         // This is a basic sanity check - a full second-preimage test would require
         // finding a collision, which is computationally infeasible
@@ -248,14 +245,14 @@ mod tests {
     fn domain_tags_produce_different_hashes() {
         let leaf = [1u8; 32];
         let leaf_hash = hash_leaf(&leaf);
-        
+
         // Manually construct what a non-domain-separated hash would look like
         let mut elements = [0i64; 4];
         for i in 0..4 {
             elements[i] = i64::from_le_bytes(leaf[i * 8..i * 8 + 8].try_into().unwrap());
         }
         let no_domain_hash = commit_i64(&elements);
-        
+
         // Domain-separated hash should be different
         assert_ne!(leaf_hash, no_domain_hash);
     }
