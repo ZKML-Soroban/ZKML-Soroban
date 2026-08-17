@@ -306,5 +306,8 @@ generate_vector_tests!(
     logistic_regression_zero,
     logistic_regression_rounding,
     error_feature_mismatch,
-    error_out_of_range_child
+    error_out_of_range_child,
+    error_cycle,
+    error_self_referential,
+    error_orphan_node
 );

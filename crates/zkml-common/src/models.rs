@@ -145,8 +145,10 @@ pub enum Model {
 
 impl DecisionTree {
     /// Validate that every split node references in-bounds children and
-    /// feature indices. Returns an error describing the first problem found.
+    /// feature indices. Also detects cycles, ensures all paths reach leaves,
+    /// and rejects orphan nodes. Returns an error describing the first problem found.
     pub fn validate(&self) -> Result<(), crate::error::ZkmlError> {
+        // Basic bounds checking
         for (i, node) in self.nodes.iter().enumerate() {
             if let TreeNode::Split {
                 feature_index,
@@ -165,8 +167,63 @@ impl DecisionTree {
                         "node {i}: child index out of range"
                     )));
                 }
+                // Reject self-referential splits
+                if *left == i || *right == i {
+                    return Err(crate::error::ZkmlError::InvalidModel(format!(
+                        "node {i}: split points to itself"
+                    )));
+                }
             }
         }
+
+        // Check for empty tree
+        if self.nodes.is_empty() {
+            return Err(crate::error::ZkmlError::InvalidModel(
+                "decision tree has no nodes".into(),
+            ));
+        }
+
+        // Walk from root to detect cycles and ensure all paths reach leaves
+        let mut visited = vec![false; self.nodes.len()];
+        let mut stack = vec![(0usize, 0usize)]; // (node_index, depth)
+
+        while let Some((node_idx, depth)) = stack.pop() {
+            // Enforce maximum depth (prevent exponential blowup, configurable)
+            const MAX_DEPTH: usize = 1000;
+            if depth > MAX_DEPTH {
+                return Err(crate::error::ZkmlError::InvalidModel(format!(
+                    "tree depth exceeds maximum of {MAX_DEPTH}"
+                )));
+            }
+
+            // Check for cycle
+            if visited[node_idx] {
+                return Err(crate::error::ZkmlError::InvalidModel(format!(
+                    "node {node_idx}: cycle detected (node visited twice)"
+                )));
+            }
+            visited[node_idx] = true;
+
+            match &self.nodes[node_idx] {
+                TreeNode::Split { left, right, .. } => {
+                    stack.push((*left, depth + 1));
+                    stack.push((*right, depth + 1));
+                }
+                TreeNode::Leaf { .. } => {
+                    // Leaf nodes terminate the path - no further action needed
+                }
+            }
+        }
+
+        // Check for orphan nodes (nodes not reachable from root)
+        for (i, was_visited) in visited.iter().enumerate() {
+            if !was_visited {
+                return Err(crate::error::ZkmlError::InvalidModel(format!(
+                    "node {i}: orphan node (not reachable from root)"
+                )));
+            }
+        }
+
         Ok(())
     }
 }

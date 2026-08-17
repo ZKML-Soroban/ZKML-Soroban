@@ -30,15 +30,34 @@ pub fn run_inference(model: &Model, inputs: &[FixedPoint]) -> FixedPoint {
 /// Values strictly greater than the threshold take the right child. This
 /// matches typical ONNX `TreeEnsembleClassifier` `BRANCH_LEQ` behavior and
 /// must stay aligned with any future circuit encoding.
+///
+/// # Panics
+///
+/// Panics if input length doesn't match expected features, or if the tree
+/// has a cycle causing the iteration limit to be exceeded. Prefer
+/// [`try_infer_decision_tree`] when cycle detection must be handled as an error.
 fn infer_decision_tree(tree: &DecisionTree, inputs: &[FixedPoint]) -> FixedPoint {
-    assert_eq!(
-        inputs.len(),
-        tree.num_features,
-        "input length must match the number of features"
-    );
+    try_infer_decision_tree(tree, inputs).expect("decision tree inference exceeded iteration limit")
+}
 
+/// Fallible decision tree inference with bounded iteration.
+///
+/// Traverses the tree with a maximum iteration count to prevent infinite loops
+/// from malformed trees. Returns an error if the iteration limit is exceeded.
+fn try_infer_decision_tree(
+    tree: &DecisionTree,
+    inputs: &[FixedPoint],
+) -> Result<FixedPoint, ZkmlError> {
+    if inputs.len() != tree.num_features {
+        return Err(ZkmlError::FeatureCountMismatch {
+            expected: tree.num_features,
+            got: inputs.len(),
+        });
+    }
+
+    const MAX_ITERATIONS: usize = 10_000;
     let mut node_idx = 0;
-    loop {
+    for _iteration in 0..MAX_ITERATIONS {
         match &tree.nodes[node_idx] {
             TreeNode::Split {
                 feature_index,
@@ -52,9 +71,13 @@ fn infer_decision_tree(tree: &DecisionTree, inputs: &[FixedPoint]) -> FixedPoint
                     node_idx = *right;
                 }
             }
-            TreeNode::Leaf { value } => return *value,
+            TreeNode::Leaf { value } => return Ok(*value),
         }
     }
+
+    Err(ZkmlError::InvalidModel(format!(
+        "decision tree traversal exceeded maximum iterations ({MAX_ITERATIONS}) - possible cycle"
+    )))
 }
 
 /// Fallible LogisticRegression forward used by [`try_run_inference`].
@@ -280,7 +303,7 @@ pub fn try_run_inference(model: &Model, inputs: &[FixedPoint]) -> Result<FixedPo
             mlp.validate()?;
             try_infer_tiny_mlp(mlp, inputs)
         }
-        Model::DecisionTree(tree) => Ok(infer_decision_tree(tree, inputs)),
+        Model::DecisionTree(tree) => try_infer_decision_tree(tree, inputs),
     }
 }
 
