@@ -57,26 +57,58 @@ fn infer_decision_tree(tree: &DecisionTree, inputs: &[FixedPoint]) -> FixedPoint
     }
 }
 
+/// Fallible LogisticRegression forward used by [`try_run_inference`].
+///
+/// Computes `dot(weights, inputs) + bias` using checked `i128` arithmetic to
+/// prevent overflow, matching [`dense_forward`]. Validates that inputs are
+/// non-empty and share a uniform fixed-point scale.
+fn try_infer_logistic_regression(
+    lr: &LogisticRegression,
+    inputs: &[FixedPoint],
+) -> Result<FixedPoint, ZkmlError> {
+    if inputs.is_empty() {
+        return Err(ZkmlError::FeatureCountMismatch {
+            expected: lr.weights.len(),
+            got: 0,
+        });
+    }
+
+    if inputs.len() != lr.weights.len() {
+        return Err(ZkmlError::FeatureCountMismatch {
+            expected: lr.weights.len(),
+            got: inputs.len(),
+        });
+    }
+
+    let scale = inputs[0].scale;
+    if inputs.iter().any(|x| x.scale != scale) {
+        return Err(ZkmlError::QuantizationError(
+            "inputs have non-uniform fixed-point scale".to_string(),
+        ));
+    }
+
+    let mut acc = lr.bias;
+    for (w, x) in lr.weights.iter().zip(inputs.iter()) {
+        let product = w.checked_mul(*x).ok_or(ZkmlError::ArithmeticOverflow)?;
+        acc = acc
+            .checked_add(product)
+            .ok_or(ZkmlError::ArithmeticOverflow)?;
+    }
+
+    Ok(FixedPoint::from_raw(acc.value, scale))
+}
+
 /// Compute logistic regression output: dot(weights, inputs) + bias.
 ///
 /// Note: The sigmoid activation is omitted because it is not ZK-friendly.
 /// Instead, the verifier compares the raw linear output against a threshold.
+///
+/// # Panics
+///
+/// Panics if a checked fixed-point multiply or add overflows, or if input validation fails.
+/// Prefer [`try_run_inference`] when overflow must be handled as an error.
 fn infer_logistic_regression(lr: &LogisticRegression, inputs: &[FixedPoint]) -> FixedPoint {
-    assert_eq!(
-        inputs.len(),
-        lr.weights.len(),
-        "input length must match the number of weights"
-    );
-
-    let scale = inputs[0].scale;
-    let dot: i64 = lr
-        .weights
-        .iter()
-        .zip(inputs.iter())
-        .map(|(w, x)| (w.value * x.value) >> scale)
-        .sum();
-
-    FixedPoint::from_raw(dot + lr.bias.value, scale)
+    try_infer_logistic_regression(lr, inputs).expect("Logistic regression inference overflow")
 }
 
 /// Compute one dense layer: `out[j] = sum_i(weight[j,i] * in[i]) + bias[j]`.
@@ -243,11 +275,12 @@ pub fn try_run_inference(model: &Model, inputs: &[FixedPoint]) -> Result<FixedPo
         });
     }
     match model {
+        Model::LogisticRegression(lr) => try_infer_logistic_regression(lr, inputs),
         Model::TinyMLP(mlp) => {
             mlp.validate()?;
             try_infer_tiny_mlp(mlp, inputs)
         }
-        _ => Ok(run_inference(model, inputs)),
+        Model::DecisionTree(tree) => Ok(infer_decision_tree(tree, inputs)),
     }
 }
 
@@ -263,5 +296,44 @@ mod tests_validated {
             bias: FixedPoint::quantize(0.0),
         });
         assert!(try_run_inference(&model, &[]).is_err());
+    }
+
+    #[test]
+    fn logistic_regression_overflow_boundary_returns_error() {
+        let big = FixedPoint::from_raw(i64::MAX / 2, 16);
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![big],
+            bias: FixedPoint::quantize(0.0),
+        });
+        let inputs = vec![big];
+        assert_eq!(
+            try_run_inference(&model, &inputs),
+            Err(ZkmlError::ArithmeticOverflow)
+        );
+    }
+
+    #[test]
+    fn logistic_regression_mixed_scale_returns_error() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::from_raw(100, 16), FixedPoint::from_raw(100, 16)],
+            bias: FixedPoint::from_raw(0, 16),
+        });
+        let inputs = vec![FixedPoint::from_raw(100, 16), FixedPoint::from_raw(100, 8)];
+        assert!(matches!(
+            try_run_inference(&model, &inputs),
+            Err(ZkmlError::QuantizationError(_))
+        ));
+    }
+
+    #[test]
+    fn logistic_regression_in_range_parity() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::quantize(2.5), FixedPoint::quantize(-1.5)],
+            bias: FixedPoint::quantize(0.5),
+        });
+        let inputs = vec![FixedPoint::quantize(4.0), FixedPoint::quantize(2.0)];
+        let res = try_run_inference(&model, &inputs).unwrap();
+        assert!((res.dequantize() - 7.5).abs() < 1e-3);
+        assert_eq!(run_inference(&model, &inputs).value, res.value);
     }
 }
