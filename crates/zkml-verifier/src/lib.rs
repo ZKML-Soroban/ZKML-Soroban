@@ -517,3 +517,93 @@ mod test_poseidon_cross_check {
         assert_eq!(commitment, Bytes::from_slice(&env, &test_data));
     }
 }
+
+#[cfg(test)]
+mod test_budget {
+    extern crate std;
+    use super::*;
+    use soroban_sdk::Env;
+    use std::println;
+
+    pub fn create_accept_fixture_vk(env: &Env) -> VerificationKey {
+        let g1_gen: [u8; 64] = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 2,
+        ];
+        let g1_zero = [0u8; 64];
+        let g2_zero = [0u8; 128];
+
+        VerificationKey {
+            alpha: Bytes::from_slice(env, &g1_gen),
+            beta: Bytes::from_slice(env, &g2_zero),
+            gamma: Bytes::from_slice(env, &g2_zero),
+            delta: Bytes::from_slice(env, &g2_zero),
+            ic: vec![
+                env,
+                Bytes::from_slice(env, &g1_zero),
+                Bytes::from_slice(env, &g1_zero),
+                Bytes::from_slice(env, &g1_zero),
+                Bytes::from_slice(env, &g1_zero),
+            ],
+        }
+    }
+
+    #[test]
+    fn test_verifier_accept_path_and_resource_budget() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        let model_hash_bytes = [3u8; 32];
+        let model_hash = Bytes::from_slice(&env, &model_hash_bytes);
+        let vk = create_accept_fixture_vk(&env);
+
+        client.initialize(&model_hash, &vk);
+
+        let g1_gen: [u8; 64] = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 2,
+        ];
+        let proof_a = Bytes::from_slice(&env, &g1_gen);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+
+        let mut public_inputs_vec = [0u8; 96];
+        public_inputs_vec[0..32].copy_from_slice(&model_hash_bytes);
+        public_inputs_vec[32..64].copy_from_slice(&[5u8; 32]);
+        public_inputs_vec[64..96].copy_from_slice(&[42u8; 32]);
+        let public_inputs = Bytes::from_slice(&env, &public_inputs_vec);
+
+        env.cost_estimate().budget().reset_default();
+
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(result, Ok(Ok(())));
+
+        let cpu = env.cost_estimate().budget().cpu_instruction_cost();
+        let mem = env.cost_estimate().budget().memory_bytes_cost();
+
+        println!("\n=== Verifier Resource Budget Harness Report ===");
+        println!("CPU Instructions : {}", cpu);
+        println!("Memory Bytes     : {}", mem);
+        println!("===============================================\n");
+
+        // Regression threshold assertion: fail if cost regresses sharply
+        const MAX_CPU_THRESHOLD: u64 = 50_000_000;
+        const MAX_MEM_THRESHOLD: u64 = 10_000_000;
+
+        assert!(
+            cpu <= MAX_CPU_THRESHOLD,
+            "Verifier CPU instruction cost regressed sharply: got {}, threshold {}",
+            cpu,
+            MAX_CPU_THRESHOLD
+        );
+        assert!(
+            mem <= MAX_MEM_THRESHOLD,
+            "Verifier Memory bytes cost regressed sharply: got {}, threshold {}",
+            mem,
+            MAX_MEM_THRESHOLD
+        );
+    }
+}
