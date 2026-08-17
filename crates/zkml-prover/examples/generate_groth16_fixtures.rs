@@ -38,20 +38,14 @@ struct MinimalCircuit {
 }
 
 impl ConstraintSynthesizer<Bn254Fr> for MinimalCircuit {
-    fn generate_constraints(
-        self,
-        cs: ConstraintSystemRef<Bn254Fr>,
-    ) -> Result<(), SynthesisError> {
+    fn generate_constraints(self, cs: ConstraintSystemRef<Bn254Fr>) -> Result<(), SynthesisError> {
         // Allocate public inputs
-        let model_hash_var = cs.new_input_variable(|| {
-            self.model_hash.ok_or(SynthesisError::AssignmentMissing)
-        })?;
-        let input_hash_var = cs.new_input_variable(|| {
-            self.input_hash.ok_or(SynthesisError::AssignmentMissing)
-        })?;
-        let output_var = cs.new_input_variable(|| {
-            self.output.ok_or(SynthesisError::AssignmentMissing)
-        })?;
+        let model_hash_var =
+            cs.new_input_variable(|| self.model_hash.ok_or(SynthesisError::AssignmentMissing))?;
+        let input_hash_var =
+            cs.new_input_variable(|| self.input_hash.ok_or(SynthesisError::AssignmentMissing))?;
+        let output_var =
+            cs.new_input_variable(|| self.output.ok_or(SynthesisError::AssignmentMissing))?;
 
         // Add a simple constraint: model_hash + input_hash = output
         cs.enforce_constraint(

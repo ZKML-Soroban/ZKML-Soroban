@@ -1,0 +1,152 @@
+{
+  "generators": {
+    "address": 1,
+    "nonce": 0,
+    "mux_id": 0
+  },
+  "auth": [
+    [],
+    [],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 27,
+    "sequence_number": 0,
+    "timestamp": 0,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "symbol": "init"
+                      },
+                      "val": {
+                        "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "mdl_hash"
+                      },
+                      "val": {
+                        "bytes": "0000000000000000000000000000000000000000000000000000000000003039"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "vk"
+                      },
+                      "val": {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "alpha"
+                            },
+                            "val": {
+                              "bytes": "fbbcda2ed91e46826da705bdaa656f9ccf172aaf09e1e1d57707242d67e7cd1620d0aefd3d21eb05afd736890bdc239ccee2276b98e05f60b62c393d8ff3d9a1"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "beta"
+                            },
+                            "val": {
+                              "bytes": "8083f9cf87359056b1f6bee4ea162474eb7862a131dedee463444eb83028a32febd26ac16f97b2c7dd656b8f6e10373b5767ac6a833f978e6799cc08eb105413f9c5348cdfacc186a2ac58df2220ed5fa5653c0fa7c4d20fa282d49a16fe8817999bea4f9f22d9a666a06a2b978a21eea57ae5f9a9b8128226fe78067cd88914"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "delta"
+                            },
+                            "val": {
+                              "bytes": "7e9a9bf1611dffb594ccf6a8343fe043c09421bfc22756a29c2247c0a95f1301a22a2ce175eed043ba8d6aac5f2336aafe00ec01c96bbbd0b5cf5178d91e3923879d38fbba58ac36012b1c984229e980787b4470bdb8b2e1d990256a270a272dd4594540e8740db4e0b6cb85595388ee7eaf9630083673d69bf1afc903c07a13"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "gamma"
+                            },
+                            "val": {
+                              "bytes": "e74eba28ef0d72a90006fa8610ba307a11a6b5cff5421eb70503ece937bbf22ca9d436b67b6a89f2acfc2f4f2d92691e02626bda2639aa9e6f4bfc6a64c1be2bf08fd497fa79499decb2b7d0aebc415873fee151c6463a24e82b164d3b3d2f065de8c03d1b2d366e978126c920b5eeff5037c6e98dee360ebd82c6da862b1b0d"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "ic"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "bytes": "e3c6836a775d536ff6592bc0a209af9201fb8df7d285013c8ff0d53ab9f98f0a0ad92ec0c0529d2220fdf7350303d6dd60ce0e5aaf279349178d46341502c910"
+                                },
+                                {
+                                  "bytes": "054f24b4102d50cbd236da2b553cdb5ab0d641394c4c3cb4b41e38430e6beb2d644d2a830ac9eca39c814becbc653d51eddd629d2d93bb1038fbda8289375f08"
+                                },
+                                {
+                                  "bytes": "f4ee9274e081a3609eb9bf93092fce87199342686b48381583a21ca5f93a8c07c58a64f23d6e0623b332ea8c7fdfc0ae844041e70d9e6884afdb91c200d4b398"
+                                },
+                                {
+                                  "bytes": "e0787a5890077f9ac8496f89d3bbd9841b8ec913e9666684224b2785d6c5b00481e1f8869c7aeeb87c6e723b6583a5b096b5515a67d7c1962ae08c44623b8399"
+                                },
+                                {
+                                  "bytes": "38c3be1bbba978ce6cfeb8887ffe797389a25537df22f02a87eb2e58d7c4c82e45ee29b601c6a65892c6ba9a6e1b65816f4403205f711c573be38b3b450a9112"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "vrf_cnt"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_code": {
+              "ext": "v0",
+              "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "code": ""
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      }
+    ]
+  },
+  "events": []
+}

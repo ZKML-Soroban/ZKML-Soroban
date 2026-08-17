@@ -530,14 +530,14 @@ mod test_accept_path {
     #[test]
     fn test_bytes_to_fr_with_non_trivial_values() {
         let env = Env::default();
-        
+
         // Test with a non-trivial scalar value (little-endian bytes)
         let test_value: u64 = 1234567890u64;
         let le_bytes = test_value.to_le_bytes();
         let bytes = Bytes::from_slice(&env, &le_bytes);
-        
+
         let fr = ZkmlVerifierContract::bytes_to_fr(&env, &bytes);
-        
+
         // The conversion should succeed and produce a valid scalar
         // We can't directly compare the value, but we can verify it doesn't panic
         let _ = fr;
@@ -547,21 +547,27 @@ mod test_accept_path {
     #[test]
     fn test_public_input_structure() {
         let env = Env::default();
-        
+
         // Create a mock verification key with 4 IC elements
         let alpha = Bytes::from_slice(&env, &[0u8; 64]);
         let beta = Bytes::from_slice(&env, &[0u8; 128]);
         let gamma = Bytes::from_slice(&env, &[0u8; 128]);
         let delta = Bytes::from_slice(&env, &[0u8; 128]);
-        
+
         let mut ic = soroban_sdk::Vec::new(&env);
         for _ in 0..4 {
             ic.push_back(Bytes::from_slice(&env, &[0u8; 64]));
         }
-        
+
         // Verify the VK structure is correct before moving
         assert_eq!(ic.len(), 4);
-        
-        let _vk = VerificationKey { alpha, beta, gamma, delta, ic };
+
+        let _vk = VerificationKey {
+            alpha,
+            beta,
+            gamma,
+            delta,
+            ic,
+        };
     }
 }
