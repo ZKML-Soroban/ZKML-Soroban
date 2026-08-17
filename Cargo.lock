@@ -62,7 +62,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-serialize",
- "ark-std 0.5.0",
+ "ark-std",
 ]
 
 [[package]]
@@ -74,7 +74,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-r1cs-std",
- "ark-std 0.5.0",
+ "ark-std",
 ]
 
 [[package]]
@@ -90,7 +90,7 @@ dependencies = [
  "ark-relations",
  "ark-serialize",
  "ark-snark",
- "ark-std 0.5.0",
+ "ark-std",
  "blake2",
  "derivative",
  "digest",
@@ -121,7 +121,7 @@ dependencies = [
  "ark-ff",
  "ark-poly",
  "ark-serialize",
- "ark-std 0.5.0",
+ "ark-std",
  "educe",
  "fnv",
  "hashbrown 0.15.5",
@@ -142,7 +142,7 @@ dependencies = [
  "ark-ff-asm",
  "ark-ff-macros",
  "ark-serialize",
- "ark-std 0.5.0",
+ "ark-std",
  "arrayvec",
  "digest",
  "educe",
@@ -189,7 +189,7 @@ dependencies = [
  "ark-poly",
  "ark-relations",
  "ark-serialize",
- "ark-std 0.5.0",
+ "ark-std",
  "rayon",
 ]
 
@@ -202,7 +202,7 @@ dependencies = [
  "ahash",
  "ark-ff",
  "ark-serialize",
- "ark-std 0.5.0",
+ "ark-std",
  "educe",
  "fnv",
  "hashbrown 0.15.5",
@@ -218,7 +218,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-relations",
- "ark-std 0.5.0",
+ "ark-std",
  "educe",
  "num-bigint",
  "num-integer",
@@ -233,7 +233,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec46ddc93e7af44bcab5230937635b06fb5744464dd6a7e7b083e80ebd274384"
 dependencies = [
  "ark-ff",
- "ark-std 0.5.0",
+ "ark-std",
  "tracing",
  "tracing-subscriber",
 ]
@@ -245,7 +245,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f4d068aaf107ebcd7dfb52bc748f8030e0fc930ac8e360146ca54c1203088f7"
 dependencies = [
  "ark-serialize-derive",
- "ark-std 0.5.0",
+ "ark-std",
  "arrayvec",
  "digest",
  "num-bigint",
@@ -272,17 +272,7 @@ dependencies = [
  "ark-ff",
  "ark-relations",
  "ark-serialize",
- "ark-std 0.5.0",
-]
-
-[[package]]
-name = "ark-std"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
-dependencies = [
- "num-traits",
- "rand 0.8.6",
+ "ark-std",
 ]
 
 [[package]]
@@ -4397,12 +4387,6 @@ dependencies = [
 name = "zkml-prover"
 version = "0.2.0"
 dependencies = [
- "ark-bn254",
- "ark-groth16",
- "ark-relations",
- "ark-serialize",
- "ark-snark",
- "ark-std 0.4.0",
  "prost",
  "risc0-zkvm",
  "serde",
@@ -4415,8 +4399,6 @@ dependencies = [
 name = "zkml-verifier"
 version = "0.2.0"
 dependencies = [
- "serde",
- "serde_json",
  "soroban-sdk",
 ]
 
