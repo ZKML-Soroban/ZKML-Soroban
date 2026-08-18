@@ -153,7 +153,6 @@ impl ZkmlVerifierContract {
 
         // L = sum(public_input_i * vk_ic_i)
         // Note: In Groth16, IC[0] is the constant term, and public inputs start at index 1
-        // So L = IC[0] + public_input[0]*IC[1] + public_input[1]*IC[2] + public_input[2]*IC[3]
         // Compute L = ic[0] + sum(scalar_i * ic[i]) using generic loop
         let l = Self::compute_l(&env, &vk, &parsed_inputs)?;
 
