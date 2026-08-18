@@ -10,6 +10,15 @@ use crate::error::ZkmlError;
 use crate::fixed_point::FixedPoint;
 use crate::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
 
+#[cfg(feature = "std")]
+use alloc::format;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::ToString;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// Run inference on a model given a vector of input features.
 ///
 /// Returns the raw fixed-point output value.
@@ -75,9 +84,18 @@ fn try_infer_decision_tree(
         }
     }
 
-    Err(ZkmlError::InvalidModel(format!(
-        "decision tree traversal exceeded maximum iterations ({MAX_ITERATIONS}) - possible cycle"
-    )))
+    Err(ZkmlError::InvalidModel({
+        #[cfg(feature = "std")]
+        {
+            format!(
+                "decision tree traversal exceeded maximum iterations ({MAX_ITERATIONS}) - possible cycle"
+            )
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            "decision tree traversal exceeded maximum iterations - possible cycle".into()
+        }
+    }))
 }
 
 /// Fallible LogisticRegression forward used by [`try_run_inference`].
@@ -112,7 +130,7 @@ fn try_infer_logistic_regression(
 
     let mut acc = lr.bias;
     for (w, x) in lr.weights.iter().zip(inputs.iter()) {
-        let product = w.checked_mul(*x).ok_or(ZkmlError::ArithmeticOverflow)?;
+        let product: FixedPoint = w.checked_mul(*x).ok_or(ZkmlError::ArithmeticOverflow)?;
         acc = acc
             .checked_add(product)
             .ok_or(ZkmlError::ArithmeticOverflow)?;
@@ -201,6 +219,7 @@ fn try_infer_tiny_mlp(mlp: &TinyMLP, inputs: &[FixedPoint]) -> Result<FixedPoint
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_mlp {
     use super::*;
     use crate::models::{DenseLayer, Model, TinyMLP};
@@ -239,6 +258,7 @@ pub fn argmax(values: &[FixedPoint]) -> Option<usize> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_argmax {
     use super::*;
 
@@ -259,6 +279,7 @@ pub fn run_batch(model: &Model, rows: &[Vec<FixedPoint>]) -> Vec<FixedPoint> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_batch {
     use super::*;
     use crate::models::{LogisticRegression, Model};
@@ -308,6 +329,7 @@ pub fn try_run_inference(model: &Model, inputs: &[FixedPoint]) -> Result<FixedPo
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_validated {
     use super::*;
     use crate::models::{LogisticRegression, Model};
