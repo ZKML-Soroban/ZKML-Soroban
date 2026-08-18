@@ -152,46 +152,8 @@ impl ZkmlVerifierContract {
         let delta_g2 = Self::deserialize_vk_g2(&env, &vk.delta)?;
 
         // L = sum(public_input_i * vk_ic_i)
-        // Public inputs: model_hash (32 bytes), input_hash (32 bytes), output (variable)
-        // We need to convert these to Bn254Fr scalars
         // Note: In Groth16, IC[0] is the constant term, and public inputs start at index 1
         // So L = IC[0] + public_input[0]*IC[1] + public_input[1]*IC[2] + public_input[2]*IC[3]
-        // This means the circuit should have 3 public inputs: model_hash, input_hash, output
-        let ic0_bytes = vk
-            .ic
-            .get(0)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let mut l = Self::deserialize_vk_ic(&env, &ic0_bytes)?;
-
-        // Convert model_hash to scalar and multiply with ic[1]
-        let model_scalar = Self::bytes_to_fr(&env, &model_hash);
-        let ic1_bytes = vk
-            .ic
-            .get(1)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let ic1 = Self::deserialize_vk_ic(&env, &ic1_bytes)?;
-        let term1 = bn254.g1_mul(&ic1, &model_scalar);
-        l = bn254.g1_add(&l, &term1);
-
-        // Convert input_hash to scalar and multiply with ic[2]
-        let input_scalar = Self::bytes_to_fr(&env, &input_hash);
-        let ic2_bytes = vk
-            .ic
-            .get(2)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let ic2 = Self::deserialize_vk_ic(&env, &ic2_bytes)?;
-        let term2 = bn254.g1_mul(&ic2, &input_scalar);
-        l = bn254.g1_add(&l, &term2);
-
-        // Convert output to scalar and multiply with ic[3]
-        let output_scalar = Self::bytes_to_fr(&env, &output);
-        let ic3_bytes = vk
-            .ic
-            .get(3)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let ic3 = Self::deserialize_vk_ic(&env, &ic3_bytes)?;
-        let term3 = bn254.g1_mul(&ic3, &output_scalar);
-        l = bn254.g1_add(&l, &term3);
         // Compute L = ic[0] + sum(scalar_i * ic[i]) using generic loop
         let l = Self::compute_l(&env, &vk, &parsed_inputs)?;
 
