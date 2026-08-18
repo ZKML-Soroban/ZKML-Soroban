@@ -120,7 +120,7 @@ impl TinyMLP {
                 )));
                 #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "layer weight count mismatch".into()
+                    "layer weight count mismatch".into(),
                 ));
             }
             if layer.biases.len() != layer.output_size {
@@ -132,7 +132,7 @@ impl TinyMLP {
                 )));
                 #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "layer bias count mismatch".into()
+                    "layer bias count mismatch".into(),
                 ));
             }
         }
@@ -147,7 +147,7 @@ impl TinyMLP {
                 )));
                 #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "layer size mismatch".into()
+                    "layer size mismatch".into(),
                 ));
             }
         }
@@ -189,7 +189,7 @@ impl DecisionTree {
                     )));
                     #[cfg(not(feature = "std"))]
                     return Err(crate::error::ZkmlError::InvalidModel(
-                        "feature index out of range".into()
+                        "feature index out of range".into(),
                     ));
                 }
                 if *left >= self.nodes.len() || *right >= self.nodes.len() {
@@ -199,7 +199,7 @@ impl DecisionTree {
                     )));
                     #[cfg(not(feature = "std"))]
                     return Err(crate::error::ZkmlError::InvalidModel(
-                        "child index out of range".into()
+                        "child index out of range".into(),
                     ));
                 }
                 // Reject self-referential splits
@@ -210,7 +210,7 @@ impl DecisionTree {
                     )));
                     #[cfg(not(feature = "std"))]
                     return Err(crate::error::ZkmlError::InvalidModel(
-                        "self-referential split".into()
+                        "self-referential split".into(),
                     ));
                 }
             }
@@ -237,7 +237,7 @@ impl DecisionTree {
                 )));
                 #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "tree depth exceeds maximum".into()
+                    "tree depth exceeds maximum".into(),
                 ));
             }
 
@@ -249,7 +249,7 @@ impl DecisionTree {
                 )));
                 #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "cycle detected".into()
+                    "cycle detected".into(),
                 ));
             }
             visited[node_idx] = true;
@@ -270,11 +270,11 @@ impl DecisionTree {
             if !was_visited {
                 #[cfg(feature = "std")]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "orphan node detected".into()
+                    "orphan node detected".into(),
                 ));
                 #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
-                    "orphan node detected".into()
+                    "orphan node detected".into(),
                 ));
             }
         }
