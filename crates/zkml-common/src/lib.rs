@@ -6,7 +6,7 @@
 //! This crate deliberately depends on neither Soroban nor RISC Zero so the
 //! same code compiles for native host tests and for the zkVM guest.
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 

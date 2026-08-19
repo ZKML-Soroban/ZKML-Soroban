@@ -266,13 +266,8 @@ impl DecisionTree {
         }
 
         // Check for orphan nodes (nodes not reachable from root)
-        for (_i, was_visited) in visited.iter().enumerate() {
+        for was_visited in visited.iter() {
             if !was_visited {
-                #[cfg(feature = "std")]
-                return Err(crate::error::ZkmlError::InvalidModel(
-                    "orphan node detected".into(),
-                ));
-                #[cfg(not(feature = "std"))]
                 return Err(crate::error::ZkmlError::InvalidModel(
                     "orphan node detected".into(),
                 ));

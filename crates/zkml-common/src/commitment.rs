@@ -13,9 +13,6 @@ use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use light_poseidon::{Poseidon, PoseidonHasher};
 
-#[cfg(feature = "std")]
-use alloc::format;
-
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
 
