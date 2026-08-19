@@ -7,6 +7,7 @@
   "auth": [
     [],
     [],
+    [],
     []
   ],
   "ledger": {
@@ -32,7 +33,34 @@
                     "symbol": "nullifier"
                   },
                   {
-                    "bytes": "b46bd9542401ebbac0c8ebd84b1f68c3ea7bd953fc9ae765c19df423350ae57f"
+                    "bytes": "b3c9470cf094dcba7cf772bb789c8a19474b3abca596c76b7872459e5e5cde25"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "bool": true
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "nullifier"
+                  },
+                  {
+                    "bytes": "c3be3aad7a60e53c9baa8f52219cef642c32085ad8d42fb42c62d6cf7875d441"
                   }
                 ]
               },
@@ -88,7 +116,7 @@
                               "symbol": "output"
                             },
                             "val": {
-                              "bytes": "03030303030303030303030303030303"
+                              "bytes": "0303030303030303"
                             }
                           },
                           {
@@ -165,9 +193,6 @@
                                 },
                                 {
                                   "bytes": "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002"
-                                },
-                                {
-                                  "bytes": "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002"
                                 }
                               ]
                             }
@@ -180,7 +205,7 @@
                         "symbol": "vrf_cnt"
                       },
                       "val": {
-                        "u32": 1
+                        "u32": 2
                       }
                     }
                   ]
