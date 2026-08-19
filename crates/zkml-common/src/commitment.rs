@@ -120,6 +120,7 @@ pub fn model_elements(model: &Model) -> Vec<i64> {
         Model::LogisticRegression(lr) => {
             out.extend(lr.weights.iter().map(|w| w.value));
             out.push(lr.bias.value);
+            out.push(lr.decision_threshold.value);
         }
         Model::DecisionTree(tree) => {
             out.push(tree.num_features as i64);
