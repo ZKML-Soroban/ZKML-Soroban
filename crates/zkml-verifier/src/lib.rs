@@ -74,8 +74,10 @@ pub struct VerificationKey {
 pub struct InferenceRecord {
     /// Poseidon commitment to the model that produced this result.
     pub model_hash: Bytes,
-    /// The inference output value.
+    /// The inference output value (raw score).
     pub output: Bytes,
+    /// The class label decision (binary decision or argmax index).
+    pub class_label: i64,
     /// Ledger sequence number at verification time.
     pub verified_at: u32,
 }
@@ -168,11 +170,15 @@ impl ZkmlVerifierContract {
 
         // Verification succeeded - record result
         // Output starts after model_hash (32) and input_hash (32) = byte 64
-        let output = public_inputs.slice(64..public_inputs.len());
+        // Output is 8 bytes, class_label is next 8 bytes
+        let output = public_inputs.slice(64..72);
+        let class_label_bytes = public_inputs.slice(72..80);
+        let class_label = Self::bytes_to_i64(&class_label_bytes);
 
         let record = InferenceRecord {
             model_hash: model_hash.clone(),
             output,
+            class_label,
             verified_at: env.ledger().sequence(),
         };
         env.storage().instance().set(&LAST_RESULT, &record);
@@ -261,12 +267,21 @@ impl ZkmlVerifierContract {
         U256::from_be_bytes(env, &bytes_ref).into()
     }
 
+    /// Convert little-endian bytes to i64.
+    fn bytes_to_i64(bytes: &Bytes) -> i64 {
+        let mut arr = [0u8; 8];
+        let len = bytes.len().min(8);
+        bytes.slice(0..len).copy_into_slice(&mut arr[..len as usize]);
+        i64::from_le_bytes(arr)
+    }
+
     /// Parse public inputs into a vector of byte slices with canonical length validation.
     ///
     /// Public input layout:
     /// - model_hash: 32 bytes (canonical Poseidon commitment)
     /// - input_hash: 32 bytes (canonical Poseidon commitment)
-    /// - output_scalars: N * 8 bytes (each canonical i64 in little-endian)
+    /// - output: 8 bytes (canonical i64 in little-endian)
+    /// - class_label: 8 bytes (canonical i64 in little-endian)
     ///
     /// Returns an error if any field has non-canonical length.
     fn parse_public_inputs(
@@ -298,17 +313,31 @@ impl ZkmlVerifierContract {
         parsed.push_back(input_hash);
         offset += 32;
 
-        // Parse output scalars (each must be exactly 8 bytes for canonical i64)
-        while offset < public_inputs.len() {
-            if public_inputs.len() < offset + 8 {
-                return Err(VerificationError::InvalidPublicInputLength);
-            }
-            let output_scalar = public_inputs.slice(offset..(offset + 8));
-            if output_scalar.len() != 8 {
-                return Err(VerificationError::InvalidPublicInputLength);
-            }
-            parsed.push_back(output_scalar);
-            offset += 8;
+        // Parse output (must be exactly 8 bytes for canonical i64)
+        if public_inputs.len() < offset + 8 {
+            return Err(VerificationError::PublicInputsTooShort);
+        }
+        let output = public_inputs.slice(offset..(offset + 8));
+        if output.len() != 8 {
+            return Err(VerificationError::InvalidPublicInputLength);
+        }
+        parsed.push_back(output);
+        offset += 8;
+
+        // Parse class_label (must be exactly 8 bytes for canonical i64)
+        if public_inputs.len() < offset + 8 {
+            return Err(VerificationError::PublicInputsTooShort);
+        }
+        let class_label = public_inputs.slice(offset..(offset + 8));
+        if class_label.len() != 8 {
+            return Err(VerificationError::InvalidPublicInputLength);
+        }
+        parsed.push_back(class_label);
+        offset += 8;
+
+        // Ensure no extra data
+        if offset != public_inputs.len() {
+            return Err(VerificationError::InvalidPublicInputLength);
         }
 
         Ok(parsed)

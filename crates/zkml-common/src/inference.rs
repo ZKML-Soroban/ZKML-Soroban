@@ -238,6 +238,66 @@ pub fn argmax(values: &[FixedPoint]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// Binary decision: compare a score against a threshold.
+///
+/// Returns `1` if `score >= threshold`, otherwise `0`.
+/// This is a ZK-friendly comparison (single comparison + select).
+pub fn binary_decision(score: FixedPoint, threshold: FixedPoint) -> i64 {
+    if score.value >= threshold.value {
+        1
+    } else {
+        0
+    }
+}
+
+/// Run inference and return both the raw score and the decision (class label).
+///
+/// For logistic regression: returns (score, binary_decision(score, threshold))
+/// For TinyMLP: returns (first_output, argmax(all_outputs))
+/// For decision tree: returns (leaf_value, 0) (no multi-class decision)
+///
+/// The decision is deterministic and reproducible off-chain and on-chain.
+pub fn run_inference_with_decision(model: &Model, inputs: &[FixedPoint]) -> (FixedPoint, i64) {
+    match model {
+        Model::DecisionTree(tree) => {
+            let score = infer_decision_tree(tree, inputs);
+            (score, 0) // Decision trees return the leaf value directly
+        }
+        Model::LogisticRegression(lr) => {
+            let score = infer_logistic_regression(lr, inputs);
+            let decision = binary_decision(score, lr.decision_threshold);
+            (score, decision)
+        }
+        Model::TinyMLP(mlp) => {
+            let logits = try_infer_tiny_mlp_all_outputs(mlp, inputs)
+                .expect("TinyMLP inference overflow");
+            let score = logits.first().copied().unwrap_or(FixedPoint::from_raw(0, 16));
+            let decision = argmax(&logits).map(|i| i as i64).unwrap_or(0);
+            (score, decision)
+        }
+    }
+}
+
+/// Fallible TinyMLP forward that returns all output neurons (not just the first).
+///
+/// Used for multi-class argmax decisions. See [`infer_tiny_mlp`] for the
+/// ReLU-after-hidden / raw-final-layer convention.
+fn try_infer_tiny_mlp_all_outputs(
+    mlp: &TinyMLP,
+    inputs: &[FixedPoint],
+) -> Result<Vec<FixedPoint>, ZkmlError> {
+    let mut activations: Vec<FixedPoint> = inputs.to_vec();
+    let last = mlp.layers.len().saturating_sub(1);
+    for (idx, layer) in mlp.layers.iter().enumerate() {
+        let mut out = dense_forward(layer, &activations)?;
+        if idx != last {
+            out = relu_vec(&out);
+        }
+        activations = out;
+    }
+    Ok(activations)
+}
+
 #[cfg(test)]
 mod tests_argmax {
     use super::*;
@@ -250,6 +310,147 @@ mod tests_argmax {
             FixedPoint::quantize(0.4),
         ];
         assert_eq!(argmax(&logits), Some(1));
+    }
+}
+
+#[cfg(test)]
+mod tests_binary_decision {
+    use super::*;
+
+    #[test]
+    fn binary_decision_above_threshold() {
+        let score = FixedPoint::quantize(0.5);
+        let threshold = FixedPoint::quantize(0.0);
+        assert_eq!(binary_decision(score, threshold), 1);
+    }
+
+    #[test]
+    fn binary_decision_below_threshold() {
+        let score = FixedPoint::quantize(-0.5);
+        let threshold = FixedPoint::quantize(0.0);
+        assert_eq!(binary_decision(score, threshold), 0);
+    }
+
+    #[test]
+    fn binary_decision_at_threshold() {
+        let score = FixedPoint::quantize(0.0);
+        let threshold = FixedPoint::quantize(0.0);
+        assert_eq!(binary_decision(score, threshold), 1); // inclusive
+    }
+
+    #[test]
+    fn binary_decision_just_below_threshold() {
+        let score = FixedPoint::quantize(-0.001);
+        let threshold = FixedPoint::quantize(0.0);
+        assert_eq!(binary_decision(score, threshold), 0);
+    }
+
+    #[test]
+    fn binary_decision_just_above_threshold() {
+        let score = FixedPoint::quantize(0.001);
+        let threshold = FixedPoint::quantize(0.0);
+        assert_eq!(binary_decision(score, threshold), 1);
+    }
+}
+
+#[cfg(test)]
+mod tests_inference_with_decision {
+    use super::*;
+    use crate::models::{DenseLayer, LogisticRegression, Model, TinyMLP};
+
+    fn fp(x: f64) -> FixedPoint {
+        FixedPoint::quantize(x)
+    }
+
+    #[test]
+    fn logistic_regression_with_threshold_positive() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![fp(1.0)],
+            bias: fp(0.0),
+            decision_threshold: fp(0.0),
+        });
+        let inputs = vec![fp(0.5)];
+        let (score, decision) = run_inference_with_decision(&model, &inputs);
+        assert!((score.dequantize() - 0.5).abs() < 1e-3);
+        assert_eq!(decision, 1);
+    }
+
+    #[test]
+    fn logistic_regression_with_threshold_negative() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![fp(1.0)],
+            bias: fp(0.0),
+            decision_threshold: fp(1.0),
+        });
+        let inputs = vec![fp(0.5)];
+        let (score, decision) = run_inference_with_decision(&model, &inputs);
+        assert!((score.dequantize() - 0.5).abs() < 1e-3);
+        assert_eq!(decision, 0); // 0.5 < 1.0
+    }
+
+    #[test]
+    fn mlp_argmax_decision() {
+        let layer = DenseLayer {
+            weights: vec![fp(1.0), fp(0.1), fp(0.1), fp(0.1)], // 2x2 matrix
+            biases: vec![fp(0.0), fp(0.0)],
+            input_size: 2,
+            output_size: 2,
+        };
+        let model = Model::TinyMLP(TinyMLP { layers: vec![layer] });
+        let inputs = vec![fp(1.0), fp(0.0)];
+        let (score, decision) = run_inference_with_decision(&model, &inputs);
+        // First output: 1.0*1.0 + 0.1*0.0 = 1.0
+        // Second output: 0.1*1.0 + 0.1*0.0 = 0.1
+        // Argmax should be 0
+        assert!((score.dequantize() - 1.0).abs() < 1e-3);
+        assert_eq!(decision, 0);
+    }
+
+    #[test]
+    fn mlp_argmax_golden_vector_3class() {
+        // Golden vector for 3-class classification
+        let layer = DenseLayer {
+            weights: vec![
+                fp(0.5), fp(-0.2), fp(0.1),  // Class 0 weights
+                fp(-0.3), fp(0.8), fp(0.2),  // Class 1 weights
+                fp(0.1), fp(0.1), fp(-0.5),  // Class 2 weights
+            ],
+            biases: vec![fp(0.1), fp(-0.1), fp(0.0)],
+            input_size: 3,
+            output_size: 3,
+        };
+        let model = Model::TinyMLP(TinyMLP { layers: vec![layer] });
+        
+        // Test case 1: Should pick class 1
+        let inputs1 = vec![fp(0.0), fp(1.0), fp(0.0)];
+        let (_score1, decision1) = run_inference_with_decision(&model, &inputs1);
+        assert_eq!(decision1, 1);
+        
+        // Test case 2: Should pick class 0
+        let inputs2 = vec![fp(1.0), fp(0.0), fp(0.0)];
+        let (_score2, decision2) = run_inference_with_decision(&model, &inputs2);
+        assert_eq!(decision2, 0);
+        
+        // Test case 3: Should pick class 2
+        let inputs3 = vec![fp(0.0), fp(0.0), fp(-1.0)];
+        let (_score3, decision3) = run_inference_with_decision(&model, &inputs3);
+        assert_eq!(decision3, 2);
+    }
+
+    #[test]
+    fn decision_tree_returns_zero_decision() {
+        use crate::models::{DecisionTree, TreeNode};
+        let tree = DecisionTree {
+            num_features: 1,
+            nodes: vec![TreeNode::Leaf {
+                value: fp(42.0),
+            }],
+        };
+        let model = Model::DecisionTree(tree);
+        let inputs = vec![fp(0.5)];
+        let (score, decision) = run_inference_with_decision(&model, &inputs);
+        assert!((score.dequantize() - 42.0).abs() < 1e-3);
+        assert_eq!(decision, 0); // Decision trees don't produce class labels
     }
 }
 
@@ -268,6 +469,7 @@ mod tests_batch {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::quantize(1.0)],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         let rows = vec![
             vec![FixedPoint::quantize(0.5)],
@@ -317,6 +519,7 @@ mod tests_validated {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::quantize(1.0)],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         assert!(try_run_inference(&model, &[]).is_err());
     }
@@ -327,6 +530,7 @@ mod tests_validated {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![big],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         let inputs = vec![big];
         assert_eq!(
@@ -340,6 +544,7 @@ mod tests_validated {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::from_raw(100, 16), FixedPoint::from_raw(100, 16)],
             bias: FixedPoint::from_raw(0, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
         });
         let inputs = vec![FixedPoint::from_raw(100, 16), FixedPoint::from_raw(100, 8)];
         assert!(matches!(
@@ -353,6 +558,7 @@ mod tests_validated {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::quantize(2.5), FixedPoint::quantize(-1.5)],
             bias: FixedPoint::quantize(0.5),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         let inputs = vec![FixedPoint::quantize(4.0), FixedPoint::quantize(2.0)];
         let res = try_run_inference(&model, &inputs).unwrap();

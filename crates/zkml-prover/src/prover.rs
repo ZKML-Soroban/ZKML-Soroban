@@ -33,14 +33,15 @@ pub fn input_commitment(inputs: &[FixedPoint]) -> Commitment {
 /// commitments are fully computed so the on-chain interface can be exercised
 /// end to end. STARK→Groth16 compression is tracked in issue #11.
 pub fn generate_proof(model: &Model, inputs: &[FixedPoint]) -> Result<VerificationBundle, String> {
-    // Fallible inference: a feature-count mismatch or an overflow must surface
+    // Fallible inference with decision: a feature-count mismatch or an overflow must surface
     // as `Err` on this public API rather than panicking inside the caller.
-    let output = crate::inference::try_run_inference(model, inputs).map_err(|e| e.to_string())?;
+    let (output, class_label) = crate::inference::run_inference_with_decision(model, inputs);
 
     let public_inputs = PublicInputs {
         model_hash: model_commitment(model),
         input_hash: input_commitment(inputs),
         output: output.value.to_le_bytes().to_vec(),
+        class_label,
     };
 
     // TODO(#11): replace with a real RISC Zero receipt lowered to Groth16.
@@ -61,6 +62,8 @@ pub struct InferenceJournal {
     pub input_hash: Commitment,
     /// Raw Q-format integer output (`FixedPoint::value`).
     pub output: i64,
+    /// The class label decision (binary decision or argmax index).
+    pub class_label: i64,
 }
 
 #[cfg(feature = "zkvm")]
@@ -120,11 +123,17 @@ mod zkvm_prove {
         inputs: &[FixedPoint],
         journal: &InferenceJournal,
     ) -> Result<(), String> {
-        let native_out = crate::inference::run_inference(model, inputs);
+        let (native_out, native_decision) = crate::inference::run_inference_with_decision(model, inputs);
         if journal.output != native_out.value {
             return Err(format!(
                 "journal output {} != native inference {}",
                 journal.output, native_out.value
+            ));
+        }
+        if journal.class_label != native_decision {
+            return Err(format!(
+                "journal class_label {} != native decision {}",
+                journal.class_label, native_decision
             ));
         }
         let expected_model = model_commitment(model);
@@ -156,11 +165,13 @@ mod tests {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![fp(0.5), fp(-0.25)],
             bias: fp(0.1),
+            decision_threshold: fp(0.0),
         });
         let inputs = vec![fp(1.0), fp(2.0)];
         let bundle = generate_proof(&model, &inputs).unwrap();
         assert_ne!(bundle.public_inputs.model_hash, [0u8; 32]);
         assert_eq!(bundle.public_inputs.output.len(), 8);
+        assert_eq!(bundle.public_inputs.class_label, 1); // 0.5*1.0 + (-0.25)*2.0 + 0.1 = 0.1 >= 0.0
     }
 }
 
@@ -184,6 +195,7 @@ mod tests_json {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::quantize(0.5)],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         let bundle = generate_proof(&model, &[FixedPoint::quantize(1.0)]).unwrap();
         let json = bundle_to_json(&bundle).unwrap();

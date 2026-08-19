@@ -92,6 +92,7 @@ struct LogisticRegressionJson {
     model_type: String,
     weights: Vec<FixedPointJson>,
     bias: FixedPointJson,
+    decision_threshold: FixedPointJson,
 }
 
 /// Dense layer representation for TinyMLP.
@@ -133,6 +134,7 @@ impl TryFrom<ModelJson> for Model {
                 Ok(Model::LogisticRegression(LogisticRegression {
                     weights: lr.weights.into_iter().map(|w| w.into()).collect(),
                     bias: lr.bias.into(),
+                    decision_threshold: lr.decision_threshold.into(),
                 }))
             }
             ModelJson::TinyMLP(mlp) => {

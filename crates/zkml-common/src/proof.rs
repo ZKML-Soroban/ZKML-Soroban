@@ -25,6 +25,8 @@ pub struct PublicInputs {
     pub input_hash: [u8; 32],
     /// The inference output value (as a raw field element).
     pub output: Vec<u8>,
+    /// The class label decision (binary decision or argmax index).
+    pub class_label: i64,
 }
 
 /// A complete verification bundle sent to the on-chain contract.
@@ -38,12 +40,13 @@ pub struct VerificationBundle {
 
 impl PublicInputs {
     /// Serialize the public inputs into the byte layout the verifier expects:
-    /// `model_hash (32) || input_hash (32) || output`.
+    /// `model_hash (32) || input_hash (32) || output || class_label (8)`.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(64 + self.output.len());
+        let mut out = Vec::with_capacity(64 + self.output.len() + 8);
         out.extend_from_slice(&self.model_hash);
         out.extend_from_slice(&self.input_hash);
         out.extend_from_slice(&self.output);
+        out.extend_from_slice(&self.class_label.to_le_bytes());
         out
     }
 }
@@ -58,10 +61,13 @@ mod tests {
             model_hash: [1u8; 32],
             input_hash: [2u8; 32],
             output: vec![9u8; 8],
+            class_label: 0,
         };
         let bytes = pi.to_bytes();
-        assert_eq!(bytes.len(), 72);
+        assert_eq!(bytes.len(), 80);
         assert_eq!(&bytes[0..32], &[1u8; 32]);
         assert_eq!(&bytes[32..64], &[2u8; 32]);
+        assert_eq!(&bytes[64..72], &[9u8; 8]);
+        assert_eq!(&bytes[72..80], &[0u8; 8]);
     }
 }
