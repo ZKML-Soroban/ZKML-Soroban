@@ -5,6 +5,9 @@
 
 use crate::commitment::{commit_i64, Commitment};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// Domain tag for leaf hashing.
 const LEAF_DOMAIN: u64 = 10;
 

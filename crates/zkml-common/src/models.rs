@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::fixed_point::FixedPoint;
 
+#[cfg(feature = "std")]
+use alloc::format;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+
 // ---------------------------------------------------------------------------
 // Decision Tree
 // ---------------------------------------------------------------------------
@@ -101,30 +110,45 @@ impl TinyMLP {
                 "TinyMLP must have at least one layer".into(),
             ));
         }
-        for (i, layer) in self.layers.iter().enumerate() {
+        for (_i, layer) in self.layers.iter().enumerate() {
             let expected_weights = layer.input_size.saturating_mul(layer.output_size);
             if layer.weights.len() != expected_weights {
+                #[cfg(feature = "std")]
                 return Err(crate::error::ZkmlError::InvalidModel(format!(
-                    "layer {i}: expected {expected_weights} weights, got {}",
+                    "expected {expected_weights} weights, got {}",
                     layer.weights.len()
                 )));
+                #[cfg(not(feature = "std"))]
+                return Err(crate::error::ZkmlError::InvalidModel(
+                    "layer weight count mismatch".into(),
+                ));
             }
             if layer.biases.len() != layer.output_size {
+                #[cfg(feature = "std")]
                 return Err(crate::error::ZkmlError::InvalidModel(format!(
-                    "layer {i}: expected {} biases, got {}",
+                    "expected {} biases, got {}",
                     layer.output_size,
                     layer.biases.len()
                 )));
+                #[cfg(not(feature = "std"))]
+                return Err(crate::error::ZkmlError::InvalidModel(
+                    "layer bias count mismatch".into(),
+                ));
             }
         }
         for i in 0..self.layers.len().saturating_sub(1) {
             let out = self.layers[i].output_size;
             let next_in = self.layers[i + 1].input_size;
             if out != next_in {
+                #[cfg(feature = "std")]
                 return Err(crate::error::ZkmlError::InvalidModel(format!(
                     "layer {i} output_size {out} does not match layer {} input_size {next_in}",
                     i + 1
                 )));
+                #[cfg(not(feature = "std"))]
+                return Err(crate::error::ZkmlError::InvalidModel(
+                    "layer size mismatch".into(),
+                ));
             }
         }
         Ok(())
@@ -158,20 +182,36 @@ impl DecisionTree {
             } = node
             {
                 if *feature_index >= self.num_features {
+                    #[cfg(feature = "std")]
                     return Err(crate::error::ZkmlError::InvalidModel(format!(
-                        "node {i}: feature index {feature_index} out of range"
+                        "node {i}: feature index {} out of range",
+                        feature_index
                     )));
+                    #[cfg(not(feature = "std"))]
+                    return Err(crate::error::ZkmlError::InvalidModel(
+                        "feature index out of range".into(),
+                    ));
                 }
                 if *left >= self.nodes.len() || *right >= self.nodes.len() {
+                    #[cfg(feature = "std")]
                     return Err(crate::error::ZkmlError::InvalidModel(format!(
                         "node {i}: child index out of range"
                     )));
+                    #[cfg(not(feature = "std"))]
+                    return Err(crate::error::ZkmlError::InvalidModel(
+                        "child index out of range".into(),
+                    ));
                 }
                 // Reject self-referential splits
                 if *left == i || *right == i {
+                    #[cfg(feature = "std")]
                     return Err(crate::error::ZkmlError::InvalidModel(format!(
                         "node {i}: split points to itself"
                     )));
+                    #[cfg(not(feature = "std"))]
+                    return Err(crate::error::ZkmlError::InvalidModel(
+                        "self-referential split".into(),
+                    ));
                 }
             }
         }
@@ -191,16 +231,26 @@ impl DecisionTree {
             // Enforce maximum depth (prevent exponential blowup, configurable)
             const MAX_DEPTH: usize = 1000;
             if depth > MAX_DEPTH {
+                #[cfg(feature = "std")]
                 return Err(crate::error::ZkmlError::InvalidModel(format!(
                     "tree depth exceeds maximum of {MAX_DEPTH}"
                 )));
+                #[cfg(not(feature = "std"))]
+                return Err(crate::error::ZkmlError::InvalidModel(
+                    "tree depth exceeds maximum".into(),
+                ));
             }
 
             // Check for cycle
             if visited[node_idx] {
+                #[cfg(feature = "std")]
                 return Err(crate::error::ZkmlError::InvalidModel(format!(
                     "node {node_idx}: cycle detected (node visited twice)"
                 )));
+                #[cfg(not(feature = "std"))]
+                return Err(crate::error::ZkmlError::InvalidModel(
+                    "cycle detected".into(),
+                ));
             }
             visited[node_idx] = true;
 
@@ -216,11 +266,11 @@ impl DecisionTree {
         }
 
         // Check for orphan nodes (nodes not reachable from root)
-        for (i, was_visited) in visited.iter().enumerate() {
+        for was_visited in visited.iter() {
             if !was_visited {
-                return Err(crate::error::ZkmlError::InvalidModel(format!(
-                    "node {i}: orphan node (not reachable from root)"
-                )));
+                return Err(crate::error::ZkmlError::InvalidModel(
+                    "orphan node detected".into(),
+                ));
             }
         }
 
@@ -236,6 +286,7 @@ impl LogisticRegression {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests {
     use super::*;
     use crate::fixed_point::FixedPoint;
@@ -289,6 +340,7 @@ impl Model {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_features {
     use super::*;
     use crate::fixed_point::FixedPoint;

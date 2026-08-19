@@ -5,6 +5,9 @@
 
 use crate::fixed_point::FixedPoint;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// Quantized ReLU: `max(0, x)`.
 ///
 /// Implemented as a signed comparison on the raw Q16.16 integer
@@ -107,6 +110,7 @@ pub fn hardtanh_vec(xs: &[FixedPoint]) -> Vec<FixedPoint> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests {
     use super::*;
 
