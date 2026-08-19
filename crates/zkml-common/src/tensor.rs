@@ -2,6 +2,9 @@
 
 use crate::fixed_point::FixedPoint;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// A 2D tensor stored in row-major order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tensor {
@@ -52,6 +55,7 @@ impl Tensor {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests {
     use super::*;
 
