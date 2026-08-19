@@ -269,9 +269,12 @@ pub fn run_inference_with_decision(model: &Model, inputs: &[FixedPoint]) -> (Fix
             (score, decision)
         }
         Model::TinyMLP(mlp) => {
-            let logits = try_infer_tiny_mlp_all_outputs(mlp, inputs)
-                .expect("TinyMLP inference overflow");
-            let score = logits.first().copied().unwrap_or(FixedPoint::from_raw(0, 16));
+            let logits =
+                try_infer_tiny_mlp_all_outputs(mlp, inputs).expect("TinyMLP inference overflow");
+            let score = logits
+                .first()
+                .copied()
+                .unwrap_or(FixedPoint::from_raw(0, 16));
             let decision = argmax(&logits).map(|i| i as i64).unwrap_or(0);
             (score, decision)
         }
@@ -396,7 +399,9 @@ mod tests_inference_with_decision {
             input_size: 2,
             output_size: 2,
         };
-        let model = Model::TinyMLP(TinyMLP { layers: vec![layer] });
+        let model = Model::TinyMLP(TinyMLP {
+            layers: vec![layer],
+        });
         let inputs = vec![fp(1.0), fp(0.0)];
         let (score, decision) = run_inference_with_decision(&model, &inputs);
         // First output: 1.0*1.0 + 0.1*0.0 = 1.0
@@ -411,26 +416,34 @@ mod tests_inference_with_decision {
         // Golden vector for 3-class classification
         let layer = DenseLayer {
             weights: vec![
-                fp(0.5), fp(-0.2), fp(0.1),  // Class 0 weights
-                fp(-0.3), fp(0.8), fp(0.2),  // Class 1 weights
-                fp(0.1), fp(0.1), fp(-0.5),  // Class 2 weights
+                fp(0.5),
+                fp(-0.2),
+                fp(0.1), // Class 0 weights
+                fp(-0.3),
+                fp(0.8),
+                fp(0.2), // Class 1 weights
+                fp(0.1),
+                fp(0.1),
+                fp(-0.5), // Class 2 weights
             ],
             biases: vec![fp(0.1), fp(-0.1), fp(0.0)],
             input_size: 3,
             output_size: 3,
         };
-        let model = Model::TinyMLP(TinyMLP { layers: vec![layer] });
-        
+        let model = Model::TinyMLP(TinyMLP {
+            layers: vec![layer],
+        });
+
         // Test case 1: Should pick class 1
         let inputs1 = vec![fp(0.0), fp(1.0), fp(0.0)];
         let (_score1, decision1) = run_inference_with_decision(&model, &inputs1);
         assert_eq!(decision1, 1);
-        
+
         // Test case 2: Should pick class 0
         let inputs2 = vec![fp(1.0), fp(0.0), fp(0.0)];
         let (_score2, decision2) = run_inference_with_decision(&model, &inputs2);
         assert_eq!(decision2, 0);
-        
+
         // Test case 3: Should pick class 2
         let inputs3 = vec![fp(0.0), fp(0.0), fp(-1.0)];
         let (_score3, decision3) = run_inference_with_decision(&model, &inputs3);
@@ -442,9 +455,7 @@ mod tests_inference_with_decision {
         use crate::models::{DecisionTree, TreeNode};
         let tree = DecisionTree {
             num_features: 1,
-            nodes: vec![TreeNode::Leaf {
-                value: fp(42.0),
-            }],
+            nodes: vec![TreeNode::Leaf { value: fp(42.0) }],
         };
         let model = Model::DecisionTree(tree);
         let inputs = vec![fp(0.5)];

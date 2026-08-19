@@ -123,7 +123,8 @@ mod zkvm_prove {
         inputs: &[FixedPoint],
         journal: &InferenceJournal,
     ) -> Result<(), String> {
-        let (native_out, native_decision) = crate::inference::run_inference_with_decision(model, inputs);
+        let (native_out, native_decision) =
+            crate::inference::run_inference_with_decision(model, inputs);
         if journal.output != native_out.value {
             return Err(format!(
                 "journal output {} != native inference {}",

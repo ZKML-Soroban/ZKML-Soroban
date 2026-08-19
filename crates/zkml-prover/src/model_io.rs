@@ -133,9 +133,11 @@ impl JsonModel {
     /// Lower any JSON model into the internal `Model` representation.
     pub fn into_model(self) -> Model {
         match self {
-            JsonModel::LogisticRegression { weights, bias, decision_threshold } => {
-                Self::into_logistic(weights, bias, decision_threshold)
-            }
+            JsonModel::LogisticRegression {
+                weights,
+                bias,
+                decision_threshold,
+            } => Self::into_logistic(weights, bias, decision_threshold),
             JsonModel::DecisionTree {
                 num_features,
                 nodes,

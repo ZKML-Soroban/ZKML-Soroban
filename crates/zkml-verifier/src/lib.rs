@@ -271,7 +271,9 @@ impl ZkmlVerifierContract {
     fn bytes_to_i64(bytes: &Bytes) -> i64 {
         let mut arr = [0u8; 8];
         let len = bytes.len().min(8);
-        bytes.slice(0..len).copy_into_slice(&mut arr[..len as usize]);
+        bytes
+            .slice(0..len)
+            .copy_into_slice(&mut arr[..len as usize]);
         i64::from_le_bytes(arr)
     }
 
