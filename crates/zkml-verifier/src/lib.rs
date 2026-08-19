@@ -170,7 +170,7 @@ impl ZkmlVerifierContract {
 
         // Derive nullifier from public inputs to prevent replay attacks
         let nullifier = Self::derive_nullifier(&env, &public_inputs);
-        
+
         // Check if this proof has already been used
         let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
         if env.storage().persistent().has(&nullifier_key) {
@@ -180,9 +180,7 @@ impl ZkmlVerifierContract {
         // Store nullifier in persistent storage with TTL bump
         // Use a TTL of 63115200 ledgers (approximately 1 year at 5s per ledger)
         let ttl_ledgers = 63115200u32;
-        env.storage()
-            .persistent()
-            .set(&nullifier_key, &true);
+        env.storage().persistent().set(&nullifier_key, &true);
         env.storage()
             .persistent()
             .extend_ttl(&nullifier_key, 0, ttl_ledgers);
@@ -664,14 +662,16 @@ mod test_guards {
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
         let public_inputs = Bytes::from_slice(&env, &[3u8; 72]); // 32+32+8 = 72 bytes for single output
 
-        let first_result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        let first_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         // First attempt should not return ProofAlreadyUsed
         if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
             panic!("First verification should not return ProofAlreadyUsed");
         }
 
         // Second verification with identical inputs should return ProofAlreadyUsed
-        let second_result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        let second_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(second_result, Err(Ok(VerificationError::ProofAlreadyUsed)));
     }
 
@@ -692,7 +692,8 @@ mod test_guards {
 
         // First verification with input_hash [3u8; 32]
         let public_inputs_1 = Bytes::from_slice(&env, &[3u8; 72]); // model_hash [3u8; 32], input_hash [3u8; 32], output [3u8; 8]
-        let first_result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_1);
+        let first_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_1);
         // First attempt should not return ProofAlreadyUsed
         if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
             panic!("First verification should not return ProofAlreadyUsed");
@@ -702,7 +703,8 @@ mod test_guards {
         let mut public_inputs_2_bytes = [3u8; 72];
         public_inputs_2_bytes[32..64].copy_from_slice(&[4u8; 32]); // Change input_hash bytes
         let public_inputs_2 = Bytes::from_slice(&env, &public_inputs_2_bytes);
-        let second_result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_2);
+        let second_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_2);
         // Should not return ProofAlreadyUsed since input_hash is different
         if let Err(Ok(VerificationError::ProofAlreadyUsed)) = second_result {
             panic!("Verification with different input_hash should not return ProofAlreadyUsed");
@@ -726,7 +728,8 @@ mod test_guards {
 
         // First verification with output [3u8; 8]
         let public_inputs_1 = Bytes::from_slice(&env, &[3u8; 72]); // model_hash [3u8; 32], input_hash [3u8; 32], output [3u8; 8]
-        let first_result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_1);
+        let first_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_1);
         // First attempt should not return ProofAlreadyUsed
         if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
             panic!("First verification should not return ProofAlreadyUsed");
@@ -736,7 +739,8 @@ mod test_guards {
         let mut public_inputs_2_bytes = [3u8; 72];
         public_inputs_2_bytes[64..72].copy_from_slice(&[4u8; 8]); // Change output bytes
         let public_inputs_2 = Bytes::from_slice(&env, &public_inputs_2_bytes);
-        let second_result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_2);
+        let second_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_2);
         // Should not return ProofAlreadyUsed since output is different
         if let Err(Ok(VerificationError::ProofAlreadyUsed)) = second_result {
             panic!("Verification with different output should not return ProofAlreadyUsed");
