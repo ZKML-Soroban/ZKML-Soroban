@@ -151,7 +151,8 @@ fn compress_to_groth16_bonsai(receipt: &risc0_zkvm::Receipt) -> Result<Groth16Pr
         .map_err(|e| format!("Bonsai client initialization failed: {e}"))?;
 
     // Serialize the receipt for upload
-    let receipt_bytes = to_vec(receipt).map_err(|e| format!("receipt serialization failed: {e}"))?;
+    let receipt_bytes =
+        to_vec(receipt).map_err(|e| format!("receipt serialization failed: {e}"))?;
 
     // Upload the receipt to Bonsai
     let input_id = client
@@ -173,13 +174,13 @@ fn compress_to_groth16_bonsai(receipt: &risc0_zkvm::Receipt) -> Result<Groth16Pr
 
         match status.status.as_str() {
             "SUCCEEDED" => {
-                let snark_url = status
-                    .output
-                    .ok_or_else(|| "Bonsai SNARK succeeded but no output URL provided".to_string())?;
+                let snark_url = status.output.ok_or_else(|| {
+                    "Bonsai SNARK succeeded but no output URL provided".to_string()
+                })?;
                 let snark_buf = client
                     .download(&snark_url)
                     .map_err(|e| format!("Bonsai download failed: {e}"))?;
-                
+
                 // Deserialize the Groth16 receipt
                 let receipt: risc0_zkvm::Receipt = bincode::deserialize(&snark_buf)
                     .map_err(|e| format!("Bonsai receipt deserialization failed: {e}"))?;
@@ -229,19 +230,22 @@ fn compress_to_groth16_bonsai(receipt: &risc0_zkvm::Receipt) -> Result<Groth16Pr
 #[cfg(all(feature = "groth16", feature = "zkvm"))]
 pub fn export_groth16_verifying_key() -> Result<String, String> {
     use risc0_groth16::Groth16Receipt;
-    
+
     // The verification key is embedded in the Groth16 receipt structure.
     // For RISC Zero's Groth16 implementation, we can extract it from a sample
     // receipt or use the risc0-groth16 crate's VK export functionality.
-    
+
     // Note: The actual VK extraction depends on the risc0-groth16 API.
     // This is a placeholder that will need to be updated based on the actual
     // API available in risc0-groth16 3.0.4.
-    
+
     // For now, we return a placeholder that indicates the VK needs to be
     // extracted from the Groth16 proving setup.
-    Err("Verification key export requires risc0-groth16 VK extraction API. \
-         This will be implemented once the specific API is documented for 3.0.4.".to_string())
+    Err(
+        "Verification key export requires risc0-groth16 VK extraction API. \
+         This will be implemented once the specific API is documented for 3.0.4."
+            .to_string(),
+    )
 }
 
 /// Helper function to write the verification key to a file.

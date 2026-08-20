@@ -136,12 +136,11 @@ mod tests {
         };
 
         // Serialize
-        let serialized = bincode::serialize(&original)
-            .expect("Groth16Proof serialization failed");
+        let serialized = bincode::serialize(&original).expect("Groth16Proof serialization failed");
 
         // Deserialize
-        let deserialized: Groth16Proof = bincode::deserialize(&serialized)
-            .expect("Groth16Proof deserialization failed");
+        let deserialized: Groth16Proof =
+            bincode::deserialize(&serialized).expect("Groth16Proof deserialization failed");
 
         // Verify round-trip
         assert_eq!(original.data, deserialized.data);
@@ -161,17 +160,26 @@ mod tests {
         };
 
         // Serialize
-        let serialized = bincode::serialize(&bundle)
-            .expect("VerificationBundle serialization failed");
+        let serialized =
+            bincode::serialize(&bundle).expect("VerificationBundle serialization failed");
 
         // Deserialize
-        let deserialized: VerificationBundle = bincode::deserialize(&serialized)
-            .expect("VerificationBundle deserialization failed");
+        let deserialized: VerificationBundle =
+            bincode::deserialize(&serialized).expect("VerificationBundle deserialization failed");
 
         // Verify round-trip
         assert_eq!(bundle.proof.data, deserialized.proof.data);
-        assert_eq!(bundle.public_inputs.model_hash, deserialized.public_inputs.model_hash);
-        assert_eq!(bundle.public_inputs.input_hash, deserialized.public_inputs.input_hash);
-        assert_eq!(bundle.public_inputs.output, deserialized.public_inputs.output);
+        assert_eq!(
+            bundle.public_inputs.model_hash,
+            deserialized.public_inputs.model_hash
+        );
+        assert_eq!(
+            bundle.public_inputs.input_hash,
+            deserialized.public_inputs.input_hash
+        );
+        assert_eq!(
+            bundle.public_inputs.output,
+            deserialized.public_inputs.output
+        );
     }
 }
