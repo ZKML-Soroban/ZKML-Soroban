@@ -54,13 +54,17 @@ fn tree_case() -> impl Strategy<Value = (Model, Vec<FixedPoint>)> {
 }
 
 fn mlp_case() -> impl Strategy<Value = (Model, Vec<FixedPoint>)> {
+    // 2→1→1 keeps guest cycles small. Both inputs and the output bias are
+    // drawn from `small_fp` so this is not a 1-D slice of MLP space.
     (
         prop::collection::vec(small_fp(), 2),
         small_fp(),
         small_fp(),
         small_fp(),
+        small_fp(),
+        small_fp(),
     )
-        .prop_map(|(w0, b0, w1, input)| {
+        .prop_map(|(w0, b0, w1, b1, x0, x1)| {
             let hidden = DenseLayer {
                 weights: w0,
                 biases: vec![b0],
@@ -69,7 +73,7 @@ fn mlp_case() -> impl Strategy<Value = (Model, Vec<FixedPoint>)> {
             };
             let out = DenseLayer {
                 weights: vec![w1],
-                biases: vec![FixedPoint::quantize(0.0)],
+                biases: vec![b1],
                 input_size: 1,
                 output_size: 1,
             };
@@ -77,13 +81,23 @@ fn mlp_case() -> impl Strategy<Value = (Model, Vec<FixedPoint>)> {
                 Model::TinyMLP(TinyMLP {
                     layers: vec![hidden, out],
                 }),
-                vec![input, FixedPoint::quantize(0.0)],
+                vec![x0, x1],
             )
         })
 }
 
 fn any_valid_case() -> impl Strategy<Value = (Model, Vec<FixedPoint>)> {
     prop_oneof![logistic_case(), tree_case(), mlp_case()]
+}
+
+fn ensure_risc0_dev_mode() {
+    use std::sync::Once;
+    static SET: Once = Once::new();
+    SET.call_once(|| {
+        // CI already exports RISC0_DEV_MODE=1. Set it once so local
+        // `cargo test -p zkml-prover --features zkvm` still uses fake receipts.
+        std::env::set_var("RISC0_DEV_MODE", "1");
+    });
 }
 
 fn zkvm_proptest_config() -> ProptestConfig {
@@ -100,10 +114,10 @@ proptest! {
     /// Guest journal output matches native `try_run_inference` on random models.
     #[test]
     fn guest_journal_matches_native(case in any_valid_case()) {
-        std::env::set_var("RISC0_DEV_MODE", "1");
+        ensure_risc0_dev_mode();
         let (model, inputs) = case;
         let native = try_run_inference(&model, &inputs);
-        prop_assume!(native.is_ok());
+        prop_assert!(native.is_ok(), "try_run_inference returned {native:?}");
         let native_out = native.unwrap();
         let receipt = generate_receipt(&model, &inputs);
         prop_assert!(
