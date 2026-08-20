@@ -48,6 +48,7 @@ fn create_test_tree_onnx() -> Vec<u8> {
                 }),
             }],
             output: vec![],
+            initializer: vec![],
             node: vec![NodeProto {
                 name: "tree".into(),
                 op_type: "TreeEnsembleClassifier".into(),
@@ -232,6 +233,7 @@ fn test_reject_multi_tree_ensemble() {
                 }),
             }],
             output: vec![],
+            initializer: vec![],
             node: vec![NodeProto {
                 name: "ensemble".into(),
                 op_type: "TreeEnsembleClassifier".into(),
@@ -344,6 +346,7 @@ fn test_reject_unsupported_node_mode() {
                 }),
             }],
             output: vec![],
+            initializer: vec![],
             node: vec![NodeProto {
                 name: "bad_mode".into(),
                 op_type: "TreeEnsembleClassifier".into(),
@@ -454,6 +457,7 @@ fn test_reject_out_of_bounds_child_index() {
                 }),
             }],
             output: vec![],
+            initializer: vec![],
             node: vec![NodeProto {
                 name: "bad_index".into(),
                 op_type: "TreeEnsembleClassifier".into(),
@@ -565,6 +569,7 @@ fn test_reject_cycle_in_tree() {
                 }),
             }],
             output: vec![],
+            initializer: vec![],
             node: vec![NodeProto {
                 name: "cycle".into(),
                 op_type: "TreeEnsembleClassifier".into(),
