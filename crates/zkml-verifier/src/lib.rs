@@ -32,7 +32,7 @@ const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
 
 /// Contract interface version, bumped on breaking interface changes.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -180,11 +180,24 @@ impl ZkmlVerifierContract {
         let count: u32 = env.storage().instance().get(&VERIFY_CNT).unwrap_or(0);
         env.storage().instance().set(&VERIFY_CNT, &(count + 1));
 
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("verified"),), record.verified_at);
+        Self::emit_verified_event(&env, &record);
 
         Ok(())
+    }
+
+    /// Emit the `verified` contract event, enriched so an off-chain indexer can
+    /// learn "which model produced which output" directly from the event.
+    ///
+    /// - `model_hash` is published as a topic so indexers can filter per model.
+    /// - `verified_at` (ledger sequence) and `output` are published as data; the
+    ///   variable-length `output` is kept out of the topics (topics must be
+    ///   fixed-length / filterable keys).
+    fn emit_verified_event(env: &Env, record: &InferenceRecord) {
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("verified"), record.model_hash.clone()),
+            (record.verified_at, record.output.clone()),
+        );
     }
 
     /// Deserialize a G1 point from 64 bytes (Ethereum-compatible format).
@@ -640,5 +653,42 @@ mod test_poseidon_cross_check {
         let test_data = [1u8, 2u8, 3u8];
         let commitment = Bytes::from_slice(&env, &test_data);
         assert_eq!(commitment, Bytes::from_slice(&env, &test_data));
+    }
+}
+
+#[cfg(test)]
+mod test_verified_event {
+    use super::*;
+    use soroban_sdk::testutils::Events;
+    use soroban_sdk::IntoVal;
+
+    #[test]
+    fn verify_emits_verified_event_with_model_hash_and_output() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+
+        let model_hash = Bytes::from_slice(&env, &[0xabu8; 32]);
+        let output = Bytes::from_slice(&env, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        let record = InferenceRecord {
+            model_hash: model_hash.clone(),
+            output: output.clone(),
+            verified_at: 1234,
+        };
+
+        env.as_contract(&contract_id, || {
+            ZkmlVerifierContract::emit_verified_event(&env, &record);
+        });
+
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (symbol_short!("verified"), model_hash.clone()).into_val(&env),
+                    (1234u32, output.clone()).into_val(&env),
+                ),
+            ]
+        );
     }
 }
