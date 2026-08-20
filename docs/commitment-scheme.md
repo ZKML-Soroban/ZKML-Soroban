@@ -270,7 +270,7 @@ This ensures that any change to the model, input, or output produces a different
 
 ### Storage and TTL
 
-Nullifiers are stored in persistent storage with a Time-To-Live (TTL) of approximately 1 year (63115200 ledgers at 5 seconds per ledger). The storage key is:
+Nullifiers are stored in persistent storage with a Time-To-Live (TTL) set to the network's maximum entry TTL (approximately 61 days at 5 seconds per ledger). The storage key is:
 
 ```
 (nullifier_prefix, nullifier_bytes)
@@ -278,7 +278,7 @@ Nullifiers are stored in persistent storage with a Time-To-Live (TTL) of approxi
 
 where `nullifier_prefix` is the Symbol `"nullifier"` and `nullifier_bytes` is the 32-byte SHA256 hash.
 
-The TTL is extended on each write to ensure nullifiers persist independently of the contract instance and survive contract upgrades.
+The TTL is extended on each write to ensure nullifiers persist independently of the contract instance and survive contract upgrades. The contract uses `env.storage().persistent().max_ttl()` to dynamically obtain the network's maximum allowed TTL, ensuring compatibility with network configuration changes.
 
 ### Replay Attack Prevention
 

@@ -200,12 +200,13 @@ impl ZkmlVerifierContract {
         }
 
         // Store nullifier in persistent storage with TTL bump
-        // Use a TTL of 63115200 ledgers (approximately 1 year at 5s per ledger)
-        let ttl_ledgers = 63115200u32;
+        // Use max_entry_ttl (1,054,080 ledgers, approximately 61 days at 5s per ledger)
+        // This is the network's maximum allowed persistent entry TTL
+        let ttl_ledgers = env.storage().max_ttl();
         env.storage().persistent().set(&nullifier_key, &true);
         env.storage()
             .persistent()
-            .extend_ttl(&nullifier_key, 0, ttl_ledgers);
+            .extend_ttl(&nullifier_key, ttl_ledgers, ttl_ledgers);
 
         // Verification succeeded - record result
         // Output starts after model_hash (32) and input_hash (32) = byte 64
