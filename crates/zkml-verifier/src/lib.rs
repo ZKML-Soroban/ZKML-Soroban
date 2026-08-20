@@ -483,7 +483,7 @@ mod test_guards {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
-        let vk = create_dummy_vk(env, 4);
+        let vk = create_dummy_vk(env, 5);
         client.initialize(&model_hash, &vk);
         client
     }
@@ -496,7 +496,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::MalformedProofA)));
@@ -516,7 +516,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &g1_bytes);
         let proof_b = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
         let proof_c = Bytes::from_slice(&env, &g1_bytes);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         // Should fail due to malformed proof_b (wrong length)
@@ -537,7 +537,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &g1_bytes);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         // Should fail due to malformed proof_c (wrong length)
         assert!(result.is_err());
@@ -565,8 +565,8 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        // 32+32+7 = 71 bytes - output is not a multiple of 8
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 71]);
+        // 32+32+8+8+8 = 88 bytes - extra 8 bytes after parsing all fields
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 88]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::InvalidPublicInputLength)));
@@ -578,17 +578,17 @@ mod test_guards {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
-        // Initialize with VK that has 5 IC points
+        // Initialize with VK that has 6 IC points
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 5);
+        let vk = create_dummy_vk(&env, 6);
         client.initialize(&model_hash, &vk);
 
-        // Provide public inputs for single output (3 scalars: model_hash, input_hash, output)
-        // This requires 4 IC points, but VK has 5
+        // Provide public inputs for single output + class_label (4 scalars: model_hash, input_hash, output, class_label)
+        // This requires 5 IC points, but VK has 6
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(
@@ -603,12 +603,12 @@ mod test_guards {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
-        // Initialize with VK that has 5 IC points for multi-class output (2 output scalars)
+        // Initialize with VK that has 5 IC points for single output + class_label (4 scalars)
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5); // ic[0], ic[1], ic[2], ic[3], ic[4]
         client.initialize(&model_hash, &vk);
 
-        // Provide public inputs for 2 output scalars: 32+32+8+8 = 80 bytes
+        // Provide public inputs for single output + class_label: 32+32+8+8 = 80 bytes
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
@@ -619,7 +619,7 @@ mod test_guards {
         // The important thing is it doesn't return VerificationKeyLengthMismatch
         if let Err(Ok(VerificationError::VerificationKeyLengthMismatch)) = result {
             panic!(
-                "Should not fail with VerificationKeyLengthMismatch for valid multi-scalar output"
+                "Should not fail with VerificationKeyLengthMismatch for valid single output + class_label"
             );
         }
     }
@@ -632,14 +632,14 @@ mod test_guards {
 
         // Initialize with model hash [3u8; 32]
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
         client.initialize(&model_hash, &vk);
 
         // Try to verify with different model hash [5u8; 32]
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]); // 32+32+8 = 72 bytes for single output
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]); // 32+32+8+8 = 80 bytes for single output + class_label
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
@@ -659,7 +659,7 @@ mod test_poseidon_cross_check {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 72]); // 32+32+8 = 72 bytes
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]); // 32+32+8+8 = 80 bytes
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::ContractNotInitialized)));
