@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 /// ## G1 Point Encoding (A and C)
 ///
 /// Each G1 point (x, y) is encoded as 64 bytes in big-endian order:
-/// ```
+/// ```text
 /// [0..32):  x coordinate (32 bytes, big-endian)
 /// [32..64): y coordinate (32 bytes, big-endian)
 /// ```
@@ -33,7 +33,7 @@ use alloc::vec::Vec;
 /// G2 points are in Fp2, where each coordinate is a pair of field elements.
 /// Following Ethereum precompile conventions (EIP-196), each coordinate is
 /// encoded as (c1, c0) where the value is c0 + c1 * i:
-/// ```
+/// ```text
 /// [0..32):   x.c1 (32 bytes, big-endian)
 /// [32..64):  x.c0 (32 bytes, big-endian)
 /// [64..96):  y.c1 (32 bytes, big-endian)
