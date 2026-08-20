@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Property-based tests for inference (`try_run_inference` determinism, ReLU
+  monotonicity, stable argmax, no panics) and a zkVM differential suite that
+  compares `generate_receipt` journals against native inference.
 - `zkml-prover` CLI subcommands (`commit`, `infer`, `prove`, `validate`,
   `inspect`) built on clap, with strict `--input` parsing that rejects
   unparseable, empty, non-finite, and out-of-range fields instead of silently

@@ -28,3 +28,6 @@ zkml-methods = { path = "../../methods", optional = true }
 
 # ONNX protobuf decoding (pinned; API surface used by the importer foundation).
 prost = "=0.13.5"
+
+[dev-dependencies]
+proptest = "1.5"
