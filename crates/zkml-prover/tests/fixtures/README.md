@@ -12,6 +12,7 @@ foundation (protobuf parse, opset check, operator allowlist).
 | `linear_classifier_valid.onnx` | Core 18 + `ai.onnx.ml` 1 + `LinearClassifier`. Extraction deferred (issue #6). |
 | `unsupported_conv.onnx` | Core 17 + `Conv`. Must fail with `UnsupportedOperator { op_type: "Conv" }`. |
 | `low_opset_tree.onnx` | Core 13 + ml 3 + tree op. Must fail with `UnsupportedOpset` on the core domain. |
+| `tinymlp_valid.onnx` | Core 17 + Gemm + Relu + Gemm. 2-layer MLP matching the golden network in `tinymlp_inference.rs`. Validation passes and imports into a TinyMLP. |
 
 ## How these fixtures were generated
 

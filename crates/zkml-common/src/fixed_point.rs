@@ -35,6 +35,7 @@ impl FixedPoint {
 
     /// Quantize a floating-point value into its fixed-point representation
     /// using the default scale.
+    #[cfg(feature = "std")]
     pub fn quantize(real: f64) -> Self {
         let factor = (1i64 << DEFAULT_SCALE) as f64;
         Self {
@@ -44,12 +45,14 @@ impl FixedPoint {
     }
 
     /// Reconstruct the approximate floating-point value.
+    #[cfg(feature = "std")]
     pub fn dequantize(&self) -> f64 {
         self.value as f64 / (1i64 << self.scale) as f64
     }
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests {
     use super::*;
 
@@ -77,6 +80,7 @@ impl FixedPoint {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_add {
     use super::*;
 
@@ -121,6 +125,7 @@ impl FixedPoint {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_overflow {
     use super::*;
 
@@ -139,12 +144,14 @@ mod tests_overflow {
     }
 }
 
+#[cfg(feature = "std")]
 impl core::fmt::Display for FixedPoint {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:.5}", self.dequantize())
     }
 }
 
+#[cfg(feature = "std")]
 impl From<i32> for FixedPoint {
     fn from(value: i32) -> Self {
         FixedPoint::quantize(value as f64)
@@ -252,6 +259,7 @@ impl Neg for FixedPoint {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_mul {
     use super::*;
 
@@ -280,6 +288,7 @@ mod tests_mul {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_arithmetic_ops {
     use super::*;
 
@@ -410,6 +419,7 @@ impl FixedPoint {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_div {
     use super::*;
 
@@ -461,6 +471,7 @@ impl FixedPoint {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_sign {
     use super::*;
 
@@ -514,6 +525,7 @@ pub fn dot(a: &[FixedPoint], b: &[FixedPoint]) -> FixedPoint {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_dot {
     use super::*;
 
@@ -582,6 +594,7 @@ pub fn argmax(xs: &[FixedPoint]) -> Option<usize> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod tests_reduce {
     use super::*;
 

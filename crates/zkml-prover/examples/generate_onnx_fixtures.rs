@@ -12,7 +12,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use prost::Message;
-use zkml_prover::onnx::{AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto};
+use zkml_prover::onnx::{
+    AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorProto,
+};
 
 fn encode(model: &ModelProto) -> Vec<u8> {
     let mut buf = Vec::new();
@@ -177,6 +179,45 @@ fn opsets(core: i64, ml: i64) -> Vec<OperatorSetIdProto> {
     ]
 }
 
+fn make_tensor(name: &str, dims: Vec<i64>, data: Vec<f32>) -> TensorProto {
+    TensorProto {
+        name: name.into(),
+        data_type: 1, // FLOAT (f32)
+        dims,
+        float_data: data,
+        raw_data: vec![],
+        int32_data: vec![],
+        int64_data: vec![],
+        string_data: vec![],
+    }
+}
+
+fn gemm_node(name: &str, inputs: Vec<&str>, output: &str, trans_b: i64) -> NodeProto {
+    NodeProto {
+        name: name.into(),
+        op_type: "Gemm".into(),
+        domain: String::new(),
+        input: inputs.into_iter().map(String::from).collect(),
+        output: vec![output.into()],
+        attribute: vec![AttributeProto {
+            name: "transB".into(),
+            i: trans_b,
+            ..Default::default()
+        }],
+    }
+}
+
+fn relu_node(name: &str, input: &str, output: &str) -> NodeProto {
+    NodeProto {
+        name: name.into(),
+        op_type: "Relu".into(),
+        domain: String::new(),
+        input: vec![input.into()],
+        output: vec![output.into()],
+        attribute: vec![],
+    }
+}
+
 fn main() {
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     fs::create_dir_all(&out).expect("create fixtures dir");
@@ -191,6 +232,7 @@ fn main() {
             name: "decision_tree".into(),
             input: vec![],
             output: vec![],
+            initializer: vec![],
             node: vec![tree_classifier_node("tree_ensemble")],
         }),
         ..Default::default()
@@ -207,6 +249,7 @@ fn main() {
             name: "SklearnDecisionTreeClassifier".into(),
             input: vec![],
             output: vec![],
+            initializer: vec![],
             node: vec![tree_classifier_node("TreeEnsembleClassifier")],
         }),
         ..Default::default()
@@ -225,6 +268,7 @@ fn main() {
             name: "cnn".into(),
             input: vec![],
             output: vec![],
+            initializer: vec![],
             node: vec![node("conv0", "Conv", "")],
         }),
         ..Default::default()
@@ -240,6 +284,7 @@ fn main() {
             name: "old_tree".into(),
             input: vec![],
             output: vec![],
+            initializer: vec![],
             node: vec![tree_classifier_node("tree_ensemble")],
         }),
         ..Default::default()
@@ -256,6 +301,7 @@ fn main() {
             name: "logistic".into(),
             input: vec![],
             output: vec![],
+            initializer: vec![],
             node: vec![linear_classifier_node(
                 "linear",
                 vec![0.5, -0.3, 0.8], // 3 coefficients
@@ -265,6 +311,36 @@ fn main() {
         ..Default::default()
     };
     fs::write(out.join("linear_classifier_valid.onnx"), encode(&linear)).unwrap();
+
+    // TinyMLP: core 17 (no ML domain as it uses core ops Gemm/Relu).
+    // 2->2->1 MLP matching the golden_network in tinymlp_inference.rs.
+    let w1 = make_tensor("W1", vec![2, 2], vec![0.3, -0.2, 0.1, 0.4]);
+    let b1 = make_tensor("B1", vec![2], vec![0.1, -0.5]);
+    let w2 = make_tensor("W2", vec![1, 2], vec![0.6, 0.2]);
+    let b2 = make_tensor("B2", vec![1], vec![0.05]);
+
+    let mlp = ModelProto {
+        ir_version: 8,
+        producer_name: "zkml-fixture-generator".into(),
+        producer_version: "0.1".into(),
+        opset_import: vec![OperatorSetIdProto {
+            domain: String::new(),
+            version: 17,
+        }],
+        graph: Some(GraphProto {
+            name: "tinymlp".into(),
+            input: vec![],
+            output: vec![],
+            initializer: vec![w1, b1, w2, b2],
+            node: vec![
+                gemm_node("gemm0", vec!["X", "W1", "B1"], "gemm0_out", 1),
+                relu_node("relu0", "gemm0_out", "relu0_out"),
+                gemm_node("gemm1", vec!["relu0_out", "W2", "B2"], "Y", 1),
+            ],
+        }),
+        ..Default::default()
+    };
+    fs::write(out.join("tinymlp_valid.onnx"), encode(&mlp)).unwrap();
 
     println!("wrote fixtures to {}", out.display());
 }

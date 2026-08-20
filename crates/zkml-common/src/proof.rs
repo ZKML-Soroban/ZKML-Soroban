@@ -5,6 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// Opaque byte wrapper for a Groth16 proof serialized according to the
 /// BN254 curve encoding expected by the Soroban host functions.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -14,7 +14,7 @@ exclude = ["methods", "methods/guest"]
 version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/diegoveme/ZKML-Soroban"
+repository = "https://github.com/ZKML-Soroban/ZKML-Soroban"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

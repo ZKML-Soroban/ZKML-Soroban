@@ -1,0 +1,29 @@
+{
+  "description": "Error path: decision tree with self-referential split",
+  "model": {
+    "type": "DecisionTree",
+    "num_features": 1,
+    "nodes": [
+      {
+        "type": "Split",
+        "feature_index": 0,
+        "threshold": {"value": 32768, "scale": 16},
+        "left": 0,
+        "right": 1
+      },
+      {
+        "type": "Leaf",
+        "value": {"value": 65536, "scale": 16}
+      }
+    ]
+  },
+  "test_cases": [
+    {
+      "description": "Tree has self-referential split (node 0 left points to itself) - should error during validation",
+      "inputs": [
+        {"value": 0, "scale": 16}
+      ],
+      "expected_error": "InvalidModel"
+    }
+  ]
+}

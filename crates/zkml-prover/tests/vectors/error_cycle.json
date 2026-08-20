@@ -1,0 +1,40 @@
+{
+  "description": "Error path: decision tree with a cycle (split points back to ancestor)",
+  "model": {
+    "type": "DecisionTree",
+    "num_features": 1,
+    "nodes": [
+      {
+        "type": "Split",
+        "feature_index": 0,
+        "threshold": {"value": 32768, "scale": 16},
+        "left": 1,
+        "right": 2
+      },
+      {
+        "type": "Split",
+        "feature_index": 0,
+        "threshold": {"value": 65536, "scale": 16},
+        "left": 0,
+        "right": 3
+      },
+      {
+        "type": "Leaf",
+        "value": {"value": 0, "scale": 16}
+      },
+      {
+        "type": "Leaf",
+        "value": {"value": 65536, "scale": 16}
+      }
+    ]
+  },
+  "test_cases": [
+    {
+      "description": "Tree has a cycle (node 1 left points back to node 0) - should error during validation",
+      "inputs": [
+        {"value": 0, "scale": 16}
+      ],
+      "expected_error": "InvalidModel"
+    }
+  ]
+}
