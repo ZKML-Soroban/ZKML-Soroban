@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `try_run_batch` returns per-row `Result`s so one malformed row cannot
   abort the rest of a batch. `run_batch` stays the all-valid panicking path.
+- **Breaking:** `get_result` and `get_model_hash` now return `Option` instead
+  of trapping, so callers can read pre-initialize / pre-verify state without a
+  panic. Contract `VERSION` bumped from 4 to 5.
 - Instance-storage TTL bump on `initialize` and on successful `verify_inference`,
   with named threshold/extend-to constants (30d / 120d).
 - Enriched the `verified` event with `model_hash` (published as a topic) and
