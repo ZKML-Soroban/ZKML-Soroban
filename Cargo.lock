@@ -4447,6 +4447,7 @@ name = "zkml-prover"
 version = "0.2.0"
 dependencies = [
  "clap",
+ "proptest",
  "prost",
  "risc0-zkvm",
  "serde",

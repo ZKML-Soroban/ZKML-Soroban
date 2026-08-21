@@ -32,3 +32,24 @@ The contract uses instance storage with the following short-symbol keys:
 
 Instance storage is used because every entry is small and is read on nearly
 every call, so it benefits from being loaded together with the contract.
+
+## Instance TTL policy
+
+Instance storage shares one lifetime with the contract instance. If that TTL
+is not renewed, a quiet verifier is archived and cannot be invoked until it
+is restored. The contract therefore bumps instance TTL in two places:
+
+- at the end of `initialize` (the contract is now live)
+- after every **successful** `verify_inference` (active use, no external keeper)
+
+Named constants live next to the storage keys in `crates/zkml-verifier/src/lib.rs`:
+
+| Constant | Value | Rationale |
+| -------- | ----- | --------- |
+| `INSTANCE_TTL_THRESHOLD` | 30 days (`30 * 17_280` ledgers) | Renew when remaining lifetime falls below a month. |
+| `INSTANCE_TTL_EXTEND_TO` | 120 days (`120 * 17_280` ledgers) | Typical persistent rent floor; under the ~180-day network max. |
+
+`extend_ttl` is a no-op unless the current TTL is below the threshold, so a
+recently initialized or recently verified contract does not pay extra rent.
+Failed verifications do not bump TTL. Persistent entries such as nullifiers
+need their own policy and are out of scope here.
