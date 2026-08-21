@@ -235,7 +235,10 @@ The verifier contract uses Soroban instance storage for its state:
 
 Instance storage is appropriate here because the verification key and model
 commitment are set once and referenced on every verification call. The
-`InferenceRecord` is overwritten on each successful verification.
+`InferenceRecord` is overwritten on each successful verification. The
+contract renews the shared instance TTL on `initialize` and on every
+successful `verify_inference` (30-day threshold, 120-day extension). See
+[verifier-interface.md](verifier-interface.md#instance-ttl-policy).
 
 ---
 

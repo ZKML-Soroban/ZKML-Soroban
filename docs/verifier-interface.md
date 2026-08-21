@@ -33,28 +33,23 @@ The contract uses instance storage with the following short-symbol keys:
 Instance storage is used because every entry is small and is read on nearly
 every call, so it benefits from being loaded together with the contract.
 
-## Events
+## Instance TTL policy
 
-On a successful `verify_inference`, the contract emits a `verified` event so an
-off-chain indexer can learn "which model produced which output" without polling
-`get_result` (which only returns the most recent record and races against the
-next verification).
+Instance storage shares one lifetime with the contract instance. If that TTL
+is not renewed, a quiet verifier is archived and cannot be invoked until it
+is restored. The contract therefore bumps instance TTL in two places:
 
-| Field        | Position        | Type    | Description                                                        |
-| ------------ | --------------- | ------- | ------------------------------------------------------------------ |
-| `verified`   | topic[0]        | Symbol  | Constant event name.                                               |
-| `model_hash` | topic[1]        | Bytes   | Poseidon commitment to the model (32 bytes). A topic so indexers can subscribe per model. |
-| `verified_at`| data[0]         | u32     | Ledger sequence number at verification time.                       |
-| `output`     | data[1]         | Bytes   | The inference output value. Kept in the data (not a topic) because it is variable-length. |
+- at the end of `initialize` (the contract is now live)
+- after every **successful** `verify_inference` (active use, no external keeper)
 
-In `soroban-sdk` terms the publish call is:
+Named constants live next to the storage keys in `crates/zkml-verifier/src/lib.rs`:
 
-```rust
-env.events().publish(
-    (symbol_short!("verified"), record.model_hash.clone()),
-    (record.verified_at, record.output.clone()),
-);
-```
+| Constant | Value | Rationale |
+| -------- | ----- | --------- |
+| `INSTANCE_TTL_THRESHOLD` | 30 days (`30 * 17_280` ledgers) | Renew when remaining lifetime falls below a month. |
+| `INSTANCE_TTL_EXTEND_TO` | 120 days (`120 * 17_280` ledgers) | Typical persistent rent floor; under the ~180-day network max. |
 
-Consumers should filter on `topic[0] == "verified"` and may additionally filter
-on `topic[1] == <model_hash>` to track a single model across deployments.
+`extend_ttl` is a no-op unless the current TTL is below the threshold, so a
+recently initialized or recently verified contract does not pay extra rent.
+Failed verifications do not bump TTL. Persistent entries such as nullifiers
+need their own policy and are out of scope here.
