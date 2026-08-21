@@ -7,7 +7,8 @@
 //! - [`generate_receipt`]: Phase 1 STARK receipt from the zkVM guest (this issue).
 //! - [`generate_proof`]: public-input bundle with a placeholder Groth16 proof
 //!   until STARK→Groth16 compression lands in issue #11.
-//! - [`generate_proof_with_groth16`]: Full STARK→Groth16 compression with backend selection.
+//! - [`generate_proof_with_groth16`]: Placeholder for STARK→Groth16 compression
+//!   with backend selection (not yet implemented - see TODO comments).
 
 use zkml_common::commitment::{commit_i64, commitment_hash, Commitment};
 use zkml_common::fixed_point::FixedPoint;
@@ -15,6 +16,12 @@ use zkml_common::models::Model;
 use zkml_common::proof::{Groth16Proof, PublicInputs, VerificationBundle};
 
 /// Prover backend selection for Groth16 proof generation.
+///
+/// # Not Yet Implemented
+///
+/// Both backends are currently placeholders that return `Err`. The actual
+/// STARK→Groth16 compression implementation is deferred pending investigation
+/// of the risc0-groth16 3.0.5 and bonsai-sdk 1.1 APIs.
 ///
 /// - `Local`: Uses Docker-based local prover (requires `risc0-groth16` component).
 /// - `Bonsai`: Uses RISC Zero's remote proving service (requires API credentials).
@@ -65,9 +72,15 @@ pub fn generate_proof(model: &Model, inputs: &[FixedPoint]) -> Result<Verificati
     })
 }
 
-/// Generate a verification bundle with real Groth16 proof via STARK→SNARK compression.
+/// Generate a verification bundle with Groth16 proof via STARK→SNARK compression.
 ///
-/// This function performs the full proof pipeline:
+/// # Not Yet Implemented
+///
+/// This function is a placeholder for the full STARK→Groth16 compression pipeline.
+/// Both backends currently return `Err` with a "not yet implemented" message.
+///
+/// TODO: Implement actual STARK→Groth16 compression using risc0-groth16 3.0.5 API.
+/// The compression pipeline should:
 /// 1. Run inference inside the zkVM guest to produce a STARK receipt
 /// 2. Convert the STARK receipt to a Groth16 SNARK using the specified backend
 /// 3. Serialize the Groth16 proof according to the BN254 wire format
