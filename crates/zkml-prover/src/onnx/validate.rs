@@ -85,6 +85,7 @@ pub fn detect_architecture(model: &ModelProto) -> String {
     };
     let mut has_tree = false;
     let mut has_linear = false;
+    let mut has_gemm = false;
     let mut has_matmul = false;
     let mut has_add = false;
     let mut has_relu = false;
@@ -93,6 +94,7 @@ pub fn detect_architecture(model: &ModelProto) -> String {
         match node.op_type.as_str() {
             "TreeEnsembleClassifier" => has_tree = true,
             "LinearClassifier" => has_linear = true,
+            "Gemm" => has_gemm = true,
             "MatMul" => has_matmul = true,
             "Add" => has_add = true,
             "Relu" => has_relu = true,
@@ -104,8 +106,14 @@ pub fn detect_architecture(model: &ModelProto) -> String {
         "decision tree (TreeEnsembleClassifier)".into()
     } else if has_linear {
         "logistic regression (LinearClassifier)".into()
-    } else if has_matmul {
-        let mut parts = vec!["MatMul"];
+    } else if has_gemm || has_matmul {
+        let mut parts = Vec::new();
+        if has_gemm {
+            parts.push("Gemm");
+        }
+        if has_matmul {
+            parts.push("MatMul");
+        }
         if has_add {
             parts.push("Add");
         }
@@ -222,6 +230,7 @@ mod tests {
             name: "g".into(),
             input: vec![],
             output: vec![],
+            initializer: vec![],
             node: vec![
                 NodeProto {
                     op_type: "MatMul".into(),

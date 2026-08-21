@@ -68,6 +68,9 @@ pub struct GraphProto {
     /// Output tensors.
     #[prost(message, repeated, tag = "4")]
     pub output: Vec<ValueInfoProto>,
+    /// Pre-initialised tensors (constant weights / biases).
+    #[prost(message, repeated, tag = "5")]
+    pub initializer: Vec<TensorProto>,
 }
 
 /// Tensor shape information (`ValueInfoProto`).

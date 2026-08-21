@@ -29,6 +29,14 @@ jobs:
       - name: Test
         run: cargo test --workspace --verbose
 
+  no_std_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build zkml-common without std
+        run: cargo build -p zkml-common --no-default-features
+
   zkvm:
     runs-on: ubuntu-latest
     steps:

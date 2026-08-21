@@ -1,5 +1,8 @@
 //! Error types shared across the zkml-soroban crates.
 
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+
 use serde::{Deserialize, Serialize};
 
 /// Errors that can occur during model handling, quantization, inference,
@@ -32,4 +35,5 @@ impl core::fmt::Display for ZkmlError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ZkmlError {}

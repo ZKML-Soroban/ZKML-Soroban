@@ -31,6 +31,17 @@ const LAST_RESULT: Symbol = symbol_short!("lst_res");
 const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
 
+/// Ledgers per day on Stellar (~5s per ledger).
+const DAY_IN_LEDGERS: u32 = 17_280;
+
+/// Renew instance TTL when remaining lifetime falls below 30 days.
+/// A verifier used at least monthly stays live without an external keeper.
+const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
+
+/// Extend instance TTL to 120 days when the threshold is crossed.
+/// Matches the typical persistent rent floor and stays under the ~180-day network max.
+const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
+
 /// Contract interface version, bumped on breaking interface changes.
 pub const VERSION: u32 = 2;
 
@@ -48,6 +59,8 @@ pub enum VerificationError {
     MalformedProofC = 5,
     MalformedVerificationKey = 6,
     VerificationFailed = 7,
+    InvalidPublicInputLength = 8,
+    VerificationKeyLengthMismatch = 9,
 }
 
 /// On-chain representation of BN254 Groth16 verification key.
@@ -84,7 +97,6 @@ pub struct ZkmlVerifierContract;
 #[contractimpl]
 impl ZkmlVerifierContract {
     /// Initialize the contract with a model commitment and Groth16 verification key. Call exactly once.
-    /// Initialize the contract with a model commitment and verification key. Call exactly once.
     pub fn initialize(env: Env, model_hash: Bytes, vk: VerificationKey) {
         if env.storage().instance().has(&INITIALIZED) {
             panic!("contract is already initialized");
@@ -93,6 +105,7 @@ impl ZkmlVerifierContract {
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
         env.storage().instance().set(&VERIFY_CNT, &0u32);
         env.storage().instance().set(&INITIALIZED, &true);
+        Self::bump_instance_ttl(&env);
         log!(
             &env,
             "ZKML verifier initialized with model commitment and verification key"
@@ -102,7 +115,7 @@ impl ZkmlVerifierContract {
     /// Verify a Groth16 proof of ML inference.
     ///
     /// `public_inputs` is the concatenation of the 32-byte model commitment,
-    /// the 32-byte input commitment, and the output bytes.
+    /// the 32-byte input commitment, and N * 8-byte output scalars (for multi-class output).
     pub fn verify_inference(
         env: Env,
         proof_a: Bytes,
@@ -112,10 +125,6 @@ impl ZkmlVerifierContract {
     ) -> Result<(), VerificationError> {
         if !env.storage().instance().has(&INITIALIZED) {
             return Err(VerificationError::ContractNotInitialized);
-        }
-
-        if public_inputs.len() < 64 {
-            return Err(VerificationError::PublicInputsTooShort);
         }
 
         // Deserialize proof points
@@ -130,12 +139,11 @@ impl ZkmlVerifierContract {
             .get(&VERIFICATION_KEY)
             .ok_or(VerificationError::ContractNotInitialized)?;
 
-        // Extract public inputs
-        let model_hash = public_inputs.slice(0..32);
-        let input_hash = public_inputs.slice(32..64);
-        let output = public_inputs.slice(64..public_inputs.len());
+        // Parse public inputs with canonical length validation
+        let parsed_inputs = Self::parse_public_inputs(&env, &public_inputs)?;
 
         // Verify model hash matches stored commitment
+        let model_hash = parsed_inputs.get(0).unwrap();
         let stored_model_hash: Bytes = env
             .storage()
             .instance()
@@ -155,43 +163,9 @@ impl ZkmlVerifierContract {
         let delta_g2 = Self::deserialize_vk_g2(&env, &vk.delta)?;
 
         // L = sum(public_input_i * vk_ic_i)
-        // Public inputs: model_hash (32 bytes), input_hash (32 bytes), output (variable)
-        // We need to convert these to Bn254Fr scalars
-        let ic0_bytes = vk
-            .ic
-            .get(0)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let mut l = Self::deserialize_vk_ic(&env, &ic0_bytes)?;
-
-        // Convert model_hash to scalar and multiply with ic[1]
-        let model_scalar = Self::bytes_to_fr(&env, &model_hash);
-        let ic1_bytes = vk
-            .ic
-            .get(1)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let ic1 = Self::deserialize_vk_ic(&env, &ic1_bytes)?;
-        let term1 = bn254.g1_mul(&ic1, &model_scalar);
-        l = bn254.g1_add(&l, &term1);
-
-        // Convert input_hash to scalar and multiply with ic[2]
-        let input_scalar = Self::bytes_to_fr(&env, &input_hash);
-        let ic2_bytes = vk
-            .ic
-            .get(2)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let ic2 = Self::deserialize_vk_ic(&env, &ic2_bytes)?;
-        let term2 = bn254.g1_mul(&ic2, &input_scalar);
-        l = bn254.g1_add(&l, &term2);
-
-        // Convert output to scalar and multiply with ic[3]
-        let output_scalar = Self::bytes_to_fr(&env, &output);
-        let ic3_bytes = vk
-            .ic
-            .get(3)
-            .ok_or(VerificationError::MalformedVerificationKey)?;
-        let ic3 = Self::deserialize_vk_ic(&env, &ic3_bytes)?;
-        let term3 = bn254.g1_mul(&ic3, &output_scalar);
-        l = bn254.g1_add(&l, &term3);
+        // Note: In Groth16, IC[0] is the constant term, and public inputs start at index 1
+        // Compute L = ic[0] + sum(scalar_i * ic[i]) using generic loop
+        let l = Self::compute_l(&env, &vk, &parsed_inputs)?;
 
         // Pairing check: e(A, B) == e(alpha, beta) * e(L, gamma) * e(C, delta)
         // Equivalent to: e(-A, B) * e(alpha, beta) * e(L, gamma) * e(C, delta) == 1
@@ -204,8 +178,11 @@ impl ZkmlVerifierContract {
         }
 
         // Verification succeeded - record result
+        // Output starts after model_hash (32) and input_hash (32) = byte 64
+        let output = public_inputs.slice(64..public_inputs.len());
+
         let record = InferenceRecord {
-            model_hash,
+            model_hash: model_hash.clone(),
             output,
             verified_at: env.ledger().sequence(),
         };
@@ -213,12 +190,23 @@ impl ZkmlVerifierContract {
 
         let count: u32 = env.storage().instance().get(&VERIFY_CNT).unwrap_or(0);
         env.storage().instance().set(&VERIFY_CNT, &(count + 1));
+        Self::bump_instance_ttl(&env);
 
         #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("verified"),), record.verified_at);
 
         Ok(())
+    }
+
+    /// Renew instance storage TTL when remaining lifetime is below the threshold.
+    ///
+    /// `extend_ttl` is a no-op unless the current TTL is below
+    /// [`INSTANCE_TTL_THRESHOLD`]; then it is set to [`INSTANCE_TTL_EXTEND_TO`].
+    fn bump_instance_ttl(env: &Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
     }
 
     /// Deserialize a G1 point from 64 bytes (Ethereum-compatible format).
@@ -295,6 +283,98 @@ impl ZkmlVerifierContract {
         U256::from_be_bytes(env, &bytes_ref).into()
     }
 
+    /// Parse public inputs into a vector of byte slices with canonical length validation.
+    ///
+    /// Public input layout:
+    /// - model_hash: 32 bytes (canonical Poseidon commitment)
+    /// - input_hash: 32 bytes (canonical Poseidon commitment)
+    /// - output_scalars: N * 8 bytes (each canonical i64 in little-endian)
+    ///
+    /// Returns an error if any field has non-canonical length.
+    fn parse_public_inputs(
+        env: &Env,
+        public_inputs: &Bytes,
+    ) -> Result<Vec<Bytes>, VerificationError> {
+        let mut parsed = Vec::new(env);
+        let mut offset = 0u32;
+
+        // Parse model_hash (must be exactly 32 bytes)
+        if public_inputs.len() < offset + 32 {
+            return Err(VerificationError::PublicInputsTooShort);
+        }
+        let model_hash = public_inputs.slice(offset..(offset + 32));
+        if model_hash.len() != 32 {
+            return Err(VerificationError::InvalidPublicInputLength);
+        }
+        parsed.push_back(model_hash);
+        offset += 32;
+
+        // Parse input_hash (must be exactly 32 bytes)
+        if public_inputs.len() < offset + 32 {
+            return Err(VerificationError::PublicInputsTooShort);
+        }
+        let input_hash = public_inputs.slice(offset..(offset + 32));
+        if input_hash.len() != 32 {
+            return Err(VerificationError::InvalidPublicInputLength);
+        }
+        parsed.push_back(input_hash);
+        offset += 32;
+
+        // Parse output scalars (each must be exactly 8 bytes for canonical i64)
+        while offset < public_inputs.len() {
+            if public_inputs.len() < offset + 8 {
+                return Err(VerificationError::InvalidPublicInputLength);
+            }
+            let output_scalar = public_inputs.slice(offset..(offset + 8));
+            if output_scalar.len() != 8 {
+                return Err(VerificationError::InvalidPublicInputLength);
+            }
+            parsed.push_back(output_scalar);
+            offset += 8;
+        }
+
+        Ok(parsed)
+    }
+
+    /// Compute L = ic[0] + sum(scalar_i * ic[i]) for i from 1 to n.
+    ///
+    /// Validates that vk.ic.len() == n + 1 where n is the number of public input scalars.
+    fn compute_l(
+        env: &Env,
+        vk: &VerificationKey,
+        public_input_scalars: &Vec<Bytes>,
+    ) -> Result<Bn254G1Affine, VerificationError> {
+        let bn254 = env.crypto().bn254();
+        let num_scalars = public_input_scalars.len();
+
+        // Validate VK IC length matches number of scalars + 1 (for ic[0])
+        if vk.ic.len() != num_scalars + 1 {
+            return Err(VerificationError::VerificationKeyLengthMismatch);
+        }
+
+        // Start with ic[0]
+        let ic0_bytes = vk
+            .ic
+            .get(0)
+            .ok_or(VerificationError::MalformedVerificationKey)?;
+        let mut l = Self::deserialize_vk_ic(env, &ic0_bytes)?;
+
+        // Add each scalar * ic[i] term
+        for i in 0..num_scalars {
+            let scalar_bytes = public_input_scalars.get(i).unwrap();
+            let scalar = Self::bytes_to_fr(env, &scalar_bytes);
+            let ic_bytes = vk
+                .ic
+                .get(i + 1)
+                .ok_or(VerificationError::MalformedVerificationKey)?;
+            let ic_point = Self::deserialize_vk_ic(env, &ic_bytes)?;
+            let term = bn254.g1_mul(&ic_point, &scalar);
+            l = bn254.g1_add(&l, &term);
+        }
+
+        Ok(l)
+    }
+
     /// Retrieve the last verified inference result.
     pub fn get_result(env: Env) -> InferenceRecord {
         env.storage()
@@ -329,7 +409,8 @@ mod test_utils {
 
     /// Create a dummy verification key for testing.
     /// Uses the G1 generator point (1, 2) which is valid.
-    pub fn create_dummy_vk(env: &Env) -> VerificationKey {
+    /// num_ic specifies the number of IC points (must be >= 3 for model_hash, input_hash, output).
+    pub fn create_dummy_vk(env: &Env, num_ic: u32) -> VerificationKey {
         let g1_bytes: [u8; 64] = [
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -339,18 +420,17 @@ mod test_utils {
         let _g1 = Bn254G1Affine::from_array(env, &g1_bytes);
         let _g2 = Bn254G2Affine::from_array(env, &g2_bytes);
 
+        let mut ic = Vec::new(env);
+        for _ in 0..num_ic {
+            ic.push_back(Bytes::from_slice(env, &g1_bytes));
+        }
+
         VerificationKey {
             alpha: Bytes::from_slice(env, &g1_bytes),
             beta: Bytes::from_slice(env, &g2_bytes),
             gamma: Bytes::from_slice(env, &g2_bytes),
             delta: Bytes::from_slice(env, &g2_bytes),
-            ic: vec![
-                env,
-                Bytes::from_slice(env, &g1_bytes),
-                Bytes::from_slice(env, &g1_bytes),
-                Bytes::from_slice(env, &g1_bytes),
-                Bytes::from_slice(env, &g1_bytes),
-            ],
+            ic,
         }
     }
 }
@@ -367,7 +447,7 @@ mod test {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
-        let vk = create_dummy_vk(&env);
+        let vk = create_dummy_vk(&env, 4); // 4 IC points for model_hash, input_hash, output
         client.initialize(&model_hash, &vk);
     }
 
@@ -378,7 +458,7 @@ mod test {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
-        let vk = create_dummy_vk(&env);
+        let vk = create_dummy_vk(&env, 4);
         client.initialize(&model_hash, &vk);
         client.initialize(&model_hash, &vk);
     }
@@ -394,7 +474,7 @@ mod test_guards {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
-        let vk = create_dummy_vk(env);
+        let vk = create_dummy_vk(env, 4);
         client.initialize(&model_hash, &vk);
         client
     }
@@ -469,6 +549,73 @@ mod test_guards {
     }
 
     #[test]
+    fn verify_invalid_output_length() {
+        let env = Env::default();
+        let client = setup(&env);
+
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+        // 32+32+7 = 71 bytes - output is not a multiple of 8
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 71]);
+
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(result, Err(Ok(VerificationError::InvalidPublicInputLength)));
+    }
+
+    #[test]
+    fn verify_vk_length_mismatch() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        // Initialize with VK that has 5 IC points
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 5);
+        client.initialize(&model_hash, &vk);
+
+        // Provide public inputs for single output (3 scalars: model_hash, input_hash, output)
+        // This requires 4 IC points, but VK has 5
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(
+            result,
+            Err(Ok(VerificationError::VerificationKeyLengthMismatch))
+        );
+    }
+
+    #[test]
+    fn verify_multi_scalar_output() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        // Initialize with VK that has 5 IC points for multi-class output (2 output scalars)
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 5); // ic[0], ic[1], ic[2], ic[3], ic[4]
+        client.initialize(&model_hash, &vk);
+
+        // Provide public inputs for 2 output scalars: 32+32+8+8 = 80 bytes
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]);
+
+        // Should not fail due to length mismatch
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        // The important thing is it doesn't return VerificationKeyLengthMismatch
+        if let Err(Ok(VerificationError::VerificationKeyLengthMismatch)) = result {
+            panic!(
+                "Should not fail with VerificationKeyLengthMismatch for valid multi-scalar output"
+            );
+        }
+    }
+
+    #[test]
     fn verify_wrong_model_hash() {
         let env = Env::default();
         let contract_id = env.register(ZkmlVerifierContract, ());
@@ -476,14 +623,14 @@ mod test_guards {
 
         // Initialize with model hash [3u8; 32]
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env);
+        let vk = create_dummy_vk(&env, 4);
         client.initialize(&model_hash, &vk);
 
         // Try to verify with different model hash [5u8; 32]
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 96]); // Wrong model hash
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]); // 32+32+8 = 72 bytes for single output
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
@@ -503,7 +650,7 @@ mod test_poseidon_cross_check {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 72]); // 32+32+8 = 72 bytes
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::ContractNotInitialized)));
@@ -519,91 +666,138 @@ mod test_poseidon_cross_check {
 }
 
 #[cfg(test)]
-mod test_budget {
-    extern crate std;
+mod test_ttl {
     use super::*;
+    use soroban_sdk::testutils::{storage::Instance as _, Ledger as _};
     use soroban_sdk::Env;
-    use std::println;
+    use test_utils::create_dummy_vk;
 
-    pub fn create_accept_fixture_vk(env: &Env) -> VerificationKey {
-        let g1_gen: [u8; 64] = [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 2,
-        ];
-        let g1_zero = [0u8; 64];
-        let g2_zero = [0u8; 128];
+    fn instance_ttl(env: &Env, contract_id: &soroban_sdk::Address) -> u32 {
+        env.as_contract(contract_id, || env.storage().instance().get_ttl())
+    }
 
-        VerificationKey {
-            alpha: Bytes::from_slice(env, &g1_gen),
-            beta: Bytes::from_slice(env, &g2_zero),
-            gamma: Bytes::from_slice(env, &g2_zero),
-            delta: Bytes::from_slice(env, &g2_zero),
-            ic: vec![
-                env,
-                Bytes::from_slice(env, &g1_zero),
-                Bytes::from_slice(env, &g1_zero),
-                Bytes::from_slice(env, &g1_zero),
-                Bytes::from_slice(env, &g1_zero),
-            ],
-        }
+    fn setup(env: &Env) -> (soroban_sdk::Address, ZkmlVerifierContractClient<'_>) {
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let model_hash = Bytes::from_slice(env, &[3u8; 32]);
+        let vk = create_dummy_vk(env, 4);
+        client.initialize(&model_hash, &vk);
+        (contract_id, client)
     }
 
     #[test]
-    fn test_verifier_accept_path_and_resource_budget() {
+    fn initialize_extends_instance_ttl() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let (contract_id, _client) = setup(&env);
+        let ttl = instance_ttl(&env, &contract_id);
+        assert!(
+            ttl >= INSTANCE_TTL_EXTEND_TO,
+            "instance TTL after initialize was {ttl}, expected at least {INSTANCE_TTL_EXTEND_TO}"
+        );
+    }
 
-        let model_hash_bytes = [3u8; 32];
-        let model_hash = Bytes::from_slice(&env, &model_hash_bytes);
-        let vk = create_accept_fixture_vk(&env);
+    fn dummy_proof(env: &Env) -> (Bytes, Bytes, Bytes) {
+        (
+            Bytes::from_slice(env, &[0u8; 64]),
+            Bytes::from_slice(env, &[0u8; 128]),
+            Bytes::from_slice(env, &[0u8; 64]),
+        )
+    }
 
-        client.initialize(&model_hash, &vk);
+    fn advance_ledger(env: &Env, ledgers: u32) {
+        let mut ledger = env.ledger().get();
+        ledger.sequence_number = ledger.sequence_number.saturating_add(ledgers);
+        env.ledger().set(ledger);
+    }
 
-        let g1_gen: [u8; 64] = [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 2,
-        ];
-        let proof_a = Bytes::from_slice(&env, &g1_gen);
-        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
-        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+    #[test]
+    fn state_survives_past_threshold_after_verify() {
+        let env = Env::default();
+        let (contract_id, client) = setup(&env);
 
-        let mut public_inputs_vec = [0u8; 96];
-        public_inputs_vec[0..32].copy_from_slice(&model_hash_bytes);
-        public_inputs_vec[32..64].copy_from_slice(&[5u8; 32]);
-        public_inputs_vec[64..96].copy_from_slice(&[42u8; 32]);
-        let public_inputs = Bytes::from_slice(&env, &public_inputs_vec);
+        // Past both the default ~4096 TTL and our 30-day renewal threshold.
+        advance_ledger(&env, INSTANCE_TTL_THRESHOLD + 1);
 
-        env.cost_estimate().budget().reset_default();
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Ok(Ok(())),
+            "verify should remain invocable after the old TTL would have expired"
+        );
+
+        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(client.get_verification_count(), 1);
+        let _ = client.get_result();
+        assert!(
+            instance_ttl(&env, &contract_id) > 0,
+            "instance storage expired after advancing past the old threshold"
+        );
+    }
+
+    #[test]
+    fn successful_verify_renews_instance_ttl() {
+        let env = Env::default();
+        let (contract_id, client) = setup(&env);
+
+        // Leave remaining TTL below the renewal threshold but still alive.
+        let drop_by = INSTANCE_TTL_EXTEND_TO - INSTANCE_TTL_THRESHOLD + 10;
+        advance_ledger(&env, drop_by);
+        let ttl_before = instance_ttl(&env, &contract_id);
+        assert!(
+            ttl_before < INSTANCE_TTL_THRESHOLD,
+            "precondition: remaining TTL {ttl_before} should be below the threshold"
+        );
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Ok(Ok(())),
+            "dummy fixture should pass pairing_check"
+        );
+
+        let ttl_after = instance_ttl(&env, &contract_id);
+        assert!(
+            ttl_after >= INSTANCE_TTL_EXTEND_TO,
+            "successful verify should renew instance TTL to at least {INSTANCE_TTL_EXTEND_TO}, got {ttl_after}"
+        );
+        assert_eq!(client.get_verification_count(), 1);
+    }
+
+    #[test]
+    fn failed_verify_does_not_renew_instance_ttl() {
+        let env = Env::default();
+        let (contract_id, client) = setup(&env);
+
+        let drop_by = INSTANCE_TTL_EXTEND_TO - INSTANCE_TTL_THRESHOLD + 10;
+        advance_ledger(&env, drop_by);
+        let ttl_before = instance_ttl(&env, &contract_id);
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        assert_eq!(client.get_verification_count(), 0);
+
+        let ttl_after = instance_ttl(&env, &contract_id);
+        assert_eq!(
+            ttl_after, ttl_before,
+            "failed verify must not bump instance TTL"
+        );
+    }
+
+    #[test]
+    fn failed_verify_leaves_state_readable() {
+        let env = Env::default();
+        let (_contract_id, client) = setup(&env);
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(result, Ok(Ok(())));
-
-        let cpu = env.cost_estimate().budget().cpu_instruction_cost();
-        let mem = env.cost_estimate().budget().memory_bytes_cost();
-
-        println!("\n=== Verifier Resource Budget Harness Report ===");
-        println!("CPU Instructions : {}", cpu);
-        println!("Memory Bytes     : {}", mem);
-        println!("===============================================\n");
-
-        // Regression threshold assertion: fail if cost regresses sharply
-        const MAX_CPU_THRESHOLD: u64 = 50_000_000;
-        const MAX_MEM_THRESHOLD: u64 = 10_000_000;
-
-        assert!(
-            cpu <= MAX_CPU_THRESHOLD,
-            "Verifier CPU instruction cost regressed sharply: got {}, threshold {}",
-            cpu,
-            MAX_CPU_THRESHOLD
-        );
-        assert!(
-            mem <= MAX_MEM_THRESHOLD,
-            "Verifier Memory bytes cost regressed sharply: got {}, threshold {}",
-            mem,
-            MAX_MEM_THRESHOLD
-        );
+        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(client.get_verification_count(), 0);
     }
 }

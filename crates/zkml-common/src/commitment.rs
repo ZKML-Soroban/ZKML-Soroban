@@ -13,6 +13,12 @@ use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use light_poseidon::{Poseidon, PoseidonHasher};
 
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// A 32-byte commitment value.
 pub type Commitment = [u8; 32];
 
@@ -70,7 +76,7 @@ fn poseidon_commit(elements: &[i64], domain: u64) -> Commitment {
     let mut current_hash = Fr::from(domain);
 
     for (chunk_index, chunk) in fr_elements.chunks(rate).enumerate() {
-        let mut inputs = chunk.to_vec();
+        let mut inputs: Vec<Fr> = chunk.to_vec();
         // Pad with zeros if chunk is smaller than rate
         while inputs.len() < rate {
             inputs.push(Fr::from(0u64));
@@ -204,8 +210,10 @@ pub fn commit_i64(elements: &[i64]) -> Commitment {
 /// Encode a commitment as a 64-character lowercase hex string.
 pub fn to_hex(c: &Commitment) -> String {
     let mut s = String::with_capacity(64);
+    let hex: &[u8; 16] = b"0123456789abcdef";
     for b in c.iter() {
-        s.push_str(&format!("{b:02x}"));
+        s.push(hex[(b >> 4) as usize] as char);
+        s.push(hex[(b & 0xf) as usize] as char);
     }
     s
 }

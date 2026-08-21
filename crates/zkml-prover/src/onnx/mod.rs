@@ -22,6 +22,7 @@
 
 mod error;
 mod extract;
+mod mlp_extractor;
 mod proto;
 mod tree_extractor;
 mod validate;
@@ -30,7 +31,8 @@ pub use error::OnnxImportError;
 pub use extract::extract_linear_classifier;
 pub use proto::{
     AttributeProto, GraphProto, ModelProto, NodeProto, OperatorSetIdProto, TensorDataType,
-    TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto, ValueInfoProto,
+    TensorProto, TensorShapeProto, TensorShapeProtoDimension, TensorTypeProto, TypeProto,
+    ValueInfoProto,
 };
 pub use validate::{MIN_OPSET_CORE, MIN_OPSET_ML};
 
@@ -106,6 +108,7 @@ pub const MIN_OPSET_VERSION: i64 = MIN_OPSET_CORE;
 pub const SUPPORTED_OPERATORS: &[&str] = &[
     "TreeEnsembleClassifier",
     "LinearClassifier",
+    "Gemm",
     "MatMul",
     "Add",
     "Relu",
@@ -138,11 +141,27 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
     // Determine the architecture and extract accordingly
     let architecture = detect_architecture(&model);
 
-    // For now, only support single-operator models
+    // Check if this is an MLP-shaped graph (contains Gemm, MatMul, Add, Relu only)
+    let is_mlp = graph
+        .node
+        .iter()
+        .all(|n| matches!(n.op_type.as_str(), "Gemm" | "MatMul" | "Add" | "Relu"))
+        && graph
+            .node
+            .iter()
+            .any(|n| matches!(n.op_type.as_str(), "Gemm" | "MatMul"));
+
+    if is_mlp {
+        let mlp = mlp_extractor::extract_mlp(graph)?;
+        return Ok(Model::TinyMLP(mlp));
+    }
+
+    // Single-operator models (tree / linear classifier)
     if graph.node.len() != 1 {
-        return Err(OnnxImportError::MalformedModel(
-            "only single-operator models are supported".into(),
-        ));
+        return Err(OnnxImportError::MalformedModel(format!(
+            "multi-node graph with architecture '{}' is not supported",
+            architecture
+        )));
     }
 
     let node = &graph.node[0];
@@ -157,9 +176,6 @@ pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
             let lr = extract_linear_classifier(node)?;
             Ok(Model::LogisticRegression(lr))
         }
-        "MatMul" | "Add" | "Relu" => Err(OnnxImportError::ExtractionNotImplemented {
-            architecture_hint: architecture,
-        }),
         _ => Err(OnnxImportError::UnsupportedOperator {
             op_type: node.op_type.clone(),
         }),
@@ -220,6 +236,7 @@ mod tests {
                 name: "test".into(),
                 input: vec![],
                 output: vec![],
+                initializer: vec![],
                 node: ops
                     .iter()
                     .enumerate()
@@ -269,10 +286,10 @@ mod tests {
     }
 
     #[test]
-    fn valid_mlp_ops_reaches_extraction_not_implemented() {
+    fn valid_mlp_ops_fails_without_initialisers() {
         let bytes = encode(&model_with(17, 1, &["MatMul", "Add", "Relu"]));
         let err = import_onnx(&bytes).unwrap_err();
-        // Now expects MalformedModel because model lacks input tensors and has multiple operators
+        // MLP extractor runs but cannot find weight initialisers
         assert!(matches!(err, OnnxImportError::MalformedModel(_)));
     }
 
@@ -343,6 +360,7 @@ mod tests {
                 name: "empty".into(),
                 input: vec![],
                 output: vec![],
+                initializer: vec![],
                 node: vec![],
             }),
             ..Default::default()

@@ -43,7 +43,7 @@ impl fmt::Display for OnnxImportError {
             OnnxImportError::UnsupportedOperator { op_type } => {
                 write!(
                     f,
-                    "unsupported ONNX operator '{op_type}' (supported: TreeEnsembleClassifier LinearClassifier MatMul Add Relu)"
+                    "unsupported ONNX operator '{op_type}' (supported: TreeEnsembleClassifier LinearClassifier Gemm MatMul Add Relu)"
                 )
             }
             OnnxImportError::ExtractionNotImplemented { architecture_hint } => {
