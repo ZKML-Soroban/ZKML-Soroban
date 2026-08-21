@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Instance-storage TTL bump on `initialize` and on successful `verify_inference`,
   with named threshold/extend-to constants (30d / 120d).
+- Enriched the `verified` event with `model_hash` (published as a topic) and
+  `output` (published as data) so off-chain indexers can derive which model
+  produced which output directly from the event stream. This is a breaking
+  change to the event payload (`data` changed from a bare `u32` to a
+  `(u32, Bytes)` tuple); the contract `VERSION` is bumped `2 -> 3`.
 - Property-based tests for inference (`try_run_inference` determinism, ReLU
   monotonicity, stable argmax, no panics) and a zkVM differential suite that
   compares `generate_receipt` journals against native inference.
