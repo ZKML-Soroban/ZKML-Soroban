@@ -711,7 +711,7 @@ mod test_ttl {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
-        let vk = create_dummy_vk(env, 4);
+        let vk = create_dummy_vk(env, 5);
         client.initialize(&model_hash, &vk);
         (contract_id, client)
     }
@@ -750,7 +750,7 @@ mod test_ttl {
         advance_ledger(&env, INSTANCE_TTL_THRESHOLD + 1);
 
         let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]);
         assert_eq!(
             client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
             Ok(Ok(())),
@@ -781,7 +781,7 @@ mod test_ttl {
         );
 
         let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]);
         assert_eq!(
             client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
             Ok(Ok(())),
@@ -806,7 +806,7 @@ mod test_ttl {
         let ttl_before = instance_ttl(&env, &contract_id);
 
         let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
         assert_eq!(client.get_verification_count(), 0);
@@ -824,7 +824,7 @@ mod test_ttl {
         let (_contract_id, client) = setup(&env);
 
         let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
