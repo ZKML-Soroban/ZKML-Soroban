@@ -249,12 +249,16 @@ mod tests_mlp {
 ///
 /// Used to turn a multi-output MLP layer into a class label without a
 /// (ZK-unfriendly) softmax: argmax of the logits equals argmax of softmax.
+/// On ties the lowest index wins, which matches the usual argmax convention
+/// for classification outputs.
 pub fn argmax(values: &[FixedPoint]) -> Option<usize> {
-    values
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, v)| v.value)
-        .map(|(i, _)| i)
+    let mut best: Option<(usize, i64)> = None;
+    for (i, v) in values.iter().enumerate() {
+        if best.is_none_or(|(_, val)| v.value > val) {
+            best = Some((i, v.value));
+        }
+    }
+    best.map(|(i, _)| i)
 }
 
 #[cfg(test)]
@@ -271,11 +275,41 @@ mod tests_argmax {
         ];
         assert_eq!(argmax(&logits), Some(1));
     }
+
+    #[test]
+    fn argmax_breaks_ties_low() {
+        let logits = vec![
+            FixedPoint::quantize(1.0),
+            FixedPoint::quantize(1.0),
+            FixedPoint::quantize(0.5),
+        ];
+        assert_eq!(argmax(&logits), Some(0));
+    }
 }
 
 /// Run inference for each input row, returning one output per row.
+///
+/// This is the all-valid fast path and panics on a malformed or overflowing
+/// row. Prefer [`try_run_batch`] when caller data may be out of spec.
 pub fn run_batch(model: &Model, rows: &[Vec<FixedPoint>]) -> Vec<FixedPoint> {
     rows.iter().map(|row| run_inference(model, row)).collect()
+}
+
+/// Run inference for each input row and return one result per row.
+///
+/// Error shape is **per-row** (`Vec<Result<FixedPoint, ZkmlError>>`), not
+/// fail-fast. A malformed or overflowing row becomes `Err` at that index and
+/// does not abort the rest of the batch. Empty `rows` returns an empty `Vec`.
+///
+/// This is the batch counterpart of [`try_run_inference`]. Prefer it over
+/// [`run_batch`] whenever caller data may be out of spec.
+pub fn try_run_batch(
+    model: &Model,
+    rows: &[Vec<FixedPoint>],
+) -> Vec<Result<FixedPoint, ZkmlError>> {
+    rows.iter()
+        .map(|row| try_run_inference(model, row))
+        .collect()
 }
 
 #[cfg(test)]
@@ -284,12 +318,16 @@ mod tests_batch {
     use super::*;
     use crate::models::{LogisticRegression, Model};
 
-    #[test]
-    fn batch_matches_single() {
-        let model = Model::LogisticRegression(LogisticRegression {
+    fn one_feature_lr() -> Model {
+        Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::quantize(1.0)],
             bias: FixedPoint::quantize(0.0),
-        });
+        })
+    }
+
+    #[test]
+    fn batch_matches_single() {
+        let model = one_feature_lr();
         let rows = vec![
             vec![FixedPoint::quantize(0.5)],
             vec![FixedPoint::quantize(0.9)],
@@ -298,6 +336,70 @@ mod tests_batch {
         for (row, out) in rows.iter().zip(batched.iter()) {
             assert_eq!(run_inference(&model, row).value, out.value);
         }
+    }
+
+    #[test]
+    fn try_batch_mixed_feature_count_keeps_valid_rows() {
+        let model = one_feature_lr();
+        let good_a = vec![FixedPoint::quantize(0.5)];
+        let bad = vec![FixedPoint::quantize(0.1), FixedPoint::quantize(0.2)];
+        let good_b = vec![FixedPoint::quantize(0.9)];
+        let rows = vec![good_a.clone(), bad, good_b.clone()];
+
+        let panicked = std::panic::catch_unwind(|| try_run_batch(&model, &rows));
+        assert!(
+            panicked.is_ok(),
+            "try_run_batch must not panic on a malformed row"
+        );
+        let results = panicked.unwrap();
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results[0].as_ref().map(|o| o.value),
+            Ok(run_inference(&model, &good_a).value)
+        );
+        assert_eq!(
+            results[1],
+            Err(ZkmlError::FeatureCountMismatch {
+                expected: 1,
+                got: 2,
+            })
+        );
+        assert_eq!(
+            results[2].as_ref().map(|o| o.value),
+            Ok(run_inference(&model, &good_b).value)
+        );
+    }
+
+    #[test]
+    fn try_batch_overflow_row_does_not_drop_neighbors() {
+        let big = FixedPoint::from_raw(i64::MAX / 2, 16);
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![big],
+            bias: FixedPoint::quantize(0.0),
+        });
+        let good = vec![FixedPoint::quantize(0.5)];
+        let overflow = vec![big];
+        let rows = vec![good.clone(), overflow, good.clone()];
+
+        let results = try_run_batch(&model, &rows);
+        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results[0].as_ref().map(|o| o.value),
+            Ok(run_inference(&model, &good).value)
+        );
+        assert_eq!(results[1], Err(ZkmlError::ArithmeticOverflow));
+        assert_eq!(
+            results[2].as_ref().map(|o| o.value),
+            Ok(run_inference(&model, &good).value)
+        );
+    }
+
+    #[test]
+    fn try_batch_empty_rows_returns_empty() {
+        let model = one_feature_lr();
+        let results = try_run_batch(&model, &[]);
+        assert!(results.is_empty());
     }
 }
 
