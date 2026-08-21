@@ -249,12 +249,16 @@ mod tests_mlp {
 ///
 /// Used to turn a multi-output MLP layer into a class label without a
 /// (ZK-unfriendly) softmax: argmax of the logits equals argmax of softmax.
+/// On ties the lowest index wins, which matches the usual argmax convention
+/// for classification outputs.
 pub fn argmax(values: &[FixedPoint]) -> Option<usize> {
-    values
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, v)| v.value)
-        .map(|(i, _)| i)
+    let mut best: Option<(usize, i64)> = None;
+    for (i, v) in values.iter().enumerate() {
+        if best.is_none_or(|(_, val)| v.value > val) {
+            best = Some((i, v.value));
+        }
+    }
+    best.map(|(i, _)| i)
 }
 
 #[cfg(test)]
@@ -270,6 +274,16 @@ mod tests_argmax {
             FixedPoint::quantize(0.4),
         ];
         assert_eq!(argmax(&logits), Some(1));
+    }
+
+    #[test]
+    fn argmax_breaks_ties_low() {
+        let logits = vec![
+            FixedPoint::quantize(1.0),
+            FixedPoint::quantize(1.0),
+            FixedPoint::quantize(0.5),
+        ];
+        assert_eq!(argmax(&logits), Some(0));
     }
 }
 
