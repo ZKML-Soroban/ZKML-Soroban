@@ -43,7 +43,7 @@ const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 
 /// Contract interface version, bumped on breaking interface changes.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;

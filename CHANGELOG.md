@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `get_result` and `get_model_hash` now return `Option` instead of trapping,
+  so callers can read pre-initialize / pre-verify state without a panic.
+  Contract `VERSION` bumped to 4.
 - Instance-storage TTL bump on `initialize` and on successful `verify_inference`,
   with named threshold/extend-to constants (30d / 120d).
 - Property-based tests for inference (`try_run_inference` determinism, ReLU
