@@ -43,7 +43,7 @@ const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 
 /// Contract interface version, bumped on breaking interface changes.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -376,19 +376,13 @@ impl ZkmlVerifierContract {
     }
 
     /// Retrieve the last verified inference result.
-    pub fn get_result(env: Env) -> InferenceRecord {
-        env.storage()
-            .instance()
-            .get(&LAST_RESULT)
-            .expect("no inference result has been recorded yet")
+    pub fn get_result(env: Env) -> Option<InferenceRecord> {
+        env.storage().instance().get(&LAST_RESULT)
     }
 
     /// Retrieve the registered model commitment.
-    pub fn get_model_hash(env: Env) -> Bytes {
-        env.storage()
-            .instance()
-            .get(&MODEL_HASH)
-            .expect("contract is not initialized")
+    pub fn get_model_hash(env: Env) -> Option<Bytes> {
+        env.storage().instance().get(&MODEL_HASH)
     }
 
     /// Retrieve the number of verified proofs so far.
@@ -449,6 +443,59 @@ mod test {
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
         let vk = create_dummy_vk(&env, 4); // 4 IC points for model_hash, input_hash, output
         client.initialize(&model_hash, &vk);
+    }
+
+    #[test]
+    fn get_model_hash_none_before_initialize() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        assert_eq!(client.get_model_hash(), None);
+    }
+
+    #[test]
+    fn get_model_hash_some_after_initialize() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+
+        client.initialize(&model_hash, &vk);
+
+        assert_eq!(client.get_model_hash(), Some(model_hash));
+    }
+
+    #[test]
+    fn get_result_none_before_verify() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        assert!(client.get_result().is_none());
+    }
+
+    #[test]
+    fn get_result_some_after_verify() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+        client.initialize(&model_hash, &vk);
+
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Ok(Ok(()))
+        );
+
+        let record = client.get_result().expect("record should be present");
+        assert_eq!(record.model_hash, model_hash);
+        assert_eq!(record.output, Bytes::from_slice(&env, &[3u8; 8]));
     }
 
     #[test]
@@ -726,9 +773,12 @@ mod test_ttl {
             "verify should remain invocable after the old TTL would have expired"
         );
 
-        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(
+            client.get_model_hash(),
+            Some(Bytes::from_slice(&env, &[3u8; 32]))
+        );
         assert_eq!(client.get_verification_count(), 1);
-        let _ = client.get_result();
+        assert!(client.get_result().is_some());
         assert!(
             instance_ttl(&env, &contract_id) > 0,
             "instance storage expired after advancing past the old threshold"
@@ -797,7 +847,10 @@ mod test_ttl {
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
-        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(
+            client.get_model_hash(),
+            Some(Bytes::from_slice(&env, &[3u8; 32]))
+        );
         assert_eq!(client.get_verification_count(), 0);
     }
 }
