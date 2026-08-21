@@ -31,6 +31,17 @@ const LAST_RESULT: Symbol = symbol_short!("lst_res");
 const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
 
+/// Ledgers per day on Stellar (~5s per ledger).
+const DAY_IN_LEDGERS: u32 = 17_280;
+
+/// Renew instance TTL when remaining lifetime falls below 30 days.
+/// A verifier used at least monthly stays live without an external keeper.
+const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
+
+/// Extend instance TTL to 120 days when the threshold is crossed.
+/// Matches the typical persistent rent floor and stays under the ~180-day network max.
+const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
+
 /// Contract interface version, bumped on breaking interface changes.
 pub const VERSION: u32 = 2;
 
@@ -86,7 +97,6 @@ pub struct ZkmlVerifierContract;
 #[contractimpl]
 impl ZkmlVerifierContract {
     /// Initialize the contract with a model commitment and Groth16 verification key. Call exactly once.
-    /// Initialize the contract with a model commitment and verification key. Call exactly once.
     pub fn initialize(env: Env, model_hash: Bytes, vk: VerificationKey) {
         if env.storage().instance().has(&INITIALIZED) {
             panic!("contract is already initialized");
@@ -95,6 +105,7 @@ impl ZkmlVerifierContract {
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
         env.storage().instance().set(&VERIFY_CNT, &0u32);
         env.storage().instance().set(&INITIALIZED, &true);
+        Self::bump_instance_ttl(&env);
         log!(
             &env,
             "ZKML verifier initialized with model commitment and verification key"
@@ -179,12 +190,23 @@ impl ZkmlVerifierContract {
 
         let count: u32 = env.storage().instance().get(&VERIFY_CNT).unwrap_or(0);
         env.storage().instance().set(&VERIFY_CNT, &(count + 1));
+        Self::bump_instance_ttl(&env);
 
         #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("verified"),), record.verified_at);
 
         Ok(())
+    }
+
+    /// Renew instance storage TTL when remaining lifetime is below the threshold.
+    ///
+    /// `extend_ttl` is a no-op unless the current TTL is below
+    /// [`INSTANCE_TTL_THRESHOLD`]; then it is set to [`INSTANCE_TTL_EXTEND_TO`].
+    fn bump_instance_ttl(env: &Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
     }
 
     /// Deserialize a G1 point from 64 bytes (Ethereum-compatible format).
@@ -640,5 +662,142 @@ mod test_poseidon_cross_check {
         let test_data = [1u8, 2u8, 3u8];
         let commitment = Bytes::from_slice(&env, &test_data);
         assert_eq!(commitment, Bytes::from_slice(&env, &test_data));
+    }
+}
+
+#[cfg(test)]
+mod test_ttl {
+    use super::*;
+    use soroban_sdk::testutils::{storage::Instance as _, Ledger as _};
+    use soroban_sdk::Env;
+    use test_utils::create_dummy_vk;
+
+    fn instance_ttl(env: &Env, contract_id: &soroban_sdk::Address) -> u32 {
+        env.as_contract(contract_id, || env.storage().instance().get_ttl())
+    }
+
+    fn setup(env: &Env) -> (soroban_sdk::Address, ZkmlVerifierContractClient<'_>) {
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let model_hash = Bytes::from_slice(env, &[3u8; 32]);
+        let vk = create_dummy_vk(env, 4);
+        client.initialize(&model_hash, &vk);
+        (contract_id, client)
+    }
+
+    #[test]
+    fn initialize_extends_instance_ttl() {
+        let env = Env::default();
+        let (contract_id, _client) = setup(&env);
+        let ttl = instance_ttl(&env, &contract_id);
+        assert!(
+            ttl >= INSTANCE_TTL_EXTEND_TO,
+            "instance TTL after initialize was {ttl}, expected at least {INSTANCE_TTL_EXTEND_TO}"
+        );
+    }
+
+    fn dummy_proof(env: &Env) -> (Bytes, Bytes, Bytes) {
+        (
+            Bytes::from_slice(env, &[0u8; 64]),
+            Bytes::from_slice(env, &[0u8; 128]),
+            Bytes::from_slice(env, &[0u8; 64]),
+        )
+    }
+
+    fn advance_ledger(env: &Env, ledgers: u32) {
+        let mut ledger = env.ledger().get();
+        ledger.sequence_number = ledger.sequence_number.saturating_add(ledgers);
+        env.ledger().set(ledger);
+    }
+
+    #[test]
+    fn state_survives_past_threshold_after_verify() {
+        let env = Env::default();
+        let (contract_id, client) = setup(&env);
+
+        // Past both the default ~4096 TTL and our 30-day renewal threshold.
+        advance_ledger(&env, INSTANCE_TTL_THRESHOLD + 1);
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Ok(Ok(())),
+            "verify should remain invocable after the old TTL would have expired"
+        );
+
+        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(client.get_verification_count(), 1);
+        let _ = client.get_result();
+        assert!(
+            instance_ttl(&env, &contract_id) > 0,
+            "instance storage expired after advancing past the old threshold"
+        );
+    }
+
+    #[test]
+    fn successful_verify_renews_instance_ttl() {
+        let env = Env::default();
+        let (contract_id, client) = setup(&env);
+
+        // Leave remaining TTL below the renewal threshold but still alive.
+        let drop_by = INSTANCE_TTL_EXTEND_TO - INSTANCE_TTL_THRESHOLD + 10;
+        advance_ledger(&env, drop_by);
+        let ttl_before = instance_ttl(&env, &contract_id);
+        assert!(
+            ttl_before < INSTANCE_TTL_THRESHOLD,
+            "precondition: remaining TTL {ttl_before} should be below the threshold"
+        );
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Ok(Ok(())),
+            "dummy fixture should pass pairing_check"
+        );
+
+        let ttl_after = instance_ttl(&env, &contract_id);
+        assert!(
+            ttl_after >= INSTANCE_TTL_EXTEND_TO,
+            "successful verify should renew instance TTL to at least {INSTANCE_TTL_EXTEND_TO}, got {ttl_after}"
+        );
+        assert_eq!(client.get_verification_count(), 1);
+    }
+
+    #[test]
+    fn failed_verify_does_not_renew_instance_ttl() {
+        let env = Env::default();
+        let (contract_id, client) = setup(&env);
+
+        let drop_by = INSTANCE_TTL_EXTEND_TO - INSTANCE_TTL_THRESHOLD + 10;
+        advance_ledger(&env, drop_by);
+        let ttl_before = instance_ttl(&env, &contract_id);
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        assert_eq!(client.get_verification_count(), 0);
+
+        let ttl_after = instance_ttl(&env, &contract_id);
+        assert_eq!(
+            ttl_after, ttl_before,
+            "failed verify must not bump instance TTL"
+        );
+    }
+
+    #[test]
+    fn failed_verify_leaves_state_readable() {
+        let env = Env::default();
+        let (_contract_id, client) = setup(&env);
+
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
+
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(client.get_verification_count(), 0);
     }
 }
