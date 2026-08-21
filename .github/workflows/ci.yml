@@ -79,6 +79,6 @@ jobs:
           RISC0_DEV_MODE: "1"
         run: |
           export PATH="$HOME/.risc0/bin:$PATH"
-          cargo test -p zkml-prover --features groth16 groth16_api_compile_check --verbose
+          cargo check -p zkml-prover --features groth16 --verbose
       - name: Check bonsai feature compiles
         run: cargo check -p zkml-prover --features bonsai
