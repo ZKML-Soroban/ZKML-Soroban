@@ -207,6 +207,17 @@ impl ZkmlVerifierContract {
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
     }
 
+    /// Publish the `verified` event enriched with `model_hash` (a topic, so
+    /// indexers can filter per model) and `output` (data), alongside the ledger
+    /// sequence number (`verified_at`).
+    fn emit_verified_event(env: &Env, record: &InferenceRecord) {
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("verified"), record.model_hash.clone()),
+            (record.verified_at, record.output.clone()),
+        );
+    }
+
     /// Deserialize a G1 point from 64 bytes (Ethereum-compatible format).
     fn deserialize_g1(env: &Env, bytes: &Bytes) -> Result<Bn254G1Affine, VerificationError> {
         if bytes.len() != 64 {
@@ -797,5 +808,42 @@ mod test_ttl {
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
         assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
         assert_eq!(client.get_verification_count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod test_verified_event {
+    use super::*;
+    use soroban_sdk::testutils::Events;
+    use soroban_sdk::IntoVal;
+
+    #[test]
+    fn verify_emits_verified_event_with_model_hash_and_output() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+
+        let model_hash = Bytes::from_slice(&env, &[0xabu8; 32]);
+        let output = Bytes::from_slice(&env, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        let record = InferenceRecord {
+            model_hash: model_hash.clone(),
+            output: output.clone(),
+            verified_at: 1234,
+        };
+
+        env.as_contract(&contract_id, || {
+            ZkmlVerifierContract::emit_verified_event(&env, &record);
+        });
+
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (symbol_short!("verified"), model_hash.clone()).into_val(&env),
+                    (1234u32, output.clone()).into_val(&env),
+                ),
+            ]
+        );
     }
 }
