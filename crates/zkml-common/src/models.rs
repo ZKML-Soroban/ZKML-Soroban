@@ -63,6 +63,9 @@ pub struct LogisticRegression {
     pub weights: Vec<FixedPoint>,
     /// Bias term, in fixed-point.
     pub bias: FixedPoint,
+    /// Decision threshold for binary classification (default 0.0).
+    /// The decision is `1 if score >= threshold else 0`.
+    pub decision_threshold: FixedPoint,
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +353,7 @@ mod tests_features {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::quantize(0.1); 5],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         assert_eq!(model.num_features(), 5);
     }

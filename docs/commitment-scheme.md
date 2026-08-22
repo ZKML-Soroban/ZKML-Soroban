@@ -206,27 +206,27 @@ The public input buffer is parsed into scalars with the following extensible lay
 
 1. **model_hash**: 32 bytes (canonical Poseidon commitment)
 2. **input_hash**: 32 bytes (canonical Poseidon commitment)
-3. **output_scalars**: N × 8 bytes (each canonical i64 in little-endian)
+3. **output**: 8 bytes (canonical i64 in little-endian)
+4. **class_label**: 8 bytes (canonical i64 in little-endian)
 
 **Canonical length requirements**:
 - `model_hash` must be exactly 32 bytes
 - `input_hash` must be exactly 32 bytes
-- Each output scalar must be exactly 8 bytes (canonical i64)
-- Total output length must be a multiple of 8 bytes
+- `output` must be exactly 8 bytes (canonical i64)
+- `class_label` must be exactly 8 bytes (canonical i64)
+- Total length must be exactly 80 bytes
 
 The verifier rejects any public input that violates these canonical length requirements with `InvalidPublicInputLength`.
 
-#### Multi-Scalar Output
+#### Decision Layer
 
-The output field supports multiple scalars for multi-class inference decisions:
+The `class_label` field provides a deterministic decision that is reproducible off-chain and on-chain:
 
-- **Single-class output**: 8 bytes (one i64)
-- **Multi-class output**: N × 8 bytes (N i64 values, e.g., class probabilities or logits)
+- **Binary logistic regression**: `class_label = 1 if score >= threshold else 0`
+- **Multi-class MLP**: `class_label = argmax(logits)` (index of highest logit)
+- **Decision tree**: `class_label = 0` (no multi-class decision)
 
-For example, a 3-class classifier would have:
-- Total public inputs: 32 + 32 + 24 = 88 bytes
-- Parsed scalars: [model_hash, input_hash, output_0, output_1, output_2]
-- Required IC points: 6 (ic[0], ic[1], ic[2], ic[3], ic[4], ic[5])
+This enables on-chain verification of meaningful decisions (e.g., approve/reject for KYC) rather than just raw scores.
 
 #### Verification Key Validation
 

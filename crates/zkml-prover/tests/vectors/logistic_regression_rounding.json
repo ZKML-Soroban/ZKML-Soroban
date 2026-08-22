@@ -5,7 +5,8 @@
     "weights": [
       {"value": -6554, "scale": 16}
     ],
-    "bias": {"value": 0, "scale": 16}
+    "bias": {"value": 0, "scale": 16},
+    "decision_threshold": {"value": 0, "scale": 16}
   },
   "test_cases": [
     {

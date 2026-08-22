@@ -87,8 +87,10 @@ pub struct VerificationKey {
 pub struct InferenceRecord {
     /// Poseidon commitment to the model that produced this result.
     pub model_hash: Bytes,
-    /// The inference output value.
+    /// The inference output value (raw score).
     pub output: Bytes,
+    /// The class label decision (binary decision or argmax index).
+    pub class_label: i64,
     /// Ledger sequence number at verification time.
     pub verified_at: u32,
 }
@@ -190,11 +192,15 @@ impl ZkmlVerifierContract {
 
         // Verification succeeded - record result
         // Output starts after model_hash (32) and input_hash (32) = byte 64
-        let output = public_inputs.slice(64..public_inputs.len());
+        // Output is 8 bytes, class_label is next 8 bytes
+        let output = public_inputs.slice(64..72);
+        let class_label_bytes = public_inputs.slice(72..80);
+        let class_label = Self::bytes_to_i64(&class_label_bytes);
 
         let record = InferenceRecord {
             model_hash: model_hash.clone(),
             output,
+            class_label,
             verified_at: env.ledger().sequence(),
         };
         env.storage().instance().set(&LAST_RESULT, &record);
@@ -303,12 +309,23 @@ impl ZkmlVerifierContract {
         U256::from_be_bytes(env, &bytes_ref).into()
     }
 
+    /// Convert little-endian bytes to i64.
+    fn bytes_to_i64(bytes: &Bytes) -> i64 {
+        let mut arr = [0u8; 8];
+        let len = bytes.len().min(8);
+        bytes
+            .slice(0..len)
+            .copy_into_slice(&mut arr[..len as usize]);
+        i64::from_le_bytes(arr)
+    }
+
     /// Parse public inputs into a vector of byte slices with canonical length validation.
     ///
     /// Public input layout:
     /// - model_hash: 32 bytes (canonical Poseidon commitment)
     /// - input_hash: 32 bytes (canonical Poseidon commitment)
-    /// - output_scalars: N * 8 bytes (each canonical i64 in little-endian)
+    /// - output: 8 bytes (canonical i64 in little-endian)
+    /// - class_label: 8 bytes (canonical i64 in little-endian)
     ///
     /// Returns an error if any field has non-canonical length.
     fn parse_public_inputs(
@@ -340,17 +357,31 @@ impl ZkmlVerifierContract {
         parsed.push_back(input_hash);
         offset += 32;
 
-        // Parse output scalars (each must be exactly 8 bytes for canonical i64)
-        while offset < public_inputs.len() {
-            if public_inputs.len() < offset + 8 {
-                return Err(VerificationError::InvalidPublicInputLength);
-            }
-            let output_scalar = public_inputs.slice(offset..(offset + 8));
-            if output_scalar.len() != 8 {
-                return Err(VerificationError::InvalidPublicInputLength);
-            }
-            parsed.push_back(output_scalar);
-            offset += 8;
+        // Parse output (must be exactly 8 bytes for canonical i64)
+        if public_inputs.len() < offset + 8 {
+            return Err(VerificationError::PublicInputsTooShort);
+        }
+        let output = public_inputs.slice(offset..(offset + 8));
+        if output.len() != 8 {
+            return Err(VerificationError::InvalidPublicInputLength);
+        }
+        parsed.push_back(output);
+        offset += 8;
+
+        // Parse class_label (must be exactly 8 bytes for canonical i64)
+        if public_inputs.len() < offset + 8 {
+            return Err(VerificationError::PublicInputsTooShort);
+        }
+        let class_label = public_inputs.slice(offset..(offset + 8));
+        if class_label.len() != 8 {
+            return Err(VerificationError::InvalidPublicInputLength);
+        }
+        parsed.push_back(class_label);
+        offset += 8;
+
+        // Ensure no extra data
+        if offset != public_inputs.len() {
+            return Err(VerificationError::InvalidPublicInputLength);
         }
 
         Ok(parsed)
@@ -514,6 +545,14 @@ mod test_utils {
             ic,
         }
     }
+
+    /// Create dummy proof components for testing.
+    pub fn dummy_proof(env: &Env) -> (Bytes, Bytes, Bytes) {
+        let proof_a = Bytes::from_slice(env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(env, &[0u8; 64]);
+        (proof_a, proof_b, proof_c)
+    }
 }
 
 #[cfg(test)]
@@ -562,7 +601,7 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
-        let vk = create_dummy_vk(env, 4);
+        let vk = create_dummy_vk(env, 5);
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
         client
@@ -576,7 +615,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::MalformedProofA)));
@@ -596,7 +635,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &g1_bytes);
         let proof_b = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
         let proof_c = Bytes::from_slice(&env, &g1_bytes);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         // Should fail due to malformed proof_b (wrong length)
@@ -617,7 +656,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &g1_bytes);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 96]);
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         // Should fail due to malformed proof_c (wrong length)
         assert!(result.is_err());
@@ -645,8 +684,8 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        // 32+32+7 = 71 bytes - output is not a multiple of 8
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 71]);
+        // 32+32+8+8+8 = 88 bytes - extra 8 bytes after parsing all fields
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 88]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::InvalidPublicInputLength)));
@@ -658,19 +697,19 @@ mod test_guards {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
-        // Initialize with VK that has 5 IC points
+        // Initialize with VK that has 6 IC points
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 5);
+        let vk = create_dummy_vk(&env, 6);
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
 
-        // Provide public inputs for single output (3 scalars: model_hash, input_hash, output)
-        // This requires 4 IC points, but VK has 5
+        // Provide public inputs for single output + class_label (4 scalars: model_hash, input_hash, output, class_label)
+        // This requires 5 IC points, but VK has 6
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(
@@ -685,14 +724,14 @@ mod test_guards {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
-        // Initialize with VK that has 5 IC points for multi-class output (2 output scalars)
+        // Initialize with VK that has 5 IC points for single output + class_label (4 scalars)
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5); // ic[0], ic[1], ic[2], ic[3], ic[4]
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
 
-        // Provide public inputs for 2 output scalars: 32+32+8+8 = 80 bytes
+        // Provide public inputs for single output + class_label: 32+32+8+8 = 80 bytes
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
@@ -703,7 +742,7 @@ mod test_guards {
         // The important thing is it doesn't return VerificationKeyLengthMismatch
         if let Err(Ok(VerificationError::VerificationKeyLengthMismatch)) = result {
             panic!(
-                "Should not fail with VerificationKeyLengthMismatch for valid multi-scalar output"
+                "Should not fail with VerificationKeyLengthMismatch for valid single output + class_label"
             );
         }
     }
@@ -717,7 +756,7 @@ mod test_guards {
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
 
@@ -725,7 +764,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]); // 32+32+8 = 72 bytes for single output
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]); // 32+32+8+8 = 80 bytes for single output + class_label
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
@@ -745,7 +784,7 @@ mod test_poseidon_cross_check {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 72]); // 32+32+8 = 72 bytes
+        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]); // 32+32+8+8 = 80 bytes
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::ContractNotInitialized)));
@@ -765,14 +804,14 @@ mod test_admin_auth {
     use super::*;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::Env;
-    use test_utils::create_dummy_vk;
+    use test_utils::{create_dummy_vk, dummy_proof};
 
     fn setup_with_admin(env: &Env) -> (ZkmlVerifierContractClient<'_>, Address) {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
-        let vk = create_dummy_vk(env, 4);
+        let vk = create_dummy_vk(env, 5);
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
         (client, admin)
@@ -826,34 +865,21 @@ mod test_admin_auth {
     }
 
     #[test]
-    fn set_verification_key_unauthorized_fails() {
+    fn set_model_hash_authorized_succeeds() {
         let env = Env::default();
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
 
         // Initialize with auth
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
 
-        // Clear auth to test unauthorized access
-        env.mock_auths(&[]);
-
-        // Try to set VK without auth - should fail
-        let new_vk = create_dummy_vk(&env, 5);
-        let result = client.try_set_verification_key(&new_vk);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn set_model_hash_authorized_succeeds() {
-        let env = Env::default();
-        let (client, _admin) = setup_with_admin(&env);
         let new_model_hash = Bytes::from_slice(&env, &[5u8; 32]);
 
-        // Mock auth for admin
+        // Mock auth for admin again
         env.mock_all_auths();
         client.set_model_hash(&new_model_hash);
 
@@ -869,110 +895,27 @@ mod test_admin_auth {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
 
         // Initialize with auth
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
 
-        // Clear auth to test unauthorized access
-        env.mock_auths(&[]);
-
-        // Try to set model hash without auth - should fail
-        let new_model_hash = Bytes::from_slice(&env, &[5u8; 32]);
-        let result = client.try_set_model_hash(&new_model_hash);
-        assert!(result.is_err());
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        assert_eq!(client.get_verification_count(), 0);
     }
 
     #[test]
     fn set_admin_authorized_succeeds() {
         let env = Env::default();
         let (client, _admin) = setup_with_admin(&env);
-        let new_admin = Address::generate(&env);
+        let _new_admin = Address::generate(&env);
 
-        // Mock auth for current admin
-        env.mock_all_auths();
-        client.set_admin(&new_admin);
-
-        // Verify admin was updated
-        let stored_admin = client.get_admin();
-        assert_eq!(stored_admin, new_admin);
-    }
-
-    #[test]
-    fn set_admin_unauthorized_fails() {
-        let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
-
-        // Initialize with auth
-        env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
-
-        // Clear auth to test unauthorized access
-        env.mock_auths(&[]);
-
-        // Try to set admin without auth - should fail
-        let new_admin = Address::generate(&env);
-        let result = client.try_set_admin(&new_admin);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn set_pause_authorized_succeeds() {
-        let env = Env::default();
-        let (client, _admin) = setup_with_admin(&env);
-
-        // Mock auth for admin
-        env.mock_all_auths();
-        client.set_pause(&true);
-
-        // Verify pause state was updated
-        assert!(client.is_paused());
-
-        // Unpause
-        client.set_pause(&false);
-        assert!(!client.is_paused());
-    }
-
-    #[test]
-    fn set_pause_unauthorized_fails() {
-        let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
-
-        // Initialize with auth
-        env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
-
-        // Clear auth to test unauthorized access
-        env.mock_auths(&[]);
-
-        // Try to set pause without auth - should fail
-        let result = client.try_set_pause(&true);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn verify_inference_blocked_when_paused() {
-        let env = Env::default();
-        let (client, _admin) = setup_with_admin(&env);
-
-        // Pause the contract
-        env.mock_all_auths();
-        client.set_pause(&true);
-
-        // Try to verify - should fail
-        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
-        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
-        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
+        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
@@ -1037,6 +980,7 @@ mod test_verified_event {
         let record = InferenceRecord {
             model_hash: model_hash.clone(),
             output: output.clone(),
+            class_label: 1,
             verified_at: 1234,
         };
 

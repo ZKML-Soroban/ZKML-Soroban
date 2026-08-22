@@ -2,7 +2,7 @@
 //!
 //! Reads a quantized model and input features from the host, runs the shared
 //! `zkml_common::inference` engine, and commits public journal fields:
-//! `(model_hash, input_hash, output_raw)`.
+//! `(model_hash, input_hash, output_raw, class_label)`.
 //!
 //! STARK → Groth16 compression is out of scope here (issue #11).
 
@@ -12,7 +12,7 @@ use risc0_zkvm::guest::env;
 use serde::{Deserialize, Serialize};
 use zkml_common::commitment::{commitment_hash, model_elements, Commitment};
 use zkml_common::fixed_point::FixedPoint;
-use zkml_common::inference::run_inference;
+use zkml_common::inference::run_inference_with_decision;
 use zkml_common::models::Model;
 
 risc0_zkvm::guest::entry!(main);
@@ -23,13 +23,14 @@ pub struct GuestJournal {
     pub model_hash: Commitment,
     pub input_hash: Commitment,
     pub output: i64,
+    pub class_label: i64,
 }
 
 fn main() {
     let model: Model = env::read();
     let inputs: Vec<FixedPoint> = env::read();
 
-    let output = run_inference(&model, &inputs);
+    let (output, class_label) = run_inference_with_decision(&model, &inputs);
 
     let model_hash = commitment_hash(&model_elements(&model));
     let input_hash = commitment_hash(&inputs.iter().map(|x| x.value).collect::<Vec<_>>());
@@ -38,6 +39,7 @@ fn main() {
         model_hash,
         input_hash,
         output: output.value,
+        class_label,
     });
 }
 
