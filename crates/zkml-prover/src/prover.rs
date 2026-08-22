@@ -7,11 +7,31 @@
 //! - [`generate_receipt`]: Phase 1 STARK receipt from the zkVM guest (this issue).
 //! - [`generate_proof`]: public-input bundle with a placeholder Groth16 proof
 //!   until STARK→Groth16 compression lands in issue #11.
+//! - [`generate_proof_with_groth16`]: Placeholder for STARK→Groth16 compression
+//!   with backend selection (not yet implemented - see TODO comments).
 
 use zkml_common::commitment::{commit_i64, commitment_hash, Commitment};
 use zkml_common::fixed_point::FixedPoint;
 use zkml_common::models::Model;
 use zkml_common::proof::{Groth16Proof, PublicInputs, VerificationBundle};
+
+/// Prover backend selection for Groth16 proof generation.
+///
+/// # Not Yet Implemented
+///
+/// Both backends are currently placeholders that return `Err`. The actual
+/// STARK→Groth16 compression implementation is deferred pending investigation
+/// of the risc0-groth16 3.0.5 and bonsai-sdk 1.1 APIs.
+///
+/// - `Local`: Uses Docker-based local prover (requires `risc0-groth16` component).
+/// - `Bonsai`: Uses RISC Zero's remote proving service (requires API credentials).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProverBackend {
+    /// Local Docker-based Groth16 prover.
+    Local,
+    /// Remote Bonsai proving service.
+    Bonsai,
+}
 
 /// Flatten model parameters for commitments (shared with the guest).
 pub use zkml_common::commitment::model_elements;
@@ -51,6 +71,96 @@ pub fn generate_proof(model: &Model, inputs: &[FixedPoint]) -> Result<Verificati
         public_inputs,
     })
 }
+
+/// Generate a verification bundle with Groth16 proof via STARK→SNARK compression.
+///
+/// # Not Yet Implemented
+///
+/// This function is a placeholder for the full STARK→Groth16 compression pipeline.
+/// Both backends currently return `Err` with a "not yet implemented" message.
+///
+/// TODO: Implement actual STARK→Groth16 compression using risc0-groth16 3.0.5 API.
+/// The compression pipeline should:
+/// 1. Run inference inside the zkVM guest to produce a STARK receipt
+/// 2. Convert the STARK receipt to a Groth16 SNARK using the specified backend
+/// 3. Serialize the Groth16 proof according to the BN254 wire format
+/// 4. Package the proof with public inputs into a VerificationBundle
+///
+/// # Arguments
+///
+/// * `model` - The quantized model to evaluate
+/// * `inputs` - Input features for inference
+/// * `backend` - Prover backend to use for Groth16 compression
+///
+/// # Feature Flags
+///
+/// Requires the `groth16` feature. For `ProverBackend::Bonsai`, also requires `bonsai` feature.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Inference fails (feature mismatch, overflow)
+/// - zkVM proof generation fails
+/// - STARK→Groth16 compression fails
+/// - Proof serialization fails
+#[cfg(all(feature = "groth16", feature = "zkvm"))]
+pub fn generate_proof_with_groth16(
+    model: &Model,
+    inputs: &[FixedPoint],
+    backend: ProverBackend,
+) -> Result<VerificationBundle, String> {
+    let (receipt, journal) = generate_receipt(model, inputs)?;
+
+    let groth16_proof = match backend {
+        ProverBackend::Local => compress_to_groth16_local(&receipt)?,
+        #[cfg(feature = "bonsai")]
+        ProverBackend::Bonsai => compress_to_groth16_bonsai(&receipt)?,
+        #[cfg(not(feature = "bonsai"))]
+        ProverBackend::Bonsai => {
+            return Err("Bonsai backend requires 'bonsai' feature to be enabled".to_string())
+        }
+    };
+
+    let public_inputs = PublicInputs {
+        model_hash: journal.model_hash,
+        input_hash: journal.input_hash,
+        output: journal.output.to_le_bytes().to_vec(),
+    };
+
+    Ok(VerificationBundle {
+        proof: groth16_proof,
+        public_inputs,
+    })
+}
+
+/// Compress a STARK receipt to Groth16 using the local Docker prover.
+#[cfg(all(feature = "groth16", feature = "zkvm"))]
+fn compress_to_groth16_local(_receipt: &risc0_zkvm::Receipt) -> Result<Groth16Proof, String> {
+    // TODO: Implement actual STARK to Groth16 compression using risc0-groth16 3.0.5 API.
+    // The shrink_wrap function requires the seal bytes from the receipt, and the
+    // resulting Groth16Seal needs to be serialized according to the BN254 wire format.
+    // This is deferred pending investigation of the exact risc0-groth16 3.0.5 API surface.
+    Err("STARK to Groth16 compression not yet implemented for local backend".to_string())
+}
+
+/// Compress a STARK receipt to Groth16 using the Bonsai remote proving service.
+#[cfg(all(feature = "groth16", feature = "zkvm", feature = "bonsai"))]
+fn compress_to_groth16_bonsai(_receipt: &risc0_zkvm::Receipt) -> Result<Groth16Proof, String> {
+    // TODO: Implement actual STARK to Groth16 compression using Bonsai SDK 1.1 API.
+    // This requires investigating the exact Bonsai SNARK creation flow and
+    // how to serialize the resulting Groth16Seal according to the BN254 wire format.
+    // This is deferred pending investigation of the exact Bonsai API surface.
+    Err("STARK to Groth16 compression not yet implemented for Bonsai backend".to_string())
+}
+
+/// Verification key export is deferred to a follow-up issue.
+///
+/// The verification key is required by the Soroban contract's `initialize` function
+/// to verify Groth16 proofs. This requires implementing VK extraction against
+/// risc0-groth16 3.0.5, which needs further research into the specific API surface.
+///
+/// TODO: Open a follow-up issue to implement verification key export once the
+/// risc0-groth16 3.0.5 VK extraction API is documented and understood.
 
 /// Journal fields committed by the zkVM guest (public inputs).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
