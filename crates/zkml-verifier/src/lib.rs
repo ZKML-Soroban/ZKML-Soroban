@@ -770,9 +770,11 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 4);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         // First verification should succeed (or fail with verification error, but not ProofAlreadyUsed)
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
@@ -800,9 +802,11 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 4);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
@@ -836,9 +840,11 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 4);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
