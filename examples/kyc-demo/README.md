@@ -86,7 +86,7 @@ These require implementation of:
 ### 4. Run Demo (Not Yet Implemented)
 
 ```bash
-# TODO: Create zkml-demo crate
+# Run the Rust demo runner
 cargo run -p zkml-demo -- --model kyc_decision_tree.onnx --contract-id <CONTRACT_ID>
 ```
 
@@ -97,7 +97,7 @@ cargo run -p zkml-demo -- --model kyc_decision_tree.onnx --contract-id <CONTRACT
 - Synthetic KYC dataset generation
 - Decision tree training and ONNX export
 - Deployment script scaffolding
-- Infrastructure for demo runner
+- Rust zkml-demo crate skeleton
 
 ### ⏳ Pending Dependencies
 
@@ -160,7 +160,7 @@ The synthetic KYC dataset includes 10 features:
 2. Implement verification key extraction
 3. Implement Poseidon commitment for model parameters
 4. Implement real BN254 pairing check in verifier
-5. Create `zkml-demo` crate for demo runner CLI
+5. Implement demo runner pipeline in `zkml-demo` crate
 6. Add metrics output and success criteria checks
 7. Validate README walkthrough with another contributor
 
