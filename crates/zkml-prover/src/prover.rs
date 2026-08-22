@@ -126,6 +126,7 @@ pub fn generate_proof_with_groth16(
         model_hash: journal.model_hash,
         input_hash: journal.input_hash,
         output: journal.output.to_le_bytes().to_vec(),
+        class_label: journal.class_label,
     };
 
     Ok(VerificationBundle {
