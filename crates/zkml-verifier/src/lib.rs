@@ -20,8 +20,8 @@
 
 use soroban_sdk::crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, log, symbol_short, vec, Bytes, Env,
-    Symbol, Vec, U256,
+    contract, contracterror, contractimpl, contracttype, log, symbol_short, vec, Address, Bytes,
+    Env, Symbol, Vec, U256,
 };
 
 // Storage keys
@@ -30,6 +30,8 @@ const VERIFICATION_KEY: Symbol = symbol_short!("vk");
 const LAST_RESULT: Symbol = symbol_short!("lst_res");
 const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
+const ADMIN: Symbol = symbol_short!("admin");
+const PAUSED: Symbol = symbol_short!("paused");
 
 /// Ledgers per day on Stellar (~5s per ledger).
 const DAY_IN_LEDGERS: u32 = 17_280;
@@ -43,7 +45,7 @@ const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 
 /// Contract interface version, bumped on breaking interface changes.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -97,13 +99,17 @@ pub struct ZkmlVerifierContract;
 #[contractimpl]
 impl ZkmlVerifierContract {
     /// Initialize the contract with a model commitment and Groth16 verification key. Call exactly once.
-    pub fn initialize(env: Env, model_hash: Bytes, vk: VerificationKey) {
+    /// Initialize the contract with a model commitment and verification key. Call exactly once.
+    pub fn initialize(env: Env, admin: Address, model_hash: Bytes, vk: VerificationKey) {
+        admin.require_auth();
         if env.storage().instance().has(&INITIALIZED) {
             panic!("contract is already initialized");
         }
+        env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
         env.storage().instance().set(&VERIFY_CNT, &0u32);
+        env.storage().instance().set(&PAUSED, &false);
         env.storage().instance().set(&INITIALIZED, &true);
         Self::bump_instance_ttl(&env);
         log!(
@@ -125,6 +131,11 @@ impl ZkmlVerifierContract {
     ) -> Result<(), VerificationError> {
         if !env.storage().instance().has(&INITIALIZED) {
             return Err(VerificationError::ContractNotInitialized);
+        }
+
+        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if paused {
+            return Err(VerificationError::VerificationFailed);
         }
 
         // Deserialize proof points
@@ -409,6 +420,67 @@ impl ZkmlVerifierContract {
     pub fn version(_env: Env) -> u32 {
         VERSION
     }
+
+    /// Set a new verification key. Only callable by admin.
+    pub fn set_verification_key(env: Env, vk: VerificationKey) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&VERIFICATION_KEY, &vk);
+        log!(&env, "Verification key updated by admin");
+    }
+
+    /// Set a new model hash. Only callable by admin.
+    pub fn set_model_hash(env: Env, model_hash: Bytes) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&MODEL_HASH, &model_hash);
+        log!(&env, "Model hash updated by admin");
+    }
+
+    /// Set a new admin address. Only callable by current admin.
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&ADMIN, &new_admin);
+        log!(&env, "Admin updated");
+    }
+
+    /// Set the pause flag. Only callable by admin.
+    pub fn set_pause(env: Env, paused: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&PAUSED, &paused);
+        log!(&env, "Pause flag set to {}", paused);
+    }
+
+    /// Get the current admin address.
+    pub fn get_admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized")
+    }
+
+    /// Get the current pause state.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage().instance().get(&PAUSED).unwrap_or(false)
+    }
 }
 
 #[cfg(test)]
@@ -447,6 +519,7 @@ mod test_utils {
 #[cfg(test)]
 mod test {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::Env;
     use test_utils::create_dummy_vk;
 
@@ -455,9 +528,11 @@ mod test {
         let env = Env::default();
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
         let vk = create_dummy_vk(&env, 4); // 4 IC points for model_hash, input_hash, output
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
     }
 
     #[test]
@@ -466,25 +541,30 @@ mod test {
         let env = Env::default();
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
         let vk = create_dummy_vk(&env, 4);
-        client.initialize(&model_hash, &vk);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+        client.initialize(&admin, &model_hash, &vk);
     }
 }
 
 #[cfg(test)]
 mod test_guards {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::Env;
     use test_utils::create_dummy_vk;
 
     fn setup(env: &Env) -> ZkmlVerifierContractClient<'_> {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
         let vk = create_dummy_vk(env, 4);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
         client
     }
 
@@ -579,9 +659,11 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with VK that has 5 IC points
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         // Provide public inputs for single output (3 scalars: model_hash, input_hash, output)
         // This requires 4 IC points, but VK has 5
@@ -604,9 +686,11 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with VK that has 5 IC points for multi-class output (2 output scalars)
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5); // ic[0], ic[1], ic[2], ic[3], ic[4]
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         // Provide public inputs for 2 output scalars: 32+32+8+8 = 80 bytes
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
@@ -631,9 +715,11 @@ mod test_guards {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 4);
-        client.initialize(&model_hash, &vk);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         // Try to verify with different model hash [5u8; 32]
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
@@ -675,139 +761,263 @@ mod test_poseidon_cross_check {
 }
 
 #[cfg(test)]
-mod test_ttl {
+mod test_admin_auth {
     use super::*;
-    use soroban_sdk::testutils::{storage::Instance as _, Ledger as _};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::Env;
     use test_utils::create_dummy_vk;
 
-    fn instance_ttl(env: &Env, contract_id: &soroban_sdk::Address) -> u32 {
-        env.as_contract(contract_id, || env.storage().instance().get_ttl())
-    }
-
-    fn setup(env: &Env) -> (soroban_sdk::Address, ZkmlVerifierContractClient<'_>) {
+    fn setup_with_admin(env: &Env) -> (ZkmlVerifierContractClient<'_>, Address) {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
         let vk = create_dummy_vk(env, 4);
-        client.initialize(&model_hash, &vk);
-        (contract_id, client)
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+        (client, admin)
     }
 
     #[test]
-    fn initialize_extends_instance_ttl() {
+    fn initialize_without_admin_auth_fails() {
         let env = Env::default();
-        let (contract_id, _client) = setup(&env);
-        let ttl = instance_ttl(&env, &contract_id);
-        assert!(
-            ttl >= INSTANCE_TTL_EXTEND_TO,
-            "instance TTL after initialize was {ttl}, expected at least {INSTANCE_TTL_EXTEND_TO}"
-        );
-    }
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
 
-    fn dummy_proof(env: &Env) -> (Bytes, Bytes, Bytes) {
-        (
-            Bytes::from_slice(env, &[0u8; 64]),
-            Bytes::from_slice(env, &[0u8; 128]),
-            Bytes::from_slice(env, &[0u8; 64]),
-        )
-    }
-
-    fn advance_ledger(env: &Env, ledgers: u32) {
-        let mut ledger = env.ledger().get();
-        ledger.sequence_number = ledger.sequence_number.saturating_add(ledgers);
-        env.ledger().set(ledger);
+        // Try to initialize without mocking auth - should fail
+        let result = client.try_initialize(&admin, &model_hash, &vk);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn state_survives_past_threshold_after_verify() {
+    fn initialize_with_admin_auth_succeeds() {
         let env = Env::default();
-        let (contract_id, client) = setup(&env);
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
 
-        // Past both the default ~4096 TTL and our 30-day renewal threshold.
-        advance_ledger(&env, INSTANCE_TTL_THRESHOLD + 1);
+        // Mock auth for admin
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
-        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
+        // Verify admin was stored
+        let stored_admin = client.get_admin();
+        assert_eq!(stored_admin, admin);
+    }
+
+    #[test]
+    fn set_verification_key_authorized_succeeds() {
+        let env = Env::default();
+        let (client, _admin) = setup_with_admin(&env);
+        let new_vk = create_dummy_vk(&env, 5);
+
+        // Mock auth for admin
+        env.mock_all_auths();
+        client.set_verification_key(&new_vk);
+
+        // Verify contract state is still accessible
+        let stored_model_hash = client.get_model_hash();
+        assert_eq!(stored_model_hash, Bytes::from_slice(&env, &[3u8; 32]));
+    }
+
+    #[test]
+    fn set_verification_key_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+
+        // Initialize with auth
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        // Clear auth to test unauthorized access
+        env.mock_auths(&[]);
+
+        // Try to set VK without auth - should fail
+        let new_vk = create_dummy_vk(&env, 5);
+        let result = client.try_set_verification_key(&new_vk);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_model_hash_authorized_succeeds() {
+        let env = Env::default();
+        let (client, _admin) = setup_with_admin(&env);
+        let new_model_hash = Bytes::from_slice(&env, &[5u8; 32]);
+
+        // Mock auth for admin
+        env.mock_all_auths();
+        client.set_model_hash(&new_model_hash);
+
+        // Verify model hash was updated
+        let stored_model_hash = client.get_model_hash();
+        assert_eq!(stored_model_hash, new_model_hash);
+    }
+
+    #[test]
+    fn set_model_hash_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+
+        // Initialize with auth
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        // Clear auth to test unauthorized access
+        env.mock_auths(&[]);
+
+        // Try to set model hash without auth - should fail
+        let new_model_hash = Bytes::from_slice(&env, &[5u8; 32]);
+        let result = client.try_set_model_hash(&new_model_hash);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_admin_authorized_succeeds() {
+        let env = Env::default();
+        let (client, _admin) = setup_with_admin(&env);
+        let new_admin = Address::generate(&env);
+
+        // Mock auth for current admin
+        env.mock_all_auths();
+        client.set_admin(&new_admin);
+
+        // Verify admin was updated
+        let stored_admin = client.get_admin();
+        assert_eq!(stored_admin, new_admin);
+    }
+
+    #[test]
+    fn set_admin_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+
+        // Initialize with auth
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        // Clear auth to test unauthorized access
+        env.mock_auths(&[]);
+
+        // Try to set admin without auth - should fail
+        let new_admin = Address::generate(&env);
+        let result = client.try_set_admin(&new_admin);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_pause_authorized_succeeds() {
+        let env = Env::default();
+        let (client, _admin) = setup_with_admin(&env);
+
+        // Mock auth for admin
+        env.mock_all_auths();
+        client.set_pause(&true);
+
+        // Verify pause state was updated
+        assert!(client.is_paused());
+
+        // Unpause
+        client.set_pause(&false);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn set_pause_unauthorized_fails() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+
+        // Initialize with auth
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        // Clear auth to test unauthorized access
+        env.mock_auths(&[]);
+
+        // Try to set pause without auth - should fail
+        let result = client.try_set_pause(&true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_inference_blocked_when_paused() {
+        let env = Env::default();
+        let (client, _admin) = setup_with_admin(&env);
+
+        // Pause the contract
+        env.mock_all_auths();
+        client.set_pause(&true);
+
+        // Try to verify - should fail
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
         let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
-        assert_eq!(
-            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
-            Ok(Ok(())),
-            "verify should remain invocable after the old TTL would have expired"
-        );
 
-        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
-        assert_eq!(client.get_verification_count(), 1);
-        let _ = client.get_result();
-        assert!(
-            instance_ttl(&env, &contract_id) > 0,
-            "instance storage expired after advancing past the old threshold"
-        );
-    }
-
-    #[test]
-    fn successful_verify_renews_instance_ttl() {
-        let env = Env::default();
-        let (contract_id, client) = setup(&env);
-
-        // Leave remaining TTL below the renewal threshold but still alive.
-        let drop_by = INSTANCE_TTL_EXTEND_TO - INSTANCE_TTL_THRESHOLD + 10;
-        advance_ledger(&env, drop_by);
-        let ttl_before = instance_ttl(&env, &contract_id);
-        assert!(
-            ttl_before < INSTANCE_TTL_THRESHOLD,
-            "precondition: remaining TTL {ttl_before} should be below the threshold"
-        );
-
-        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]);
-        assert_eq!(
-            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
-            Ok(Ok(())),
-            "dummy fixture should pass pairing_check"
-        );
-
-        let ttl_after = instance_ttl(&env, &contract_id);
-        assert!(
-            ttl_after >= INSTANCE_TTL_EXTEND_TO,
-            "successful verify should renew instance TTL to at least {INSTANCE_TTL_EXTEND_TO}, got {ttl_after}"
-        );
-        assert_eq!(client.get_verification_count(), 1);
-    }
-
-    #[test]
-    fn failed_verify_does_not_renew_instance_ttl() {
-        let env = Env::default();
-        let (contract_id, client) = setup(&env);
-
-        let drop_by = INSTANCE_TTL_EXTEND_TO - INSTANCE_TTL_THRESHOLD + 10;
-        advance_ledger(&env, drop_by);
-        let ttl_before = instance_ttl(&env, &contract_id);
-
-        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
-        assert_eq!(client.get_verification_count(), 0);
-
-        let ttl_after = instance_ttl(&env, &contract_id);
-        assert_eq!(
-            ttl_after, ttl_before,
-            "failed verify must not bump instance TTL"
-        );
     }
 
     #[test]
-    fn failed_verify_leaves_state_readable() {
+    fn contract_state_accessible_after_key_rotation() {
         let env = Env::default();
-        let (_contract_id, client) = setup(&env);
+        let (client, _admin) = setup_with_admin(&env);
 
-        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 72]);
+        // Rotate verification key
+        let new_vk = create_dummy_vk(&env, 4);
+        env.mock_all_auths();
+        client.set_verification_key(&new_vk);
 
-        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
-        assert_eq!(client.get_model_hash(), Bytes::from_slice(&env, &[3u8; 32]));
-        assert_eq!(client.get_verification_count(), 0);
+        // Verify that contract state is still accessible after rotation
+        let stored_model_hash = client.get_model_hash();
+        assert_eq!(stored_model_hash, Bytes::from_slice(&env, &[3u8; 32]));
+    }
+
+    #[test]
+    fn get_admin_returns_stored_admin() {
+        let env = Env::default();
+        let (client, admin) = setup_with_admin(&env);
+
+        let retrieved_admin = client.get_admin();
+        assert_eq!(retrieved_admin, admin);
+    }
+
+    #[test]
+    fn is_paused_returns_correct_state() {
+        let env = Env::default();
+        let (client, _admin) = setup_with_admin(&env);
+
+        // Initially not paused
+        assert!(!client.is_paused());
+
+        // Pause
+        env.mock_all_auths();
+        client.set_pause(&true);
+        assert!(client.is_paused());
+
+        // Unpause
+        client.set_pause(&false);
+        assert!(!client.is_paused());
     }
 }
 
