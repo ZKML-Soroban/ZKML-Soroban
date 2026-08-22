@@ -162,6 +162,7 @@ mod tests {
                 model_hash: [1u8; 32],
                 input_hash: [2u8; 32],
                 output: vec![3u8; 8],
+                class_label: 4,
             },
         };
 

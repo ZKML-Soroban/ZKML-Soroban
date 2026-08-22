@@ -535,7 +535,6 @@ mod tests_batch {
             weights: vec![FixedPoint::quantize(1.0)],
             bias: FixedPoint::quantize(0.0),
             decision_threshold: FixedPoint::quantize(0.0),
-        });
         })
     }
 
@@ -591,6 +590,7 @@ mod tests_batch {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![big],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         });
         let good = vec![FixedPoint::quantize(0.5)];
         let overflow = vec![big];
