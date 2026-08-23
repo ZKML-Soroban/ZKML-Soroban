@@ -1,0 +1,31 @@
+[package]
+name = "zkml-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Workspace dependencies
+zkml-prover = { path = "../zkml-prover" }
+zkml-verifier = { path = "../zkml-verifier" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime for contract interaction
+tokio = { version = "1", features = ["full"] }
+
+# Soroban SDK for contract interaction
+soroban-sdk = "21"
+
+[features]
+default = []
+# Enable RISC Zero zkVM features (requires Docker or Bonsai)
+zkvm = ["zkml-prover/zkvm"]
+# Enable Groth16 compression (requires risc0-groth16)
+groth16 = ["zkml-prover/groth16"]
+# Enable Bonsai remote proving
+bonsai = ["zkml-prover/bonsai"]

@@ -30,6 +30,7 @@ const VERIFICATION_KEY: Symbol = symbol_short!("vk");
 const LAST_RESULT: Symbol = symbol_short!("lst_res");
 const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
+const NULLIFIER_PREFIX: Symbol = symbol_short!("nullifier");
 const ADMIN: Symbol = symbol_short!("admin");
 const PAUSED: Symbol = symbol_short!("paused");
 
@@ -63,6 +64,7 @@ pub enum VerificationError {
     VerificationFailed = 7,
     InvalidPublicInputLength = 8,
     VerificationKeyLengthMismatch = 9,
+    ProofAlreadyUsed = 10,
 }
 
 /// On-chain representation of BN254 Groth16 verification key.
@@ -189,6 +191,24 @@ impl ZkmlVerifierContract {
         if !bn254.pairing_check(vp1, vp2) {
             return Err(VerificationError::VerificationFailed);
         }
+
+        // Derive nullifier from public inputs to prevent replay attacks
+        let nullifier = Self::derive_nullifier(&env, &public_inputs);
+
+        // Check if this proof has already been used
+        let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
+        if env.storage().persistent().has(&nullifier_key) {
+            return Err(VerificationError::ProofAlreadyUsed);
+        }
+
+        // Store nullifier in persistent storage with TTL bump
+        // Use the network maximum persistent TTL (env.storage().max_ttl())
+        // This ensures nullifiers persist for the maximum allowed duration
+        let ttl_ledgers = env.storage().max_ttl();
+        env.storage().persistent().set(&nullifier_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&nullifier_key, ttl_ledgers, ttl_ledgers);
 
         // Verification succeeded - record result
         // Output starts after model_hash (32) and input_hash (32) = byte 64
@@ -424,6 +444,18 @@ impl ZkmlVerifierContract {
         }
 
         Ok(l)
+    }
+
+    /// Derive a nullifier from the public inputs to prevent proof replay attacks.
+    ///
+    /// The nullifier is computed as SHA256(public_inputs), which includes:
+    /// - model_hash (32 bytes)
+    /// - input_hash (32 bytes)  
+    /// - output scalars (N * 8 bytes)
+    ///
+    /// This ensures that each unique (model, input, output) tuple can only be verified once.
+    fn derive_nullifier(env: &Env, public_inputs: &Bytes) -> Bytes {
+        env.crypto().sha256(public_inputs).into()
     }
 
     /// Retrieve the last verified inference result.
@@ -768,6 +800,114 @@ mod test_guards {
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
         assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+    }
+
+    #[test]
+    fn verify_replay_attack_prevented() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        // First verification should succeed (or fail with verification error, but not ProofAlreadyUsed)
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]); // 32+32+8 = 72 bytes for single output
+
+        let first_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        // First attempt should not return ProofAlreadyUsed
+        if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
+            panic!("First verification should not return ProofAlreadyUsed");
+        }
+
+        // Second verification with identical inputs should return ProofAlreadyUsed
+        let second_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
+        assert_eq!(second_result, Err(Ok(VerificationError::ProofAlreadyUsed)));
+    }
+
+    #[test]
+    fn verify_distinct_inputs_independent() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+
+        // First verification with input_hash [3u8; 32]
+        let public_inputs_1 = Bytes::from_slice(&env, &[3u8; 72]); // model_hash [3u8; 32], input_hash [3u8; 32], output [3u8; 8]
+        let first_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_1);
+        // First attempt should not return ProofAlreadyUsed
+        if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
+            panic!("First verification should not return ProofAlreadyUsed");
+        }
+
+        // Second verification with different input_hash [4u8; 32] should not return ProofAlreadyUsed
+        let mut public_inputs_2_bytes = [3u8; 72];
+        public_inputs_2_bytes[32..64].copy_from_slice(&[4u8; 32]); // Change input_hash bytes
+        let public_inputs_2 = Bytes::from_slice(&env, &public_inputs_2_bytes);
+        let second_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_2);
+        // Should not return ProofAlreadyUsed since input_hash is different
+        if let Err(Ok(VerificationError::ProofAlreadyUsed)) = second_result {
+            panic!("Verification with different input_hash should not return ProofAlreadyUsed");
+        }
+    }
+
+    #[test]
+    fn verify_distinct_outputs_independent() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        // Initialize with model hash [3u8; 32]
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
+        let vk = create_dummy_vk(&env, 4);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
+
+        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
+        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
+        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
+
+        // First verification with output [3u8; 8]
+        let public_inputs_1 = Bytes::from_slice(&env, &[3u8; 72]); // model_hash [3u8; 32], input_hash [3u8; 32], output [3u8; 8]
+        let first_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_1);
+        // First attempt should not return ProofAlreadyUsed
+        if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
+            panic!("First verification should not return ProofAlreadyUsed");
+        }
+
+        // Second verification with different output [4u8; 8] should not return ProofAlreadyUsed
+        let mut public_inputs_2_bytes = [3u8; 72];
+        public_inputs_2_bytes[64..72].copy_from_slice(&[4u8; 8]); // Change output bytes
+        let public_inputs_2 = Bytes::from_slice(&env, &public_inputs_2_bytes);
+        let second_result =
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs_2);
+        // Should not return ProofAlreadyUsed since output is different
+        if let Err(Ok(VerificationError::ProofAlreadyUsed)) = second_result {
+            panic!("Verification with different output should not return ProofAlreadyUsed");
+        }
     }
 }
 
