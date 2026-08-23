@@ -86,6 +86,7 @@ pub fn extract_linear_classifier(node: &NodeProto) -> Result<LogisticRegression,
     Ok(LogisticRegression {
         weights: quantized_weights,
         bias: quantized_bias,
+        decision_threshold: FixedPoint::quantize(0.0),
     })
 }
 
