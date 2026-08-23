@@ -105,60 +105,6 @@
             "contract_data": {
               "ext": "v0",
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "nullifier"
-                  },
-                  {
-                    "bytes": "b3c9470cf094dcba7cf772bb789c8a19474b3abca596c76b7872459e5e5cde25"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "bool": true
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6311999
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "nullifier"
-                  },
-                  {
-                    "bytes": "c3be3aad7a60e53c9baa8f52219cef642c32085ad8d42fb42c62d6cf7875d441"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "bool": true
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6311999
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
               "key": "ledger_key_contract_instance",
               "durability": "persistent",
               "val": {
@@ -181,39 +127,6 @@
                       },
                       "val": {
                         "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "lst_res"
-                      },
-                      "val": {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "model_hash"
-                            },
-                            "val": {
-                              "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "output"
-                            },
-                            "val": {
-                              "bytes": "0303030303030303"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "verified_at"
-                            },
-                            "val": {
-                              "u32": 0
-                            }
-                          }
-                        ]
                       }
                     },
                     {
@@ -299,7 +212,7 @@
                         "symbol": "vrf_cnt"
                       },
                       "val": {
-                        "u32": 2
+                        "u32": 0
                       }
                     }
                   ]
@@ -347,36 +260,5 @@
       }
     ]
   },
-  "events": [
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "verified"
-              },
-              {
-                "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u32": 0
-                },
-                {
-                  "bytes": "0303030303030303"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    }
-  ]
+  "events": []
 }

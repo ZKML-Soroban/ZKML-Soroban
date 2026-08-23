@@ -811,7 +811,7 @@ mod test_guards {
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
         client.initialize(&admin, &model_hash, &vk);
 
@@ -819,7 +819,7 @@ mod test_guards {
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
         let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 72]); // 32+32+8 = 72 bytes for single output
+        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]); // 32+32+8+8 = 80 bytes (model_hash + input_hash + output + class_label)
 
         let first_result =
             client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
