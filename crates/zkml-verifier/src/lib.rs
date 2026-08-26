@@ -1147,6 +1147,7 @@ mod test_budget {
     extern crate std;
     use super::*;
     use soroban_sdk::crypto::bn254::{Bn254Fr, Bn254G1Affine};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{vec as sdk_vec, BytesN, Env};
     use std::println;
 
@@ -1187,6 +1188,8 @@ mod test_budget {
     /// All G2 points (beta, gamma, delta) are a known-good BN254 G2 point
     /// from the soroban-env-host test suite.  All IC entries are the BN254
     /// G1 generator.
+    ///
+    /// 5 IC points: IC[0] + model·IC[1] + input·IC[2] + output·IC[3] + class_label·IC[4]
     pub fn create_accept_fixture_vk(env: &Env) -> VerificationKey {
         VerificationKey {
             alpha: Bytes::from_slice(env, &G1_GEN),
@@ -1199,15 +1202,16 @@ mod test_budget {
                 Bytes::from_slice(env, &G1_GEN),
                 Bytes::from_slice(env, &G1_GEN),
                 Bytes::from_slice(env, &G1_GEN),
+                Bytes::from_slice(env, &G1_GEN),
             ],
         }
     }
 
     /// Compute a proof that satisfies the Groth16 pairing check.
     ///
-    /// Given the VK and public-input scalars (model, input, output),
+    /// Given the VK and public-input scalars (model, input, output, class_label),
     /// this uses BN254 host functions to compute:
-    ///   L  = IC[0] + model·IC[1] + input·IC[2] + output·IC[3]
+    ///   L  = IC[0] + model·IC[1] + input·IC[2] + output·IC[3] + class_label·IC[4]
     ///   C  = −L
     ///
     /// Then the pairing:
@@ -1220,6 +1224,7 @@ mod test_budget {
         model_scalar: u64,
         input_scalar: u64,
         output_scalar: u64,
+        class_label_scalar: u64,
     ) -> (Bytes, Bytes, Bytes) {
         let bn254 = env.crypto().bn254();
 
@@ -1253,6 +1258,14 @@ mod test_budget {
         let term3 = bn254.g1_mul(&ic3, &fr_from_u64(env, output_scalar));
         l = bn254.g1_add(&l, &term3);
 
+        // L += class_label_scalar * IC[4]
+        let ic4_bytes = vk.ic.get(4).unwrap();
+        let mut ic4_arr = [0u8; 64];
+        ic4_bytes.copy_into_slice(&mut ic4_arr);
+        let ic4 = Bn254G1Affine::from_array(env, &ic4_arr);
+        let term4 = bn254.g1_mul(&ic4, &fr_from_u64(env, class_label_scalar));
+        l = bn254.g1_add(&l, &term4);
+
         // C = −L  (proof_c)
         let c = -l;
 
@@ -1270,10 +1283,10 @@ mod test_budget {
         let contract_id = env.register(ZkmlVerifierContract, ());
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
-        // --- Public-input scalars: model=3, input=5, output=42. ---
+        // --- Public-input scalars: model=3, input=5, output=42, class_label=7. ---
         // bytes_to_fr interprets input as little-endian, so we encode
         // each scalar as [val, 0, 0, ..., 0] (32 bytes LE for model/input,
-        // 8 bytes LE for output i64).
+        // 8 bytes LE for output/class_label i64).
         let model_le = {
             let mut b = [0u8; 32];
             b[0] = 3;
@@ -1290,21 +1303,30 @@ mod test_budget {
             b[0] = 42;
             b
         };
+        // Class label is a single i64 scalar in LE (8 bytes)
+        let class_label_le = {
+            let mut b = [0u8; 8];
+            b[0] = 7;
+            b
+        };
 
         // --- VK with non-degenerate G2 and non-zero IC ---
         let model_hash = Bytes::from_slice(&env, &model_le);
         let vk = create_accept_fixture_vk(&env);
-        client.initialize(&model_hash, &vk);
+        let admin = Address::generate(&env);
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash, &vk);
 
         // --- Proof that genuinely satisfies the pairing ---
-        let (proof_a, proof_b, proof_c) = compute_valid_proof(&env, &vk, 3, 5, 42);
+        let (proof_a, proof_b, proof_c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
 
-        // Public inputs: model(32) + input(32) + output(8) = 72 bytes
-        // Parsed as: 1 model + 1 input + 1 output = 3 scalars → IC[0..3]
-        let mut public_inputs_vec = [0u8; 72];
+        // Public inputs: model(32) + input(32) + output(8) + class_label(8) = 80 bytes
+        // Parsed as: 1 model + 1 input + 1 output + 1 class_label = 4 scalars → IC[0..4]
+        let mut public_inputs_vec = [0u8; 80];
         public_inputs_vec[0..32].copy_from_slice(&model_le);
         public_inputs_vec[32..64].copy_from_slice(&input_le);
         public_inputs_vec[64..72].copy_from_slice(&output_le);
+        public_inputs_vec[72..80].copy_from_slice(&class_label_le);
         let public_inputs = Bytes::from_slice(&env, &public_inputs_vec);
 
         // --- Measure resource budget ---
