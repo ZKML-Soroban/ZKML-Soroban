@@ -16,6 +16,7 @@ pub enum JsonModel {
     LogisticRegression {
         weights: Vec<f64>,
         bias: f64,
+        decision_threshold: f64,
     },
     DecisionTree {
         num_features: usize,
@@ -67,10 +68,11 @@ pub fn import_json(bytes: &[u8]) -> Result<Model, String> {
 
 impl JsonModel {
     /// Convert a logistic regression JSON document into the internal model.
-    fn into_logistic(weights: Vec<f64>, bias: f64) -> Model {
+    fn into_logistic(weights: Vec<f64>, bias: f64, decision_threshold: f64) -> Model {
         Model::LogisticRegression(LogisticRegression {
             weights: weights.iter().copied().map(FixedPoint::quantize).collect(),
             bias: FixedPoint::quantize(bias),
+            decision_threshold: FixedPoint::quantize(decision_threshold),
         })
     }
 }
@@ -131,7 +133,11 @@ impl JsonModel {
     /// Lower any JSON model into the internal `Model` representation.
     pub fn into_model(self) -> Model {
         match self {
-            JsonModel::LogisticRegression { weights, bias } => Self::into_logistic(weights, bias),
+            JsonModel::LogisticRegression {
+                weights,
+                bias,
+                decision_threshold,
+            } => Self::into_logistic(weights, bias, decision_threshold),
             JsonModel::DecisionTree {
                 num_features,
                 nodes,
@@ -147,7 +153,7 @@ mod tests {
 
     #[test]
     fn parse_logistic_regression() {
-        let json = r#"{"kind":"logistic_regression","weights":[0.5,-0.5],"bias":0.0}"#;
+        let json = r#"{"kind":"logistic_regression","weights":[0.5,-0.5],"bias":0.0,"decision_threshold":0.0}"#;
         let doc: JsonModel = serde_json::from_str(json).unwrap();
         match doc.into_model() {
             Model::LogisticRegression(lr) => assert_eq!(lr.weights.len(), 2),

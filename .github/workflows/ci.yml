@@ -59,3 +59,26 @@ jobs:
         run: |
           export PATH="$HOME/.risc0/bin:$PATH"
           cargo test -p zkml-prover --features zkvm --verbose
+
+  groth16:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install rzup
+        run: curl -L https://risczero.com/install | bash
+      - name: Install RISC Zero toolchain
+        run: |
+          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.risc0/bin:$PATH"
+          rzup install cargo-risczero "${RISC0_VERSION}"
+          rzup install r0vm "${RISC0_VERSION}"
+          rzup install rust
+      - name: Check groth16 feature compiles
+        env:
+          RISC0_DEV_MODE: "1"
+        run: |
+          export PATH="$HOME/.risc0/bin:$PATH"
+          cargo check -p zkml-prover --features groth16 --verbose
+      - name: Check bonsai feature compiles
+        run: cargo check -p zkml-prover --features bonsai

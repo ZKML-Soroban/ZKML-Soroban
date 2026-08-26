@@ -126,6 +126,7 @@ pub fn model_elements(model: &Model) -> Vec<i64> {
         Model::LogisticRegression(lr) => {
             out.extend(lr.weights.iter().map(|w| w.value));
             out.push(lr.bias.value);
+            out.push(lr.decision_threshold.value);
         }
         Model::DecisionTree(tree) => {
             out.push(tree.num_features as i64);
@@ -289,8 +290,9 @@ mod tests_model_elements {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::from_raw(1, 16), FixedPoint::from_raw(2, 16)],
             bias: FixedPoint::from_raw(3, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
         });
-        assert_eq!(model_elements(&model), vec![1, 2, 3]);
+        assert_eq!(model_elements(&model), vec![1, 2, 3, 0]);
     }
 
     #[test]
@@ -320,6 +322,7 @@ mod tests_model_elements {
         let model = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::from_raw(1, 16), FixedPoint::from_raw(2, 16)],
             bias: FixedPoint::from_raw(3, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
         });
         let hash1 = commit_model(&model);
         let hash2 = commit_model(&model);
@@ -343,10 +346,12 @@ mod tests_model_elements {
         let model1 = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::from_raw(1, 16), FixedPoint::from_raw(2, 16)],
             bias: FixedPoint::from_raw(3, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
         });
         let model2 = Model::LogisticRegression(LogisticRegression {
             weights: vec![FixedPoint::from_raw(1, 16), FixedPoint::from_raw(99, 16)], // Changed weight
             bias: FixedPoint::from_raw(3, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
         });
         assert_ne!(commit_model(&model1), commit_model(&model2));
     }
@@ -375,6 +380,7 @@ mod tests_snapshot {
                 FixedPoint::from_raw(300, 16),
             ],
             bias: FixedPoint::from_raw(50, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
         });
         let hash = commit_model(&model);
         assert_debug_snapshot!(hash);

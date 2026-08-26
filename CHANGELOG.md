@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   produced which output directly from the event stream. This is a breaking
   change to the event payload (`data` changed from a bare `u32` to a
   `(u32, Bytes)` tuple); the contract `VERSION` is bumped `2 -> 3`.
+- Admin access control for the verifier contract with `set_admin`, `set_verification_key`,
+  `set_model_hash`, and `set_pause` functions. The `initialize` function now requires
+  an `admin` parameter, which is a breaking interface change; the contract `VERSION`
+  is bumped `3 -> 4`.
 - Property-based tests for inference (`try_run_inference` determinism, ReLU
   monotonicity, stable argmax, no panics) and a zkVM differential suite that
   compares `generate_receipt` journals against native inference.
@@ -53,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `zkml-verifier` crates.
 
 ### Changed
+- **Breaking:** verifier public-input layout is now fixed at commitment(64) + output(8) + class_label(8) = 80 bytes, and InferenceRecord gains class_label. Contract VERSION 4 -> 5.
 - `prover::generate_proof` runs `try_run_inference` instead of the panicking
   `run_inference`, so feature-count and overflow failures surface as `Err`
   rather than aborting the caller.

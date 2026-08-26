@@ -206,27 +206,27 @@ The public input buffer is parsed into scalars with the following extensible lay
 
 1. **model_hash**: 32 bytes (canonical Poseidon commitment)
 2. **input_hash**: 32 bytes (canonical Poseidon commitment)
-3. **output_scalars**: N × 8 bytes (each canonical i64 in little-endian)
+3. **output**: 8 bytes (canonical i64 in little-endian)
+4. **class_label**: 8 bytes (canonical i64 in little-endian)
 
 **Canonical length requirements**:
 - `model_hash` must be exactly 32 bytes
 - `input_hash` must be exactly 32 bytes
-- Each output scalar must be exactly 8 bytes (canonical i64)
-- Total output length must be a multiple of 8 bytes
+- `output` must be exactly 8 bytes (canonical i64)
+- `class_label` must be exactly 8 bytes (canonical i64)
+- Total length must be exactly 80 bytes
 
 The verifier rejects any public input that violates these canonical length requirements with `InvalidPublicInputLength`.
 
-#### Multi-Scalar Output
+#### Decision Layer
 
-The output field supports multiple scalars for multi-class inference decisions:
+The `class_label` field provides a deterministic decision that is reproducible off-chain and on-chain:
 
-- **Single-class output**: 8 bytes (one i64)
-- **Multi-class output**: N × 8 bytes (N i64 values, e.g., class probabilities or logits)
+- **Binary logistic regression**: `class_label = 1 if score >= threshold else 0`
+- **Multi-class MLP**: `class_label = argmax(logits)` (index of highest logit)
+- **Decision tree**: `class_label = 0` (no multi-class decision)
 
-For example, a 3-class classifier would have:
-- Total public inputs: 32 + 32 + 24 = 88 bytes
-- Parsed scalars: [model_hash, input_hash, output_0, output_1, output_2]
-- Required IC points: 6 (ic[0], ic[1], ic[2], ic[3], ic[4], ic[5])
+This enables on-chain verification of meaningful decisions (e.g., approve/reject for KYC) rather than just raw scores.
 
 #### Verification Key Validation
 
@@ -248,6 +248,66 @@ The Poseidon hash function with the specified parameters provides collision resi
 ### Uniqueness
 
 The domain separation ensures that model commitments and input commitments live in distinct hash spaces, preventing cross-type collisions.
+
+## Nullifier Scheme
+
+To prevent proof replay attacks, the verifier contract uses a nullifier system that ensures each unique (model, input, output) tuple can only be verified once.
+
+### Nullifier Derivation
+
+The nullifier is derived from the public inputs using SHA256:
+
+```
+nullifier = SHA256(public_inputs)
+```
+
+where `public_inputs` is the concatenation of:
+- `model_hash` (32 bytes): Poseidon commitment to the model
+- `input_hash` (32 bytes): Poseidon commitment to the input features
+- `output_scalars` (N × 8 bytes): The inference output values in little-endian i64 format
+
+This ensures that any change to the model, input, or output produces a different nullifier, preventing replay of identical proofs while allowing distinct inferences to verify independently.
+
+### Storage and TTL
+
+Nullifiers are stored in persistent storage with a Time-To-Live (TTL) set to the network's maximum entry TTL (approximately 61 days at 5 seconds per ledger). The storage key is:
+
+```
+(nullifier_prefix, nullifier_bytes)
+```
+
+where `nullifier_prefix` is the Symbol `"nullifier"` and `nullifier_bytes` is the 32-byte SHA256 hash.
+
+The TTL is extended on each write to ensure nullifiers persist independently of the contract instance and survive contract upgrades. The contract uses `env.storage().persistent().max_ttl()` to dynamically obtain the network's maximum allowed TTL, ensuring compatibility with network configuration changes.
+
+### Replay Attack Prevention
+
+When `verify_inference` is called:
+
+1. The nullifier is derived from the public inputs
+2. The contract checks if the nullifier already exists in persistent storage
+3. If the nullifier exists, the function returns `VerificationError::ProofAlreadyUsed`
+4. If the nullifier does not exist, it is stored with the configured TTL
+
+This prevents attackers from resubmitting the same proof multiple times to gain repeated verification benefits (e.g., for KYC or risk-scoring use cases).
+
+### Off-Chain Prediction
+
+Since the nullifier derivation is deterministic and documented, off-chain systems can predict the nullifier for a given (model, input, output) tuple by computing:
+
+```rust
+use sha2::{Sha256, Digest};
+
+let public_inputs = model_hash
+    .iter()
+    .chain(input_hash.iter())
+    .chain(output_scalars.iter())
+    .copied()
+    .collect::<Vec<u8>>();
+let nullifier = Sha256::digest(&public_inputs);
+```
+
+This allows off-chain components to check whether a proof has already been used before submitting it to the chain.
 
 ## Test Vectors
 
