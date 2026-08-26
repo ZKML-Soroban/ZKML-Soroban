@@ -20,7 +20,7 @@ Resource budget consumed by the `ZkmlVerifierContract` during a complete `verify
 
 | Verification Operation | CPU Instructions | Memory (Bytes) | Regression Threshold (Max CPU) |
 | ---------------------- | ---------------- | -------------- | ------------------------------ |
-| Full `verify_inference` (BN254 Pairing + L Assembly) | 21,164,342 | 250,277 | 50,000,000 |
+| Full `verify_inference` (BN254 Pairing + L Assembly) | 28,054,439 | 255,618 | 50,000,000 |
 
 ### Resource Budget Breakdown & Notes
 - **L Scalar Mult & Assembly**: 4 G1 scalar multiplications and 3 G1 additions to assemble public input accumulator $L = \text{IC}_0 + \sum x_i \cdot \text{IC}_i$.
