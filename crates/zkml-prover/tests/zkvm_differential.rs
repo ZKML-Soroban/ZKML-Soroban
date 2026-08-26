@@ -25,7 +25,11 @@ fn logistic_case() -> impl Strategy<Value = (Model, Vec<FixedPoint>)> {
         )
             .prop_map(|(weights, bias, inputs)| {
                 (
-                    Model::LogisticRegression(LogisticRegression { weights, bias }),
+                    Model::LogisticRegression(LogisticRegression {
+                        weights,
+                        bias,
+                        decision_threshold: FixedPoint::quantize(0.0),
+                    }),
                     inputs,
                 )
             })

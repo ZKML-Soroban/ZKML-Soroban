@@ -462,6 +462,7 @@ mod tests_validation {
         let lr = LogisticRegression {
             weights: vec![FixedPoint::from_raw(i64::MIN, 16)],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         };
         let model = Model::LogisticRegression(lr);
         let result = check_parameter_range(&model);
@@ -476,6 +477,7 @@ mod tests_validation {
         let lr = LogisticRegression {
             weights: vec![huge_weight],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         };
         let model = Model::LogisticRegression(lr);
         let cfg = QuantizationConfig {
@@ -492,6 +494,7 @@ mod tests_validation {
         let lr = LogisticRegression {
             weights: vec![FixedPoint::quantize(0.5); 10],
             bias: FixedPoint::quantize(0.1),
+            decision_threshold: FixedPoint::quantize(0.0),
         };
         let model = Model::LogisticRegression(lr);
         let cfg = QuantizationConfig {
@@ -560,6 +563,7 @@ mod tests_validation {
         let lr = LogisticRegression {
             weights: vec![FixedPoint::quantize(1.0)],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         };
         let model = Model::LogisticRegression(lr);
 
@@ -585,6 +589,7 @@ mod tests_validation {
         let lr = LogisticRegression {
             weights: vec![tiny_weight],
             bias: FixedPoint::quantize(0.0),
+            decision_threshold: FixedPoint::quantize(0.0),
         };
         let model = Model::LogisticRegression(lr);
 
@@ -610,6 +615,7 @@ mod tests_validation {
         let lr = LogisticRegression {
             weights: vec![FixedPoint::quantize(0.5); 5],
             bias: FixedPoint::quantize(0.1),
+            decision_threshold: FixedPoint::quantize(0.0),
         };
         let model = Model::LogisticRegression(lr);
 
