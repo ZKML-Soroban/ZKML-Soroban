@@ -6,8 +6,8 @@ The `zkml-verifier` Soroban contract exposes the following entrypoints.
 | ------------------------ | -------------------------------------------------- |
 | `initialize(model_hash)` | Register the model commitment. Call once.          |
 | `verify_inference(...)`  | Verify a proof + public inputs, record the result. |
-| `get_result()`           | Return the last `InferenceRecord`.                 |
-| `get_model_hash()`       | Return the registered model commitment.            |
+| `get_result()`           | Return the last `InferenceRecord`, if any.         |
+| `get_model_hash()`       | Return the registered model commitment, if set.    |
 | `get_verification_count()` | Return the number of verified proofs.            |
 | `version()`              | Return the contract interface version.             |
 
