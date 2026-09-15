@@ -136,7 +136,7 @@ matching `vX.Y.Z` GitHub Release (see [`publish-crate.yml`](.github/workflows/pu
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Report security issues
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Report security issues
 privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
