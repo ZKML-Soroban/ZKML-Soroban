@@ -1350,7 +1350,7 @@
 
   <text x="690" y="372"
         font-family="Inter,'Segoe UI',Arial,sans-serif"
-        font-size="30" fill="#BDB8D2">Privacy-preserving AI with Zero-Knowledge Proofs on Soroban.</text>
+        font-size="25" fill="#BDB8D2">Verifiable machine learning inference with zero-knowledge proofs on Stellar.</text>
 
   <!-- Etiquetas tipo chips -->
   <g font-family="Inter,'Segoe UI',Arial,sans-serif" font-size="24" font-weight="600">
