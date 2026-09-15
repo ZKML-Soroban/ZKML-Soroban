@@ -1,25 +1,15 @@
-# Use Cases
-
-This document describes the primary use cases targeted by zkml-soroban,
-explaining why each is a natural fit for provable ML inference on the
-Stellar network.
-
+---
+title: "Use cases"
+description: "Provable KYC risk scoring, invoice risk for RWA factoring, and privacy-preserving credit scoring on Stellar."
+icon: "briefcase"
 ---
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Use Case 1: Provable KYC Risk Scoring](#use-case-1-provable-kyc-risk-scoring)
-- [Use Case 2: Invoice Risk Assessment for RWA Factoring](#use-case-2-invoice-risk-assessment-for-rwa-factoring)
-- [Use Case 3: Privacy-Preserving Credit Scoring](#use-case-3-privacy-preserving-credit-scoring)
-- [Cross-Cutting Themes](#cross-cutting-themes)
-
----
+This page describes the primary use cases targeted by zkml-soroban and why
+each fits provable ML inference on Stellar.
 
 ## Overview
 
-Stellar is the network with the largest number of institutional anchors
-focused on remittances, cross-border payments, and real-world asset (RWA)
+Stellar has a large network of institutional anchors focused on remittances, cross-border payments, and real-world asset (RWA)
 tokenization. The Stellar Development Foundation has explicitly prioritized
 compliance-ready features, including viewing keys for authorized parties and
 support for institutional flows such as payroll and B2B transfers.
@@ -35,7 +25,6 @@ The three use cases below share a common pattern:
 3. Zero-knowledge proofs bridge this gap by proving correctness without
    revealing sensitive information.
 
----
 
 ## Use Case 1: Provable KYC Risk Scoring
 
@@ -82,7 +71,6 @@ is not optional -- it is a prerequisite for operating on the network. A
 provable scoring system reduces duplicated effort across anchors and aligns
 directly with SDF's compliance roadmap.
 
----
 
 ## Use Case 2: Invoice Risk Assessment for RWA Factoring
 
@@ -131,7 +119,6 @@ compliant asset issuers. Invoice factoring is a natural extension of the
 existing anchor and asset framework. A provable risk score reduces the
 trust assumptions that currently limit decentralized factoring adoption.
 
----
 
 ## Use Case 3: Privacy-Preserving Credit Scoring
 
@@ -150,8 +137,9 @@ trusted prover enclave):
 1. The user provides their financial features to the prover.
 2. The prover executes the model and generates a ZK proof of the result.
 3. The proof is submitted on-chain, demonstrating that the user's credit
-   score exceeds a required threshold without revealing the score itself
-   or the underlying data.
+   score exceeds a required threshold. The output and class label are public
+   inputs, so the result is visible, but the input features and model weights
+   are not revealed.
 
 This pattern is known as a "credential proof" -- the user proves they meet
 a criterion without revealing the evidence.
@@ -174,7 +162,6 @@ Stellar, where institutional lenders and anchor-based lending platforms
 can integrate provable credit assessments directly into their transaction
 flows.
 
----
 
 ## Cross-Cutting Themes
 
@@ -184,8 +171,8 @@ All three use cases require a governance framework for model updates:
 
 - Each model version is identified by its Poseidon hash commitment.
 - Updating a model requires registering a new commitment on-chain.
-- Historical proofs remain valid for the model version they were generated
-  against.
+- Verifications under a previous model remain attributable to that model
+  version through the `model_hash` topic of their `verified` events.
 - Audit trails are maintained through the immutable ledger record of
   model registrations and verification results.
 
@@ -201,5 +188,5 @@ process) and privacy requirements (data protection laws restrict sharing).
 For high-volume applications (e.g., scoring every invoice on a factoring
 platform), recursive proof composition (planned for Phase 2) will allow
 batching multiple inference proofs into a single on-chain verification.
-This reduces per-proof gas costs and improves throughput without
+This reduces per-proof fees and improves throughput without
 sacrificing individual proof soundness.
