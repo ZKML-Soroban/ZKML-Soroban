@@ -40,7 +40,8 @@ jobs:
         continue-on-error: true
 
   test:
-    name: Test
+    # Job name must stay `test`: it is the required status check on main.
+    name: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
