@@ -1,0 +1,116 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "zkml-soroban",
+  "description": "Provable machine learning inference for Stellar, verified on-chain with Groth16 over BN254 and Poseidon commitments.",
+  "colors": {
+    "primary": "#7D00FF",
+    "light": "#A855F7",
+    "dark": "#6A00D9"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "background": {
+    "color": {
+      "dark": "#0B0714",
+      "light": "#FFFFFF"
+    }
+  },
+  "favicon": "/favicon.png",
+  "logo": {
+    "light": "/logo/logo.png",
+    "dark": "/logo/logo.png",
+    "href": "https://github.com/ZKML-Soroban/ZKML-Soroban"
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view"
+    ],
+    "display": "header"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/ZKML-Soroban/ZKML-Soroban",
+        "icon": "github"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Quickstart",
+      "href": "/quickstart"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": [
+          "index",
+          "quickstart",
+          "faq"
+        ]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "concepts/architecture",
+          "concepts/technical-overview",
+          "concepts/fixed-point",
+          "concepts/models",
+          "concepts/commitments",
+          "concepts/proving"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/cli",
+          "guides/model-format",
+          "guides/onnx-import",
+          "guides/examples",
+          "guides/kyc-demo",
+          "guides/deployment",
+          "guides/testing"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/verifier-contract",
+          "reference/bundle-format",
+          "reference/errors",
+          "reference/benchmarks",
+          "reference/glossary"
+        ]
+      },
+      {
+        "group": "Security",
+        "pages": [
+          "security/threat-model",
+          "security/security-notes",
+          "security/known-limitations",
+          "security/post-quantum"
+        ]
+      },
+      {
+        "group": "Project",
+        "pages": [
+          "project/roadmap",
+          "project/use-cases",
+          "project/devlog",
+          "project/references",
+          "project/contributing"
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ZKML-Soroban/ZKML-Soroban"
+    }
+  }
+}
