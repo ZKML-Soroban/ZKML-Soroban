@@ -5,7 +5,7 @@
 //! ONNX parameter extraction (issues #5 / #6) is incomplete.
 //!
 //! Tools that export from scikit-learn or PyTorch can target this schema
-//! directly; see `docs/model-format.md`.
+//! directly; see `docs/guides/model-format.md`.
 
 use serde::{Deserialize, Serialize};
 

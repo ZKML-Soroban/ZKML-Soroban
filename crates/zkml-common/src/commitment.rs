@@ -162,7 +162,7 @@ pub fn model_elements(model: &Model) -> Vec<i64> {
 /// Compute a Poseidon commitment to a model.
 ///
 /// This hashes all quantized model parameters using the serialization order
-/// specified in docs/commitment-scheme.md, with domain separation tag 1.
+/// specified in docs/concepts/commitments.md, with domain separation tag 1.
 ///
 /// # Arguments
 ///

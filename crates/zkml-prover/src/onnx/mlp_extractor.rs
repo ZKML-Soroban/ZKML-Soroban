@@ -6,8 +6,8 @@
 //! bias initialiser tensors, and produces a [`TinyMLP`].
 //!
 //! Supported patterns (per hidden layer):
-//! - `Gemm(X, W, B)` — fused affine transform
-//! - `MatMul(X, W)` → `Add(…, B)` — two-node affine
+//! - `Gemm(X, W, B)`: fused affine transform
+//! - `MatMul(X, W)` → `Add(…, B)`: two-node affine
 //!
 //! Activation between layers must be `Relu`. The final layer may omit the
 //! activation (raw logits), following the project convention.
@@ -255,7 +255,7 @@ fn extract_matmul_add_layer(
         )));
     }
 
-    // Weight tensor — the second input to MatMul
+    // Weight tensor, the second input to MatMul
     let w_name = &matmul_node.input[1];
     let w_tensor = inits.get(w_name.as_str()).ok_or_else(|| {
         OnnxImportError::MalformedModel(format!(
@@ -387,7 +387,7 @@ pub fn extract_mlp(graph: &GraphProto) -> Result<TinyMLP, OnnxImportError> {
                 i += 1;
             }
             "Add" => {
-                // Standalone Add without preceding MatMul — unexpected
+                // Standalone Add without preceding MatMul, unexpected
                 return Err(OnnxImportError::MalformedModel(format!(
                     "unexpected standalone Add node '{}' without preceding MatMul",
                     node.name

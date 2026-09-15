@@ -56,10 +56,10 @@ RISC0_SKIP_BUILD=1 cargo test -p zkml-prover
 
 ## Public proving API
 
-- `generate_receipt(model, inputs) -> (Receipt, InferenceJournal)` — prove
+- `generate_receipt(model, inputs) -> (Receipt, InferenceJournal)`: prove
   guest execution, verify the receipt, cross-check the journal against native
   `run_inference` and `commitment_hash` (Poseidon replacement: issue #13).
-- `generate_proof(model, inputs) -> VerificationBundle` — public inputs with a
+- `generate_proof(model, inputs) -> VerificationBundle`: public inputs with a
   placeholder Groth16 proof until issue #11.
 
 ## Shared inference
