@@ -14,8 +14,9 @@ provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant](https://www.contributor-covenant.org/)
-code of conduct. By participating, you are expected to uphold this standard.
+This project follows the [Code of Conduct](CODE_OF_CONDUCT.md), adapted from the
+Contributor Covenant 2.1. By participating, you are expected to uphold it. Report
+unacceptable behavior as described in its Enforcement section.
 
 ## Development Environment
 
