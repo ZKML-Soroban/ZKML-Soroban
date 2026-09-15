@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1] - Unreleased
+
+First release published to crates.io (`zkml-common`, `zkml-verifier`). The
+crates.io version line restarts at `0.0.x`; the earlier `v0.2.0` tag marks the
+June 2026 Phase 1 off-chain milestone and was never published.
+
 ### Added
+- Crate publishing workflow (`publish-crate.yml`) with a single workspace
+  version, crates.io metadata and per-crate READMEs.
+- Mintlify documentation site under `docs/`, including a post-quantum readiness page.
+- Graphviz diagram sources under `diagrams/` rendered to `docs/diagrams/`.
+- CI jobs for the verifier WASM build (`wasm32v1-none`), `no_std`, zkVM guest
+  and documentation link checks.
 - `try_run_batch` returns per-row `Result`s so one malformed row cannot
   abort the rest of a batch. `run_batch` stays the all-valid panicking path.
 - Instance-storage TTL bump on `initialize` and on successful `verify_inference`,
@@ -34,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ReLU, shape errors, golden float bound).
 - ONNX importer foundation: protobuf parse, per-domain opset validation
   (core >= 17, ai.onnx.ml >= 1), operator allowlist, and typed
-  `OnnxImportError` (parameter extraction deferred to #5/#6).
+  `OnnxImportError`.
 - `model_io::import_json` for the JSON exchange path used by the CLI and demos.
 - RISC Zero guest program and host `generate_receipt` with journal
   cross-checks (dev-mode CI; real proving documented and `#[ignore]`d).
@@ -57,12 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `zkml-verifier` crates.
 
 ### Changed
+- The verifier WASM is built with the workspace `contract` profile and the
+  `wasm32v1-none` target. The previous per-crate release profile was ignored
+  by Cargo.
 - **Breaking:** verifier public-input layout is now fixed at commitment(64) + output(8) + class_label(8) = 80 bytes, and InferenceRecord gains class_label. Contract VERSION 4 -> 5.
-- `prover::generate_proof` runs `try_run_inference` instead of the panicking
-  `run_inference`, so feature-count and overflow failures surface as `Err`
-  rather than aborting the caller.
-
-[Unreleased]: https://github.com/diegoveme/ZKML-Soroban/compare/main...HEAD
+- `prover::generate_proof` computes the output and class label with
+  `run_inference_with_decision`. It still panics on invalid input or overflow
+  (tracked in the known limitations).
 
 ## [0.2.0] - 2026-06-17
 
@@ -76,4 +89,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[0.2.0]: https://github.com/diegoveme/ZKML-Soroban/releases/tag/v0.2.0
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.1
+[0.2.0]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.2.0

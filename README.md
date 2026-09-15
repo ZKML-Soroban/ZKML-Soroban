@@ -1,279 +1,150 @@
 <p align="center">
-  <img src="assets/logo.png" alt="zkml-soroban logo" width="200">
+  <img src="assets/banner-zkml-soroban.svg" alt="zkml-soroban" width="100%">
 </p>
 
-<h1 align="center">zkml-soroban</h1>
-
-<p align="center"><strong>A Provable ML Inference Runtime for Stellar</strong></p>
+<h3 align="center">Provable machine learning inference, verified on Stellar</h3>
 
 <p align="center">
-  <a href="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml">
-    <img src="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml/badge.svg" alt="CI">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache 2.0">
-  </a>
-  <img src="https://img.shields.io/badge/version-0.2.0-8A2BE2.svg" alt="Version 0.2.0">
-  <img src="https://img.shields.io/badge/built%20for-Stellar%20%C2%B7%20Soroban-7D00FF.svg" alt="Built for Stellar Soroban">
-  <img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust stable">
+  <a href="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml"><img src="https://github.com/ZKML-Soroban/ZKML-Soroban/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://crates.io/crates/zkml-common"><img src="https://img.shields.io/crates/v/zkml-common.svg?label=zkml-common" alt="zkml-common on crates.io"></a>
+  <a href="https://crates.io/crates/zkml-verifier"><img src="https://img.shields.io/crates/v/zkml-verifier.svg?label=zkml-verifier" alt="zkml-verifier on crates.io"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/Stellar-Protocol%2025-7D00FF.svg" alt="Stellar Protocol 25">
 </p>
 
-zkml-soroban is the first runtime that enables executing small machine learning
-models off-chain and cryptographically verifying the correctness of their
-inference on the Stellar network through Soroban smart contracts.
-
-The project leverages the zero-knowledge cryptographic primitives introduced in
-Stellar Protocol 25 (X-Ray) -- specifically BN254 elliptic curve operations
-(CAP-0074) and Poseidon hash functions (CAP-0075) -- to build a complete
-pipeline from model import to on-chain proof verification.
-
 ---
 
-## Table of Contents
+**zkml-soroban** runs small machine learning models off-chain and proves, with zero-knowledge
+cryptography, that a specific model produced a specific result on specific inputs. A Soroban
+smart contract verifies that proof on Stellar and records the outcome, without revealing the
+model weights or the input data.
 
-- [Motivation](#motivation)
-- [Architecture Overview](#architecture-overview)
-- [Supported Models](#supported-models)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Development Status](#development-status)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
+It is built on the zero-knowledge primitives of Stellar Protocol 25 (X-Ray):
+BN254 elliptic curve operations ([CAP-0074](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md))
+and Poseidon hashing ([CAP-0075](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md)).
 
----
+## Why
 
-## Motivation
+Credit scoring, KYC risk tiers and compliance checks are increasingly decided by ML models, yet
+counterparties cannot check that a claimed result really came from the approved model.
+zkml-soroban turns that claim into something any Stellar contract or auditor can verify in a
+single on-chain call.
 
-Machine learning models increasingly drive high-stakes decisions in financial
-systems: credit scoring, risk assessment, and compliance checks. However, these
-decisions are typically opaque -- users and counterparties cannot verify that a
-claimed ML output was actually produced by a specific model on specific inputs.
+## How it works
 
-Zero-knowledge proofs solve this problem. A prover can demonstrate that an ML
-inference was executed correctly without revealing the model weights or input
-data. The verifier (a smart contract on Stellar) confirms correctness with a
-single, cheap cryptographic check.
+<p align="center">
+  <img src="docs/diagrams/01-system-architecture.svg" alt="zkml-soroban system architecture" width="100%">
+</p>
 
-Stellar is uniquely positioned for this application:
+1. A trained model is imported from ONNX and quantized to deterministic fixed-point arithmetic.
+2. The model and the inputs are bound with Poseidon commitments.
+3. Inference runs inside the RISC Zero zkVM, producing a proof of correct execution.
+4. The proof is compressed to Groth16 and submitted to the verifier contract.
+5. The contract runs the BN254 pairing check, rejects replays and emits a `verified` event.
 
-- **Native ZK primitives**: Protocol 25 introduced BN254 and Poseidon host
-  functions, enabling efficient Groth16 proof verification directly on-chain.
-- **Institutional anchors**: Stellar has the largest network of regulated
-  anchors and remittance corridors, making provable compliance scoring a
-  practical use case rather than a theoretical exercise.
-- **Low-cost verification**: Soroban contract execution costs are orders of
-  magnitude lower than comparable EVM chains, making on-chain verification
-  economically viable for high-volume applications.
+> **Status:** steps 1 to 3 and step 5 are implemented. Groth16 compression (step 4) and reading
+> ONNX directly from the CLI are pending, so no production proof has been verified on-chain yet.
 
----
+## Supported models
 
-## Architecture Overview
+| Model | Import | Inference | Decision output |
+| ----- | ------ | --------- | --------------- |
+| Decision tree | ONNX `TreeEnsembleClassifier`, JSON | yes | leaf value |
+| Logistic regression | ONNX `LinearClassifier`, JSON | yes | threshold class |
+| Tiny MLP (ReLU) | ONNX `Gemm` / `MatMul` + `Relu`, JSON | yes | argmax class |
 
-The system consists of two primary components:
+## Crates
 
-```
-                    Off-chain                          On-chain
-              +-------------------+             +-------------------+
-              |                   |             |                   |
-  ONNX Model  |   zkml-prover    |   Groth16   |  zkml-verifier    |
-  ----------->|                   |   proof     |                   |
-              |  1. Import model  |------------>|  1. Verify proof  |
-  Input Data  |  2. Quantize      |             |  2. Check inputs  |
-  ----------->|  3. Run inference |             |  3. Record result |
-              |  4. Generate proof|             |                   |
-              +-------------------+             +-------------------+
-                        |                                 |
-                        v                                 v
-                   zkml-common                    Stellar Ledger
-              (shared types & structures)       (immutable record)
-```
+| Crate | Description | Published |
+| ----- | ----------- | --------- |
+| [`zkml-common`](crates/zkml-common) | Fixed-point math, models, inference, Poseidon commitments. Core crate of the zkVM guest. | crates.io (from 0.0.1) |
+| [`zkml-verifier`](crates/zkml-verifier) | Soroban contract: Groth16 verification, admin, pause, replay protection. | crates.io (from 0.0.1) |
+| [`zkml-prover`](crates/zkml-prover) | ONNX import, quantization, CLI, zkVM proving. | not yet |
+| [`zkml-demo`](crates/zkml-demo) | End-to-end demo runner (in progress). | no |
+| [`methods`](methods) | RISC Zero guest program. | no |
 
-For a detailed architecture description, see
-[docs/architecture.md](docs/architecture.md).
+## Quick start
 
----
-
-## Supported Models
-
-| Model Type          | Status  | Circuit Complexity | Primary Use Case      |
-| ------------------- | ------- | ------------------ | --------------------- |
-| Decision Tree       | Phase 1 | Low                | KYC risk scoring      |
-| Logistic Regression | Phase 1 | Low                | Binary classification |
-| Tiny MLP (ReLU)     | Phase 2 | Medium             | Multi-class scoring   |
-
-All models are imported from the ONNX format and quantized to fixed-point
-arithmetic for compatibility with ZK circuit constraints.
-
----
-
-## Technology Stack
-
-### Off-chain Prover
-
-| Component         | Technology                | Purpose                             |
-| ----------------- | ------------------------- | ----------------------------------- |
-| Language          | Rust                      | Performance, ZK ecosystem support   |
-| Model format      | ONNX                      | Interop with PyTorch, scikit-learn  |
-| Arithmetic        | Fixed-point (Q16.16)      | ZK-compatible number representation |
-| Proof system      | RISC Zero zkVM (Phase 1)  | Groth16 proof generation            |
-| Circuit framework | bellman / halo2 (Phase 2) | Native ML circuits                  |
-
-### On-chain Verifier
-
-| Component        | Technology              | Purpose                           |
-| ---------------- | ----------------------- | --------------------------------- |
-| Platform         | Soroban (Stellar)       | Smart contract execution          |
-| Compilation      | Rust to WASM            | Contract deployment               |
-| Curve operations | BN254 host functions    | Groth16 pairing checks (CAP-0074) |
-| Hash commitments | Poseidon host functions | Model/input binding (CAP-0075)    |
-
----
-
-## Project Structure
-
-```
-zkml-soroban/
-├── Cargo.toml                  Root workspace manifest
-├── README.md
-├── LICENSE                     Apache 2.0
-├── CONTRIBUTING.md             Contribution guidelines
-├── SECURITY.md                 Security policy
-├── .gitignore
-│
-├── crates/
-│   ├── zkml-common/            Shared types and utilities
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── fixed_point.rs  Fixed-point arithmetic
-│   │       ├── models.rs       Model representations
-│   │       └── proof.rs        Proof data structures
-│   │
-│   ├── zkml-prover/            Off-chain prover
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── inference.rs    Model inference engine
-│   │       ├── onnx.rs         ONNX model importer
-│   │       ├── prover.rs       ZK proof generation
-│   │       └── quantization.rs Weight quantization
-│   │
-│   └── zkml-verifier/          On-chain Soroban contract
-│       └── src/
-│           └── lib.rs          Verification contract
-│
-└── docs/
-    ├── architecture.md         System architecture
-    ├── diagrams.md             Technical diagrams
-    ├── roadmap.md              Development roadmap
-    ├── technical-overview.md   ZK primitives and stack details
-    └── use-cases.md            Target use cases
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (stable, 1.79 or later)
-- [Stellar CLI](https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup)
-- wasm32-unknown-unknown target:
-  ```bash
-  rustup target add wasm32-unknown-unknown
-  ```
-
-### Build
+Requirements: Rust 1.91+ (stable). Optional: the [RISC Zero toolchain](https://dev.risczero.com/api/zkvm/install)
+for zkVM proving and the [Stellar CLI](https://developers.stellar.org/docs/tools/cli) for deployment.
 
 ```bash
-# Build all workspace crates
-cargo build
-
-# Build the verifier contract for deployment
-cargo build --release --target wasm32-unknown-unknown -p zkml-verifier
-
-# Run all tests
-cargo test --workspace
-```
-
-### Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/diegoveme/ZKML-Soroban.git
+git clone https://github.com/ZKML-Soroban/ZKML-Soroban.git
 cd ZKML-Soroban
 
-# Build the project
-cargo build
-
-# Run tests
 cargo test --workspace
+
+# Commit to a model and run inference with the prover CLI
+cargo run -p zkml-prover -- commit examples/models/credit_lr.json
+cargo run -p zkml-prover -- infer examples/models/credit_lr.json -i 0.5,0.2,0.1,0.9
+
+# Build the verifier contract
+cargo build -p zkml-verifier --target wasm32v1-none --profile contract
 ```
 
----
+Common tasks are also available through [`just`](justfile): `just test`, `just contract`,
+`just zkvm`, `just package`, `just docs`.
 
-## Development Status
+## Project status
 
-This project is in active early development.
+zkml-soroban is pre-1.0 and under active development.
 
-| Phase   | Description                      | Status      |
-| ------- | -------------------------------- | ----------- |
-| Phase 1 | MVP with RISC Zero prover        | In Progress |
-| Phase 2 | Native BN254 + Poseidon circuits | Planned     |
-| Phase 3 | SDK and ecosystem integration    | Planned     |
+| Area | Status |
+| ---- | ------ |
+| Fixed-point core, inference, ONNX import | Done |
+| Poseidon commitments, Merkle proofs | Done |
+| zkVM guest execution (STARK receipt) | Done (dev mode in CI) |
+| On-chain Groth16 verification, admin, replay protection | Done |
+| STARK to Groth16 compression, verification key export | Pending |
+| Testnet end-to-end KYC demo | In progress |
+| Native BN254 circuits (Phase 2) | Planned |
 
-See [docs/roadmap.md](docs/roadmap.md) for the full development roadmap.
-
----
+Full plan: [roadmap](docs/project/roadmap.md). Known gaps: [known limitations](docs/security/known-limitations.md).
 
 ## Documentation
 
-| Document                                         | Description                              |
-| ------------------------------------------------ | ---------------------------------------- |
-| [Architecture](docs/architecture.md)             | System design and component breakdown    |
-| [Technical Overview](docs/technical-overview.md) | ZK primitives, stack, and design details |
-| [Diagrams](docs/diagrams.md)                     | Visual system and flow diagrams          |
-| [Roadmap](docs/roadmap.md)                       | Phased development plan                  |
-| [Use Cases](docs/use-cases.md)                   | Target applications on Stellar           |
+The [`docs/`](docs) folder is a [Mintlify](https://mintlify.com) site. Preview it locally with
+`cd docs && npx mint dev`.
 
----
+- [Architecture](docs/concepts/architecture.md)
+- [Verifier contract reference](docs/reference/verifier-contract.md)
+- [Prover CLI](docs/guides/cli.md)
+- [Threat model](docs/security/threat-model.md)
+
+## Repository layout
+
+```
+.
+├── crates/
+│   ├── zkml-common/     shared deterministic core (publishable)
+│   ├── zkml-verifier/   Soroban verifier contract (publishable)
+│   ├── zkml-prover/     off-chain prover library and CLI
+│   └── zkml-demo/       end-to-end demo runner
+├── methods/             RISC Zero guest program
+├── examples/            example models and the KYC demo
+├── diagrams/            Graphviz diagram sources (rendered into docs/diagrams)
+├── docs/                Mintlify documentation site
+├── assets/              logo and banner
+└── .github/             CI, crate publishing, templates
+```
+
+## Releases
+
+All publishable crates share the workspace version. Bumping `workspace.package.version` in
+`Cargo.toml` and merging to `main` publishes the new version to crates.io and creates the
+matching `vX.Y.Z` GitHub Release (see [`publish-crate.yml`](.github/workflows/publish-crate.yml)).
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md)
-for development setup, coding standards, and the pull request process.
-
-For security vulnerabilities, follow the process described in
-[SECURITY.md](SECURITY.md).
-
----
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Report security issues
+privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-This project is licensed under the Apache License 2.0. See
-[LICENSE](LICENSE) for the full text.
-
----
+Licensed under the [Apache License 2.0](LICENSE).
 
 ## Acknowledgments
 
-- [Stellar Development Foundation](https://stellar.org/) for the ZK-native
-  protocol upgrades (CAP-0074, CAP-0075).
-- [Nethermind](https://nethermind.io/) for the RISC Zero zkVM deployment on
-  Soroban and the `stellar-zk` reference implementation.
-- [RISC Zero](https://risczero.com/) for the general-purpose zkVM.
-
----
-
-## Further Documentation
-
-A full documentation index is available in [docs/README.md](docs/README.md),
-covering the model format, commitments, the proving pipeline, the verifier
-interface, the threat model, and the testing guide.
-
-## Status Update (June 2026)
-
-The off-chain pipeline and the on-chain interface are feature-complete for the
-supported model families and exercised by the test suite. The remaining Phase 1
-work is the cryptographic integration (RISC Zero proving and the BN254 pairing
-check), tracked in the [roadmap](docs/roadmap.md).
+- [Stellar Development Foundation](https://stellar.org) for the Protocol 25 zero-knowledge host functions.
+- [RISC Zero](https://risczero.com) for the zkVM.
+- [Nethermind](https://nethermind.io) for prior work on verifying RISC Zero proofs on Soroban.

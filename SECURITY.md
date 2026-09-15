@@ -7,7 +7,8 @@ responsibly. **Do not open a public GitHub issue.**
 
 ### Contact
 
-Send a detailed report to the project maintainers via a private channel.
+Use GitHub private vulnerability reporting:
+[Report a vulnerability](https://github.com/ZKML-Soroban/ZKML-Soroban/security/advisories/new).
 Include the following information:
 
 - Description of the vulnerability and its potential impact.
@@ -23,6 +24,11 @@ Include the following information:
 - **Fix and disclosure**: We aim to release a fix within 30 days of
   confirmation. A coordinated disclosure will follow once the fix is
   deployed.
+
+## Supported Versions
+
+zkml-soroban is pre-1.0. Only the latest published `0.0.x` release and the
+`main` branch receive security fixes.
 
 ## Scope
 

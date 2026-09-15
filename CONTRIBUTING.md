@@ -21,17 +21,14 @@ code of conduct. By participating, you are expected to uphold this standard.
 
 ### Prerequisites
 
-- **Rust** (stable, 1.79 or later): [Install via rustup](https://rustup.rs/)
-- **Stellar CLI**: Required for contract compilation and deployment.
-  ```bash
-  cargo install --locked stellar-cli@26.0.0
-  ```
-- **wasm32-unknown-unknown target**: Required for compiling Soroban contracts.
-  ```bash
-  rustup target add wasm32-unknown-unknown
-  ```
-- **RISC Zero toolchain** (Phase 1 prover only):
-  See [RISC Zero installation guide](https://dev.risczero.com/api/zkvm/install).
+- **Rust** (stable, 1.91 or later): [Install via rustup](https://rustup.rs/).
+  `rust-toolchain.toml` pins the channel, components and the `wasm32v1-none` target.
+- **Stellar CLI** (deployment only):
+  [installation guide](https://developers.stellar.org/docs/tools/cli).
+- **RISC Zero toolchain 3.0.6** (zkVM proving only):
+  [installation guide](https://dev.risczero.com/api/zkvm/install).
+- **just** (optional task runner): [casey/just](https://github.com/casey/just).
+- **Node.js 22** (optional, documentation preview only).
 
 ### Building
 
@@ -40,30 +37,46 @@ code of conduct. By participating, you are expected to uphold this standard.
 cargo build
 
 # Build the verifier contract for deployment
-cargo build --release --target wasm32-unknown-unknown -p zkml-verifier
+cargo build -p zkml-verifier --target wasm32v1-none --profile contract
 
 # Run all tests
 cargo test --workspace
+
+# zkVM guest tests (requires the RISC Zero toolchain)
+RISC0_DEV_MODE=1 cargo test -p zkml-prover --features zkvm
+
+# Preview the documentation site
+cd docs && npx mint dev
 ```
 
 ## Project Structure
 
 ```
 crates/
-  zkml-common/     Shared types (models, fixed-point, proof structures)
-  zkml-prover/     Off-chain inference and proof generation
+  zkml-common/     Shared deterministic core (models, fixed point, inference, commitments)
+  zkml-prover/     Off-chain ONNX import, quantization, CLI and zkVM proving
   zkml-verifier/   On-chain Soroban verification contract
-docs/              Technical documentation
+  zkml-demo/       End-to-end demo runner
+methods/           RISC Zero guest program
+examples/          Example models and the KYC demo
+docs/              Mintlify documentation site
 ```
 
-Refer to [docs/architecture.md](docs/architecture.md) for a detailed
-breakdown of each component.
+Refer to [docs/concepts/architecture.md](docs/concepts/architecture.md) for a
+detailed breakdown of each component.
+
+### Documentation
+
+Pages live under `docs/` and are listed in `docs/docs.json`. Every page needs
+`title` and `description` frontmatter, and internal links are root-relative
+without an extension (for example `/concepts/architecture`). Adding a page
+means adding it to the navigation in `docs/docs.json`.
 
 ## Coding Standards
 
 - Follow standard Rust formatting: run `cargo fmt` before committing.
 - All public items must have documentation comments (`///` or `//!`).
-- Run `cargo clippy --workspace` and resolve all warnings.
+- Run `cargo clippy --workspace --all-targets` and do not introduce new warnings.
 - Unsafe code is not permitted without explicit justification in comments.
 - Maintain test coverage for all new inference logic and quantization
   utilities.
@@ -84,12 +97,21 @@ test(common): add round-trip tests for fixed-point edge cases
 1. Fork the repository and create a feature branch from `main`.
 2. Ensure all tests pass (`cargo test --workspace`).
 3. Ensure code is formatted (`cargo fmt -- --check`).
-4. Ensure no lint warnings (`cargo clippy --workspace`).
+4. Ensure you add no new lint warnings (`cargo clippy --workspace --all-targets`).
 5. Update documentation if your change affects the public API or
    architecture.
 6. Open a pull request with a clear description of the change and its
    motivation.
-7. At least one maintainer review is required before merging.
+7. At least one maintainer review is required before merging. Changes to
+   `crates/zkml-verifier` or `crates/zkml-common/src/commitment.rs` are
+   consensus-critical and get an extra review.
+
+## Releases
+
+Maintainers release by bumping `workspace.package.version` in the root
+`Cargo.toml` and moving the `Unreleased` section of `CHANGELOG.md` under the
+new version. Merging to `main` publishes `zkml-common` and `zkml-verifier` to
+crates.io and creates the `vX.Y.Z` GitHub Release.
 
 ## Reporting Issues
 
