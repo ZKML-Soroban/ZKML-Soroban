@@ -11,74 +11,102 @@ env:
   # Pin RISC Zero components to match Cargo.toml (=3.0.6).
   RISC0_VERSION: "3.0.6"
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - name: Check formatting
-        run: cargo fmt --all --check
-      - name: Clippy (advisory)
-        continue-on-error: true
-        run: cargo clippy --workspace --all-targets
-      - name: Build
-        run: cargo build --workspace --verbose
-      - name: Test
-        run: cargo test --workspace --verbose
+          components: rustfmt
+      - run: cargo fmt --all --check
 
-  no_std_check:
+  clippy:
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build zkml-common without std
-        run: cargo build -p zkml-common --no-default-features
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # Advisory until the existing warnings are fixed; then add `-- -D warnings`.
+      - run: cargo clippy --workspace --all-targets
+        continue-on-error: true
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  no_std:
+    name: zkml-common without std feature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p zkml-common --no-default-features
+
+  contract:
+    name: Verifier WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+      - uses: Swatinem/rust-cache@v2
+      - name: Build contract
+        run: cargo build -p zkml-verifier --target wasm32v1-none --profile contract
+      - name: Report size
+        run: ls -l target/wasm32v1-none/contract/zkml_verifier.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zkml_verifier.wasm
+          path: target/wasm32v1-none/contract/zkml_verifier.wasm
 
   zkvm:
+    name: zkVM guest (dev mode)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Install rzup
-        run: curl -L https://risczero.com/install | bash
+      - uses: Swatinem/rust-cache@v2
       - name: Install RISC Zero toolchain
         run: |
+          curl -L https://risczero.com/install | bash
           echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.risc0/bin:$PATH"
           rzup install cargo-risczero "${RISC0_VERSION}"
           rzup install r0vm "${RISC0_VERSION}"
           rzup install rust
-      - name: Test zkVM guest (dev mode)
+      - name: Test zkVM guest
         env:
           RISC0_DEV_MODE: "1"
+        run: cargo test -p zkml-prover --features zkvm
+      - name: Check groth16 and bonsai features compile
         run: |
-          export PATH="$HOME/.risc0/bin:$PATH"
-          cargo test -p zkml-prover --features zkvm --verbose
+          cargo check -p zkml-prover --features groth16
+          cargo check -p zkml-prover --features bonsai
 
-  groth16:
+  docs:
+    name: Docs (Mintlify)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install rzup
-        run: curl -L https://risczero.com/install | bash
-      - name: Install RISC Zero toolchain
-        run: |
-          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.risc0/bin:$PATH"
-          rzup install cargo-risczero "${RISC0_VERSION}"
-          rzup install r0vm "${RISC0_VERSION}"
-          rzup install rust
-      - name: Check groth16 feature compiles
-        env:
-          RISC0_DEV_MODE: "1"
-        run: |
-          export PATH="$HOME/.risc0/bin:$PATH"
-          cargo check -p zkml-prover --features groth16 --verbose
-      - name: Check bonsai feature compiles
-        run: cargo check -p zkml-prover --features bonsai
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check broken links
+        working-directory: docs
+        run: npx --yes mint@latest broken-links

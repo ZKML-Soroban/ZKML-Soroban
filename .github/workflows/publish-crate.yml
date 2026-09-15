@@ -1,0 +1,213 @@
+name: Publish Crates
+
+# Release model: bump `workspace.package.version` in Cargo.toml and merge to
+# main. Every crate in CRATES whose version is not yet on crates.io is
+# published in order, then a `vX.Y.Z` tag and GitHub Release are created.
+# Pull requests only run `cargo package` as a dry run.
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+    paths:
+      - 'crates/zkml-common/**'
+      - 'crates/zkml-verifier/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+      - '.github/workflows/publish-crate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/zkml-common/**'
+      - 'crates/zkml-verifier/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/publish-crate.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the current workspace version to crates.io'
+        required: true
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Crates to publish, in dependency order (a crate must come after the
+  # workspace crates it depends on). zkml-prover is `publish = false` until
+  # its optional `zkml-methods` path dependency is available on crates.io.
+  CRATES: zkml-common zkml-verifier
+
+permissions:
+  contents: read
+
+concurrency:
+  # One publish at a time across refs, so a main merge and a tag push cannot race.
+  group: publish-crate
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package crates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check tag matches workspace version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "zkml-common") | .version')"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match workspace version v$version"
+            exit 1
+          fi
+
+      - name: Check packages
+        run: |
+          for crate in $CRATES; do
+            echo "::group::cargo package -p $crate"
+            cargo package -p "$crate"
+            echo "::endgroup::"
+          done
+
+  publish:
+    name: Publish to crates.io
+    needs: package
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Uses the repository secret CARGO_REGISTRY_TOKEN.
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish crates not yet on crates.io
+        id: publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          metadata="$(cargo metadata --no-deps --format-version 1)"
+          workspace_version=""
+
+          for crate in $CRATES; do
+            version="$(echo "$metadata" | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')"
+            if [ -z "$version" ]; then
+              echo "::error::crate $crate not found in the workspace"
+              exit 1
+            fi
+            workspace_version="$version"
+
+            # crates.io rejects requests without a descriptive User-Agent (403);
+            # a 404 means the crate has never been published.
+            # See https://crates.io/data-access
+            status="$(curl -sS -o response.json -w '%{http_code}' \
+              -H "User-Agent: zkml-soroban-publish-workflow (+https://github.com/ZKML-Soroban/ZKML-Soroban)" \
+              "https://crates.io/api/v1/crates/$crate")"
+
+            published=false
+            if [ "$status" = "200" ] && jq -e --arg v "$version" '.versions[]? | select(.num == $v)' response.json >/dev/null; then
+              published=true
+            elif [ "$status" != "200" ] && [ "$status" != "404" ]; then
+              echo "::error::crates.io returned HTTP $status for $crate"
+              exit 1
+            fi
+
+            if [ "$published" = "true" ]; then
+              echo "$crate $version is already published on crates.io, skipping"
+            else
+              echo "Publishing $crate $version"
+              cargo publish -p "$crate"
+            fi
+          done
+
+          echo "version=$workspace_version" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        env:
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" &>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract changelog section
+        if: steps.check.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          # Matches both "## [0.3.0] - date" and "## 0.3.0" headings.
+          awk -v v="$VERSION" '
+            /^## / {
+              if (found) exit
+              if (index($0, "[" v "]") || $2 == v) { found = 1; next }
+            }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "See [CHANGELOG.md](CHANGELOG.md) for details." > release-notes.md
+          fi
+
+      - name: Ensure tag exists
+        if: steps.check.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! git rev-parse "$TAG" &>/dev/null; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Create release
+        if: steps.check.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            --latest
