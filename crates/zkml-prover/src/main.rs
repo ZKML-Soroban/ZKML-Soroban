@@ -14,7 +14,7 @@
 //!
 //! Everything of substance lives in [`zkml_prover::cli`] so the command bodies
 //! are testable without spawning a process; this binary only dispatches and
-//! maps [`CliError`] onto an exit code. See `docs/cli.md`.
+//! maps [`CliError`] onto an exit code. See `docs/guides/cli.md`.
 
 use std::io::Write;
 use std::process::exit;

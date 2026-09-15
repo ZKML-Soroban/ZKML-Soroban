@@ -1,7 +1,7 @@
 //! Integration tests for RISC Zero guest inference receipts.
 //!
 //! Default tests expect `RISC0_DEV_MODE=1` (fake proofs, fast). Real proving
-//! is gated behind `#[ignore]` — see `crates/zkml-prover/README.md`.
+//! is gated behind `#[ignore]` (see `crates/zkml-prover/README.md`).
 //!
 //! Native golden vectors live in `golden_vectors.rs` so they run without the
 //! `zkvm` feature in the default CI job.

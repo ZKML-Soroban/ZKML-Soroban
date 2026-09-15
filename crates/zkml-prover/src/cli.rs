@@ -6,8 +6,8 @@
 //! exit-code mapping.
 //!
 //! Models are loaded from the JSON exchange format only
-//! ([`crate::model_io::import_json`]). ONNX is deliberately not dispatched here
-//! — extraction currently handles single-node `TreeEnsembleClassifier` /
+//! ([`crate::model_io::import_json`]). ONNX is deliberately not dispatched here:
+//! extraction currently handles single-node `TreeEnsembleClassifier` /
 //! `LinearClassifier` graphs, so most real `.onnx` files would fail with a
 //! confusing error (extraction is tracked in #5 / #6).
 //!
@@ -485,13 +485,13 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
     }
 }
 
-/// `commit <MODEL>` — print the model commitment as 64-char hex.
+/// `commit <MODEL>`: print the model commitment as 64-char hex.
 pub fn cmd_commit(model_path: &Path, out: &mut impl Write) -> Result<(), CliError> {
     let model = load_model(model_path)?;
     writeln!(out, "{}", to_hex(&model_commitment(&model))).map_err(|e| io_err("<stdout>", e))
 }
 
-/// `infer <MODEL> -i <CSV>` — commitment, dequantized output, raw Q16.16 value.
+/// `infer <MODEL> -i <CSV>`: commitment, dequantized output, raw Q16.16 value.
 pub fn cmd_infer(model_path: &Path, raw: &str, out: &mut impl Write) -> Result<(), CliError> {
     let model = load_model(model_path)?;
     let inputs = inputs_for(&model, model_path, raw)?;
@@ -507,7 +507,7 @@ pub fn cmd_infer(model_path: &Path, raw: &str, out: &mut impl Write) -> Result<(
     .map_err(|e| io_err("<stdout>", e))
 }
 
-/// `prove <MODEL> -i <CSV> [-o <FILE>]` — emit a `VerificationBundle` as JSON.
+/// `prove <MODEL> -i <CSV> [-o <FILE>]`: emit a `VerificationBundle` as JSON.
 pub fn cmd_prove(
     model_path: &Path,
     raw: &str,
@@ -532,7 +532,7 @@ pub fn cmd_prove(
     }
 }
 
-/// `validate <MODEL> [--dataset <FILE>]` — run the quantization passes.
+/// `validate <MODEL> [--dataset <FILE>]`: run the quantization passes.
 pub fn cmd_validate(
     model_path: &Path,
     dataset_path: Option<&Path>,
@@ -583,7 +583,7 @@ pub fn cmd_validate(
         .map_err(|e| io_err("<stdout>", e))
 }
 
-/// `inspect <MODEL>` — kind, feature count, structure, commitment, validity.
+/// `inspect <MODEL>`: kind, feature count, structure, commitment, validity.
 pub fn cmd_inspect(model_path: &Path, out: &mut impl Write) -> Result<(), CliError> {
     let model = load_model(model_path)?;
 
