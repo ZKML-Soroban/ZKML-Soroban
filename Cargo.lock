@@ -4993,7 +4993,7 @@ dependencies = [
 
 [[package]]
 name = "zkml-common"
-version = "0.2.0"
+version = "0.0.1"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -5006,7 +5006,7 @@ dependencies = [
 
 [[package]]
 name = "zkml-demo"
-version = "0.2.0"
+version = "0.0.1"
 dependencies = [
  "clap",
  "serde",
@@ -5019,14 +5019,14 @@ dependencies = [
 
 [[package]]
 name = "zkml-methods"
-version = "0.2.0"
+version = "0.0.1"
 dependencies = [
  "risc0-build",
 ]
 
 [[package]]
 name = "zkml-prover"
-version = "0.2.0"
+version = "0.0.1"
 dependencies = [
  "bincode",
  "bonsai-sdk",
@@ -5043,7 +5043,7 @@ dependencies = [
 
 [[package]]
 name = "zkml-verifier"
-version = "0.2.0"
+version = "0.0.1"
 dependencies = [
  "soroban-sdk 27.0.3",
 ]

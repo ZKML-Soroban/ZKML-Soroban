@@ -3,7 +3,15 @@ name = "zkml-common"
 description = "Shared types and utilities for the zkml-soroban project"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["cryptography", "science"]
+documentation = "https://docs.rs/zkml-common"
+readme = "README.md"
 
 [features]
 default = ["std"]

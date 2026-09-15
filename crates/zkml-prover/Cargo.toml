@@ -3,7 +3,17 @@ name = "zkml-prover"
 description = "Off-chain ML inference and ZK proof generation for zkml-soroban"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["cryptography", "command-line-utilities", "science"]
+readme = "README.md"
+# Not publishable yet: the optional `zkml-methods` path dependency (RISC Zero
+# guest ELF) is not on crates.io. Remove once it is published or split out.
+publish = false
 
 [features]
 default = []
@@ -18,7 +28,7 @@ groth16 = ["zkvm", "dep:risc0-groth16"]
 bonsai = ["zkvm", "groth16", "dep:bonsai-sdk", "dep:bincode"]
 
 [dependencies]
-zkml-common = { path = "../zkml-common" }
+zkml-common = { workspace = true, features = ["std"] }
 serde = { workspace = true }
 serde_json = "1"
 
@@ -26,7 +36,7 @@ serde_json = "1"
 # reserved for prost/risc0 where API drift is a tracked risk.
 clap = { version = "4", features = ["derive"] }
 
-# Phase 1: RISC Zero zkVM (pinned exactly; see docs/proving.md).
+# Phase 1: RISC Zero zkVM (pinned exactly; see docs/concepts/proving.md).
 risc0-zkvm = { workspace = true, optional = true }
 zkml-methods = { path = "../../methods", optional = true }
 
