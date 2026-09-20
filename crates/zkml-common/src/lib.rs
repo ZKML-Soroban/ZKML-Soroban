@@ -11,13 +11,16 @@
 extern crate alloc;
 
 pub mod activation;
+pub mod bundle;
 pub mod commitment;
 pub mod error;
 pub mod fixed_point;
 pub mod inference;
+pub mod journal;
 pub mod merkle;
 pub mod models;
 pub mod proof;
+pub mod risc0;
 pub mod tensor;
 
 pub use error::ZkmlError;
