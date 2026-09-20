@@ -29,6 +29,23 @@ cargo test --workspace
 The default build does not need the RISC Zero toolchain. zkVM proving is behind
 the `zkvm` feature of `zkml-prover`.
 
+## On Windows
+
+The commands on this page work as-is in PowerShell, with two differences:
+
+- Setting an environment variable for a single command uses `$env:` instead of
+  a leading `VAR=value`. For example, running the zkVM guest in dev mode
+  (see [below](#run-the-zkvm-guest-optional)) is:
+
+  ```powershell
+  $env:RISC0_DEV_MODE = "1"
+  cargo test -p zkml-prover --features zkvm
+  ```
+
+- The `wasm32v1-none` target (`rustup target add wasm32v1-none`) installs the
+  same way as on Linux or macOS; no extra Windows-specific setup is needed for
+  it.
+
 ## Use the crates
 
 `zkml-common` and `zkml-verifier` are published to crates.io starting with the
