@@ -22,13 +22,18 @@ cargo build -p zkml-prover
 ```text
 zkml-prover <COMMAND>
 
-commit   <MODEL>                                Model commitment as 64-char hex
-infer    <MODEL> -i <CSV>                       Commitment + dequantized output + raw Q16.16
-prove    <MODEL> -i <CSV> [-o <FILE>]           VerificationBundle JSON (stdout or file)
-validate <MODEL> [--dataset <FILE>]
-                 [--max-input-magnitude <F>]    default 1.0
-                 [--min-agreement <F>]          default 0.99
-inspect  <MODEL>                                Kind, features, structure, commitment, validity
+commit        <MODEL>                           Model commitment as 64-char hex
+infer         <MODEL> -i <CSV>                  Commitment + dequantized output + raw Q16.16
+prove         <MODEL> -i <CSV> [-o <FILE>]      Verification bundle JSON (stdout or file)
+                      [--groth16]               Produce a real proof (needs the groth16 feature)
+                      [--backend local|boundless]
+verify-bundle <FILE>                            Verify a v2 bundle locally (needs zkvm)
+export-vk     [--format json|soroban-args]      Constants for the contract's initialize
+              [-o <FILE>]
+validate      <MODEL> [--dataset <FILE>]
+                      [--max-input-magnitude <F>]    default 1.0
+                      [--min-agreement <F>]          default 0.99
+inspect       <MODEL>                           Kind, features, structure, commitment, validity
 ```
 
 `<MODEL>` is a file in the [JSON exchange format](/guides/model-format). The CLI
@@ -66,20 +71,84 @@ inputs. The dequantized value is for humans.
 
 ### prove
 
-Writes a `VerificationBundle` as JSON to stdout, or to `-o <FILE>`.
+Writes a verification bundle as JSON to stdout, or to `-o <FILE>`.
+
+Without `--groth16` the bundle is the legacy v1 shape: it carries the public
+inputs but no proof, and the command says so on stderr. It is useful for
+inspecting what would be proven, and for nothing else.
 
 ```bash
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
   -i "0.5,0.2,0.9,0.1" -o bundle.json
 ```
 
-The output round-trips through `zkml_prover::prover::bundle_from_json`, and its
-`model_hash` equals `model_commitment(&model)`. See
-[Bundle format](/reference/bundle-format).
+```text
+warning: this is a legacy v1 bundle and carries no proof. Use --groth16 for a real one.
+wrote verification bundle to bundle.json
+```
 
-> **The proof bytes are empty.** `Groth16Proof.data` stays empty until
-> STARK-to-Groth16 compression is implemented. The bundle is structurally valid
-> but will not verify against a live contract.
+With `--groth16` the model runs inside the zkVM, the receipt is compressed to a
+Groth16 proof, and the result is a [v2 bundle](/reference/bundle-format) with a
+260-byte seal. This needs the `groth16` feature, x86_64 Linux with Docker, and a
+few minutes:
+
+```bash
+cargo run -p zkml-prover --features groth16 -- prove examples/models/credit_lr.json \
+  -i "0.5,0.2,0.9,0.1" --groth16 -o bundle.json
+```
+
+```text
+proving in the zkVM and compressing to Groth16, this takes minutes
+seal: 260 bytes
+cycles: 1048576
+proving time: 214731 ms
+wrote verification bundle (v2) to bundle.json
+```
+
+`--backend` selects where proving happens. `local` is the default; `boundless`
+is reserved for remote proving and currently returns an error, because Bonsai
+was shut down in December 2025 and the Boundless client is not written yet.
+
+The journal in the bundle binds the model commitment, the input commitment, the
+raw output and the decision label, so `model_hash` still equals
+`model_commitment(&model)`.
+
+### verify-bundle
+
+Verifies a v2 bundle with RISC Zero's own verifier: it rebuilds the receipt
+claim from the journal and the image id, checks the seal selector against the
+RISC Zero version this binary was built with, and runs the pairing check.
+
+```bash
+cargo run -p zkml-prover --features zkvm -- verify-bundle bundle.json
+```
+
+```text
+bundle verified
+image id    : 2f1c...
+model hash  : 73e881ed...
+input hash  : 9a0b...
+output      : 34865
+class label : 1
+```
+
+This is the same check the contract performs, minus the pairing being run by
+Soroban host functions. Run it before submitting a bundle on-chain: a local
+failure costs nothing, an on-chain failure costs fees.
+
+### export-vk
+
+Prints the constants the contract needs at `initialize`: the guest image id, the
+control root, the BN254 control id and the seal selector. `--format json` (the
+default) is machine-readable; `--format soroban-args` prints them as arguments
+to paste after `stellar contract invoke`.
+
+```bash
+cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
+```
+
+These values change whenever the guest or the pinned RISC Zero version changes,
+so re-export after either.
 
 ### validate
 
@@ -170,6 +239,6 @@ error: examples/models/credit_lr.json expects 4 feature(s), got 2
 | ---- | ---------------------------------------------------------------- |
 | `0`  | Success                                                          |
 | `2`  | Bad invocation: argument errors, malformed `--input`             |
-| `1`  | Everything else: IO, model import, validation failure, inference |
+| `1`  | Everything else: IO, model import, validation failure, inference, proving |
 
 Errors go to stderr prefixed with `error: `; normal output goes to stdout.

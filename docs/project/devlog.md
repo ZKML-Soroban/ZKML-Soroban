@@ -100,3 +100,39 @@ verification key export, and how Route A public inputs map to the contract.
 
 **Next.** Route A verification path, Groth16 compression, VK export, and a real
 testnet KYC demo.
+
+## September 2026: real proofs
+
+STARK to Groth16 compression works. `prove --groth16` runs the model in the
+zkVM, compresses the receipt, and writes a bundle with a real 260-byte seal.
+`verify-bundle` checks it with RISC Zero's own verifier, and `export-vk` prints
+the constants the contract will need.
+
+Three decisions shaped the work:
+
+**The journal became a fixed 96-byte record.** The guest used to commit a serde
+struct. A Groth16 receipt binds the journal through a claim digest computed over
+exactly the committed bytes, so anything whose encoding can drift between
+versions is a liability. `JournalV1` has a magic prefix, a version field and
+fixed offsets, and the contract's 80-byte public inputs are derived from it.
+
+**The RISC Zero digest arithmetic was reimplemented in `zkml-common`.** The
+contract cannot depend on `risc0-zkvm`, but it has to recompute the claim digest
+from the journal it is handed, otherwise it is verifying that *some* program
+produced *some* output. `zkml_common::risc0` does that in `no_std`, and
+`tests/risc0_digests.rs` cross-checks every value against the real crates. That
+test earned its place immediately: it caught that `bn254_control_id` must be
+byte-reversed before it is read as a field element, which would have made every
+pairing check fail with nothing to point at.
+
+**The `bonsai` feature was deleted rather than kept as a stub.** RISC Zero shut
+Bonsai down in December 2025. A feature flag that cannot work is worse than no
+flag, so the dependency and the code are gone; `--backend boundless` returns a
+named error until a client exists.
+
+Local compression needs x86_64 Linux with Docker (the Circom witness generator
+image is not published elsewhere), so the platform is checked before any
+expensive work starts and CI runs the real thing only on demand.
+
+**Next.** The contract side: reconstruct the claim digest on chain, build the
+five public inputs and verify these bundles on Stellar (issue #84).

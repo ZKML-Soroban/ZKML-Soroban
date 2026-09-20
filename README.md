@@ -42,8 +42,10 @@ single on-chain call.
 4. The proof is compressed to Groth16 and submitted to the verifier contract.
 5. The contract runs the BN254 pairing check, rejects replays and emits a `verified` event.
 
-> **Status:** steps 1 to 3 and step 5 are implemented. Groth16 compression (step 4) and reading
-> ONNX directly from the CLI are pending, so no production proof has been verified on-chain yet.
+> **Status:** steps 1 to 4 are implemented: the prover produces real Groth16 bundles and verifies
+> them off-chain. The contract's pairing check (step 5) works against its own fixtures but does not
+> accept those bundles yet, so no production proof has been verified on-chain. Reading ONNX
+> directly from the CLI is also pending.
 
 ## Supported models
 
@@ -95,7 +97,8 @@ zkml-soroban is pre-1.0 and under active development.
 | Poseidon commitments, Merkle proofs | Done |
 | zkVM guest execution (STARK receipt) | Done (dev mode in CI) |
 | On-chain Groth16 verification, admin, replay protection | Done |
-| STARK to Groth16 compression, verification key export | Pending |
+| STARK to Groth16 compression, verification key export | Done (x86_64 Linux with Docker) |
+| On-chain verification of RISC Zero bundles | In progress |
 | Testnet end-to-end KYC demo | In progress |
 | Native BN254 circuits (Phase 2) | Planned |
 

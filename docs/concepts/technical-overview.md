@@ -95,10 +95,13 @@ Opset floors: core `>= 17`, `ai.onnx.ml >= 1`. See [ONNX import](/guides/onnx-im
    commits the journal.
 4. The zkVM produces a STARK receipt; the host verifies it against the image ID
    and cross-checks the journal against native inference.
-5. *(Pending)* The receipt is wrapped into Groth16 locally (Docker, x86_64 Linux)
-   or through a remote prover. Feature flags `groth16` and `bonsai` exist; the
-   functions return "not yet implemented". Bonsai itself was shut down in
-   December 2025, so the remote backend will target Boundless or Bento.
+5. The receipt is compressed to Groth16 (feature `groth16`), which runs
+   locally and needs x86_64 Linux with Docker. The result is a 260-byte seal
+   packaged as a [v2 bundle](/reference/bundle-format). Remote proving is not
+   implemented: Bonsai was shut down in December 2025, so `--backend boundless`
+   is a placeholder for Boundless or a self-hosted Bento prover.
+6. *(Pending, issue #84)* The contract reconstructs the receipt claim digest
+   from the journal and runs the pairing check on chain.
 
 CI runs the guest with `RISC0_DEV_MODE=1`.
 

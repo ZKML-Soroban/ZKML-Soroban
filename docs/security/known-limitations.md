@@ -9,25 +9,25 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 
 ## Proving
 
-- **No Groth16 proofs yet.** STARK-to-Groth16 compression
-  (`compress_to_groth16_local`, `compress_to_groth16_bonsai`) returns
-  "not yet implemented", and `generate_proof` emits an empty proof.
-- **Bonsai backend is obsolete.** RISC Zero shut down Bonsai in December 2025. The
-  `bonsai` feature is a legacy stub to be replaced by Boundless or a self-hosted Bento prover.
-- **Local Groth16 wrapping is x86_64 Linux only** and requires Docker.
-- **No verification key export.** There is no tool to produce the
-  `VerificationKey` for `initialize`.
-- **Route A public inputs.** The contract uses
-  `(model_hash, input_hash, output, class_label)` as Groth16 public inputs. A
-  Groth16 proof produced by RISC Zero's wrapper is verified against RISC Zero's
-  universal verification key, whose public inputs are derived from the control
-  root and the claim digest (which commits to the image ID and the journal
-  hash). Verifying Route A proofs requires a contract path that reconstructs the
-  claim digest from the journal. The current layout fits native circuits
-  (Route B) directly.
+- **The contract does not verify these proofs yet** (issue #84). The prover
+  produces real Groth16 bundles and `verify-bundle` checks them off-chain, but
+  the on-chain path still expects the Route B layout. Until #84 lands, nothing
+  is verified on Stellar.
+- **Groth16 compression is x86_64 Linux only** and requires Docker. The Circom
+  witness generator image is not published for other platforms (risc0 issue
+  #1749), so `prove_groth16` fails fast with `UnsupportedPlatform` elsewhere.
+- **No remote proving.** RISC Zero shut down Bonsai in December 2025.
+  `--backend boundless` returns `ProveError::RemoteBackend` until a Boundless or
+  self-hosted Bento client is written.
+- **Dev mode produces no proof.** `RISC0_DEV_MODE=1` makes receipts fake, so
+  `prove_groth16` refuses to run under it rather than emitting a bundle that
+  looks real.
+- **The legacy `prove` output carries no proof.** It stays for inspection and
+  prints a warning; it must never be accepted as evidence.
 - **Panicking decision path.** `run_inference_with_decision` can panic (MLP
-  overflow, tree iteration limit), so `generate_proof` does not return those
-  failures as `Err`.
+  overflow, tree iteration limit). The fallible
+  `try_run_inference_with_decision` is what the proving path uses, but the
+  panicking function is still public.
 
 ## Commitments
 
