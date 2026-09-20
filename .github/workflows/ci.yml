@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -95,10 +96,40 @@ jobs:
         env:
           RISC0_DEV_MODE: "1"
         run: cargo test -p zkml-prover --features zkvm
-      - name: Check groth16 and bonsai features compile
+      - name: Cross-check the RISC Zero digest arithmetic
+        env:
+          RISC0_DEV_MODE: "1"
+        run: cargo test -p zkml-prover --features zkvm --test risc0_digests
+      - name: Test the Groth16 surface (no real proving)
+        env:
+          RISC0_DEV_MODE: "1"
+        run: cargo test -p zkml-prover --features groth16
+
+  groth16:
+    name: Groth16 compression (manual)
+    # Real compression takes minutes and needs Docker, so it does not run on
+    # every push. Trigger it from the Actions tab before a release or after
+    # bumping the RISC Zero version.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install RISC Zero toolchain
         run: |
-          cargo check -p zkml-prover --features groth16
-          cargo check -p zkml-prover --features bonsai
+          curl -L https://risczero.com/install | bash
+          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.risc0/bin:$PATH"
+          rzup install cargo-risczero "${RISC0_VERSION}"
+          rzup install r0vm "${RISC0_VERSION}"
+          rzup install rust
+      - name: Prove and verify a real Groth16 bundle
+        env:
+          RISC0_DEV_MODE: "0"
+        run: |
+          cargo test -p zkml-prover --features groth16 --test groth16_bundle \
+            real_groth16 -- --ignored --nocapture
 
   docs:
     name: Docs (Mintlify)
