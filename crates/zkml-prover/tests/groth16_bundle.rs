@@ -185,6 +185,15 @@ fn real_groth16_bundle_verifies() {
     let bundle = bundle_from_output(&output).expect("bundle");
     verify_bundle(&bundle).expect("the bundle verifies against risc0's own verifier");
 
+    // Keep the bundle: a real seal costs minutes to make, and the contract
+    // tests need one as a fixture.
+    let saved = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/groth16_bundle.json");
+    if let Ok(json) = bundle_v2_to_json(&bundle) {
+        let _ = std::fs::write(&saved, json);
+        println!("bundle written to {}", saved.display());
+    }
+
     // And it survives a round trip through the on-disk format.
     let json = bundle_v2_to_json(&bundle).expect("serializes");
     let back = bundle_v2_from_json(&json).expect("deserializes");

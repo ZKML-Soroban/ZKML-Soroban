@@ -48,9 +48,11 @@ on `examples/models/credit_lr.json` (logistic regression, 4 features):
 
 | Step | Value |
 | ---- | ----- |
-| Machine | 24 threads, 15 GB RAM, Arch Linux x86_64 under WSL2 |
+| Machine | Ryzen AI 9 HX 370, 24 threads, 15 GB RAM, Arch Linux x86_64 under WSL2 |
+| Acceleration | none (CPU only) |
 | Peak prover memory | about 8.9 GB (`r0vm`) |
-| Total wall clock, prove + compress | 1,506 s |
+| Guest cycles | 9,437,184 |
+| Total wall clock, prove + compress | 1,302 s and 1,506 s over two runs |
 | Seal | 260 bytes (4-byte selector + 256-byte proof) |
 | Journal | 96 bytes |
 | Total on-chain payload | 356 bytes |

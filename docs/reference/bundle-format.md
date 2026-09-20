@@ -17,23 +17,28 @@ bundle is readable and roughly half the size of the v1 JSON.
 ```json
 {
   "version": 2,
-  "proof_system": "risc0_groth16",
-  "image_id": "2f1c...",
-  "seal": "310fe598...",
-  "journal": "5a4b4d4c...",
+  "proof_system": "Risc0Groth16",
+  "image_id": "425259543d32dc7a3726d0839ff3686dbda0a13b7a24d2b92be594ed049764eb",
+  "seal": "73c457ba2bfab67fc4abb1eb...",
+  "journal": "5a4b4d4c0100010073e881ed...",
   "meta": {
     "prover_version": "0.0.1",
-    "created_at": 1758326400,
-    "cycles": 1048576,
-    "timings": { "execute_ms": 0, "prove_ms": 214731, "compress_ms": 0, "total_ms": 214884 }
+    "created_at": 1789937782,
+    "cycles": 9437184,
+    "timings": { "execute_ms": 0, "prove_ms": 1301629, "compress_ms": 0, "total_ms": 1301685 }
   }
 }
 ```
 
+That is a real bundle for `examples/models/credit_lr.json` with inputs
+`0.5,0.2,0.9,0.1`, trimmed for width. Its journal decodes to the same
+`model hash 73e881ed...` that `zkml-prover commit` prints for that model, and to
+`output 34865`, which is what `infer` prints.
+
 | Field          | Meaning                                                             |
 | -------------- | ------------------------------------------------------------------- |
 | `version`      | `2`                                                                 |
-| `proof_system` | `risc0_groth16` (id `1`)                                            |
+| `proof_system` | `Risc0Groth16` (id `1` in the binary encoding)                      |
 | `image_id`     | 32 bytes: which guest program ran                                    |
 | `seal`         | 260 bytes: 4-byte selector followed by the 256-byte Groth16 proof    |
 | `journal`      | 96 bytes: what the guest committed (see below)                       |
