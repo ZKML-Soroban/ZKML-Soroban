@@ -25,9 +25,7 @@ soroban-sdk = "21"
 
 [features]
 default = []
-# Enable RISC Zero zkVM features (requires Docker or Bonsai)
+# Enable RISC Zero zkVM features (requires the rzup toolchain)
 zkvm = ["zkml-prover/zkvm"]
-# Enable Groth16 compression (requires risc0-groth16)
+# Enable Groth16 compression (requires x86_64 Linux with Docker at runtime)
 groth16 = ["zkml-prover/groth16"]
-# Enable Bonsai remote proving
-bonsai = ["zkml-prover/bonsai"]
