@@ -69,8 +69,18 @@ pub fn tagged_struct<H: Sha256>(sha: H, tag: &str, down: &[Digest], data: &[u32]
     // No allocation: a Soroban contract has no global allocator, and every
     // struct hashed here is small and known. The largest is ReceiptClaim, at
     // 32 + 4*32 + 2*4 + 2 = 170 bytes.
-    debug_assert!(down.len() <= MAX_DOWN, "too many down digests");
-    debug_assert!(data.len() <= MAX_DATA, "too many data words");
+    //
+    // A hard assert, not a debug one: dropping entries silently would return
+    // a digest that matches neither RISC Zero nor any other construction, and
+    // this function is public.
+    assert!(
+        down.len() <= MAX_DOWN,
+        "tagged_struct takes at most 4 down digests"
+    );
+    assert!(
+        data.len() <= MAX_DATA,
+        "tagged_struct takes at most 2 data words"
+    );
 
     let mut buf = [0u8; TAGGED_STRUCT_CAPACITY];
     let mut n = 0usize;
@@ -79,11 +89,11 @@ pub fn tagged_struct<H: Sha256>(sha: H, tag: &str, down: &[Digest], data: &[u32]
     buf[n..n + 32].copy_from_slice(&tag_digest);
     n += 32;
 
-    for digest in down.iter().take(MAX_DOWN) {
+    for digest in down {
         buf[n..n + 32].copy_from_slice(digest);
         n += 32;
     }
-    for word in data.iter().take(MAX_DATA) {
+    for word in data {
         buf[n..n + 4].copy_from_slice(&word.to_le_bytes());
         n += 4;
     }
@@ -225,9 +235,13 @@ pub fn groth16_verifier_parameters_digest<H: Sha256>(
     )
 }
 
-#[cfg(test)]
+// These compare against `Sha2Hasher`, so they need the `sha2` feature; without
+// it the crate still builds, it just has no reference hash to test against.
+#[cfg(all(test, feature = "sha2"))]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
 
     /// Every test here hashes with `sha2`; the contract injects the host
     /// function instead and must produce the same digests.
@@ -303,6 +317,18 @@ mod tests {
     fn selector_is_the_first_four_bytes() {
         let digest = [9u8; 32];
         assert_eq!(selector_from_params_digest(&digest), [9u8, 9, 9, 9]);
+    }
+
+    #[test]
+    #[should_panic(expected = "at most 4 down digests")]
+    fn too_many_down_digests_is_refused_rather_than_truncated() {
+        tagged_struct(Sha2Hasher, "x", &[[0u8; 32]; 5], &[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "at most 2 data words")]
+    fn too_many_data_words_is_refused_rather_than_truncated() {
+        tagged_struct(Sha2Hasher, "x", &[], &[1, 2, 3]);
     }
 
     #[test]
