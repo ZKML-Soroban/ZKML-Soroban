@@ -17,8 +17,6 @@
 //! and `risc0-zkvm` 3.0.x; `crates/zkml-prover/tests/risc0_digests.rs`
 //! cross-checks the values against those crates.
 
-use sha2::{Digest as _, Sha256};
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -31,10 +29,38 @@ pub const ZERO_DIGEST: Digest = [0u8; 32];
 /// Length of an encoded Groth16 seal: 4-byte selector plus 256-byte proof.
 pub const SEAL_LEN: usize = 4 + 256;
 
-fn sha256(bytes: &[u8]) -> Digest {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher.finalize().into()
+/// A SHA-256 implementation, supplied by the caller.
+///
+/// The digests below are built from many small hashes, and where that runs
+/// decides which implementation is right. Off-chain, `sha2` compiled into the
+/// binary is fine. Inside a Soroban contract, `env.crypto().sha256()` is a host
+/// function and costs a fraction of the same work done in WASM. Injecting the
+/// hash lets one implementation of the digest arithmetic serve both, which
+/// matters because the two must agree exactly or nothing verifies.
+pub trait Sha256: Copy {
+    /// Hash `bytes` and return the 32-byte digest.
+    fn hash(&self, bytes: &[u8]) -> Digest;
+}
+
+impl<F: Fn(&[u8]) -> Digest + Copy> Sha256 for F {
+    fn hash(&self, bytes: &[u8]) -> Digest {
+        self(bytes)
+    }
+}
+
+/// The `sha2` implementation, for callers that are not inside a contract.
+#[cfg(feature = "sha2")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Sha2Hasher;
+
+#[cfg(feature = "sha2")]
+impl Sha256 for Sha2Hasher {
+    fn hash(&self, bytes: &[u8]) -> Digest {
+        use sha2::Digest as _;
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(bytes);
+        hasher.finalize().into()
+    }
 }
 
 /// Structural hash used by RISC Zero for claim-like structs.
@@ -42,9 +68,9 @@ fn sha256(bytes: &[u8]) -> Digest {
 /// `sha256(sha256(tag) || down_0 || .. || down_n || data_le || down_count_le)`
 /// where `data` words are little-endian `u32` and `down_count` is a
 /// little-endian `u16`.
-pub fn tagged_struct(tag: &str, down: &[Digest], data: &[u32]) -> Digest {
+pub fn tagged_struct<H: Sha256>(sha: H, tag: &str, down: &[Digest], data: &[u32]) -> Digest {
     let mut buf = Vec::with_capacity(32 * (down.len() + 1) + 4 * data.len() + 2);
-    buf.extend_from_slice(&sha256(tag.as_bytes()));
+    buf.extend_from_slice(&sha.hash(tag.as_bytes()));
     for digest in down {
         buf.extend_from_slice(digest);
     }
@@ -53,40 +79,41 @@ pub fn tagged_struct(tag: &str, down: &[Digest], data: &[u32]) -> Digest {
     }
     let count = down.len() as u16;
     buf.extend_from_slice(&count.to_le_bytes());
-    sha256(&buf)
+    sha.hash(&buf)
 }
 
 /// Digest of a `SystemState`.
-pub fn system_state_digest(merkle_root: &Digest, pc: u32) -> Digest {
-    tagged_struct("risc0.SystemState", &[*merkle_root], &[pc])
+pub fn system_state_digest<H: Sha256>(sha: H, merkle_root: &Digest, pc: u32) -> Digest {
+    tagged_struct(sha, "risc0.SystemState", &[*merkle_root], &[pc])
 }
 
 /// Digest of the post state of a program that halted normally.
-pub fn halted_post_state_digest() -> Digest {
-    system_state_digest(&ZERO_DIGEST, 0)
+pub fn halted_post_state_digest<H: Sha256>(sha: H) -> Digest {
+    system_state_digest(sha, &ZERO_DIGEST, 0)
 }
 
 /// Digest of an `Output` with no assumptions.
-pub fn output_digest(journal_digest: &Digest) -> Digest {
+pub fn output_digest<H: Sha256>(sha: H, journal_digest: &Digest) -> Digest {
     // An empty assumptions list hashes to the zero digest.
-    tagged_struct("risc0.Output", &[*journal_digest, ZERO_DIGEST], &[])
+    tagged_struct(sha, "risc0.Output", &[*journal_digest, ZERO_DIGEST], &[])
 }
 
 /// Digest of the journal bytes.
-pub fn journal_digest(journal: &[u8]) -> Digest {
-    sha256(journal)
+pub fn journal_digest<H: Sha256>(sha: H, journal: &[u8]) -> Digest {
+    sha.hash(journal)
 }
 
 /// Digest of `ReceiptClaim::ok(image_id, journal)`: a program that ran to a
 /// normal halt with exit code 0, no input and no assumptions.
-pub fn receipt_claim_ok_digest(image_id: &Digest, journal: &[u8]) -> Digest {
-    let output = output_digest(&journal_digest(journal));
+pub fn receipt_claim_ok_digest<H: Sha256>(sha: H, image_id: &Digest, journal: &[u8]) -> Digest {
+    let output = output_digest(sha, &journal_digest(sha, journal));
     tagged_struct(
+        sha,
         "risc0.ReceiptClaim",
         &[
-            ZERO_DIGEST,                // input, absent
-            *image_id,                  // pre state, pruned to the image id
-            halted_post_state_digest(), // post state
+            ZERO_DIGEST,                   // input, absent
+            *image_id,                     // pre state, pruned to the image id
+            halted_post_state_digest(sha), // post state
             output,
         ],
         &[0, 0], // ExitCode::Halted(0) as (system, user)
@@ -165,12 +192,14 @@ pub fn selector_from_params_digest(params_digest: &Digest) -> [u8; 4] {
 
 /// Digest of `Groth16ReceiptVerifierParameters`, from which the seal selector
 /// is derived.
-pub fn groth16_verifier_parameters_digest(
+pub fn groth16_verifier_parameters_digest<H: Sha256>(
+    sha: H,
     control_root: &Digest,
     bn254_control_id: &Digest,
     verifying_key_digest: &Digest,
 ) -> Digest {
     tagged_struct(
+        sha,
         "risc0.Groth16ReceiptVerifierParameters",
         &[*control_root, *bn254_control_id, *verifying_key_digest],
         &[],
@@ -180,6 +209,12 @@ pub fn groth16_verifier_parameters_digest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every test here hashes with `sha2`; the contract injects the host
+    /// function instead and must produce the same digests.
+    fn sha256(bytes: &[u8]) -> Digest {
+        Sha2Hasher.hash(bytes)
+    }
 
     #[test]
     fn tagged_struct_matches_manual_construction() {
@@ -194,7 +229,10 @@ mod tests {
         expected.extend_from_slice(&9u32.to_le_bytes());
         expected.extend_from_slice(&2u16.to_le_bytes());
 
-        assert_eq!(tagged_struct("tag", &down, &data), sha256(&expected));
+        assert_eq!(
+            tagged_struct(Sha2Hasher, "tag", &down, &data),
+            sha256(&expected)
+        );
     }
 
     #[test]
@@ -220,17 +258,24 @@ mod tests {
     }
 
     #[test]
-    fn public_inputs_have_five_scalars_and_raw_control_id() {
+    fn public_inputs_have_five_scalars_and_a_reversed_control_id() {
         let inputs = groth16_public_inputs(&[1u8; 32], &[2u8; 32], &[3u8; 32]);
         assert_eq!(inputs.len(), 5);
-        assert_eq!(inputs[4], [3u8; 32]);
+        // A palindromic control id survives the reversal, so use an asymmetric
+        // one to prove the reversal actually happens.
+        let mut control_id = [0u8; 32];
+        control_id[0] = 0xaa;
+        control_id[31] = 0xbb;
+        let inputs = groth16_public_inputs(&[1u8; 32], &[2u8; 32], &control_id);
+        assert_eq!(inputs[4][0], 0xbb);
+        assert_eq!(inputs[4][31], 0xaa);
     }
 
     #[test]
     fn claim_digest_changes_with_journal_and_image() {
-        let a = receipt_claim_ok_digest(&[1u8; 32], b"hello");
-        let b = receipt_claim_ok_digest(&[1u8; 32], b"hell0");
-        let c = receipt_claim_ok_digest(&[2u8; 32], b"hello");
+        let a = receipt_claim_ok_digest(Sha2Hasher, &[1u8; 32], b"hello");
+        let b = receipt_claim_ok_digest(Sha2Hasher, &[1u8; 32], b"hell0");
+        let c = receipt_claim_ok_digest(Sha2Hasher, &[2u8; 32], b"hello");
         assert_ne!(a, b);
         assert_ne!(a, c);
     }
@@ -239,5 +284,16 @@ mod tests {
     fn selector_is_the_first_four_bytes() {
         let digest = [9u8; 32];
         assert_eq!(selector_from_params_digest(&digest), [9u8, 9, 9, 9]);
+    }
+
+    #[test]
+    fn a_closure_works_as_the_hasher() {
+        // The contract will pass `env.crypto().sha256()` wrapped in a closure,
+        // so the same digest must come out either way.
+        let closure = |bytes: &[u8]| -> Digest { Sha2Hasher.hash(bytes) };
+        assert_eq!(
+            receipt_claim_ok_digest(closure, &[7u8; 32], b"journal"),
+            receipt_claim_ok_digest(Sha2Hasher, &[7u8; 32], b"journal")
+        );
     }
 }

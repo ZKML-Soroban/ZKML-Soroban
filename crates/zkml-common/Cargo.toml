@@ -14,8 +14,12 @@ documentation = "https://docs.rs/zkml-common"
 readme = "README.md"
 
 [features]
-default = ["std"]
+default = ["std", "sha2"]
 std = []
+# Bundle a SHA-256 implementation for off-chain callers. A Soroban contract
+# leaves this off and injects `env.crypto().sha256()` instead, which is a host
+# function and far cheaper than the same work compiled into WASM.
+sha2 = ["dep:sha2"]
 
 [dependencies]
 serde = { workspace = true }
@@ -24,7 +28,7 @@ ark-bn254 = "0.5"
 ark-ff = "0.5"
 # RISC Zero claim digests are SHA-256 based; `default-features = false` keeps
 # the guest build free of std.
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.10", default-features = false, optional = true }
 
 [dev-dependencies]
 proptest = "1.5"

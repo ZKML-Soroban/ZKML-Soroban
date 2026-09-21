@@ -1509,7 +1509,6 @@ dependencies = [
  "ark-ff",
  "light-poseidon",
  "serde",
- "sha2",
 ]
 
 [[package]]

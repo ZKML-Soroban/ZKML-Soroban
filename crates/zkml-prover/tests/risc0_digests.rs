@@ -17,7 +17,7 @@ use risc0_zkvm::{Groth16ReceiptVerifierParameters, MaybePruned, ReceiptClaim};
 
 use zkml_common::risc0::{
     groth16_public_inputs, groth16_verifier_parameters_digest, journal_digest,
-    receipt_claim_ok_digest, selector_from_params_digest, split_digest, SEAL_LEN,
+    receipt_claim_ok_digest, selector_from_params_digest, split_digest, Sha2Hasher, SEAL_LEN,
 };
 
 /// A handful of journals, including the empty one and the 96-byte layout the
@@ -50,7 +50,7 @@ fn image_ids() -> Vec<[u8; 32]> {
 #[test]
 fn journal_digest_matches_risc0() {
     for journal in journals() {
-        let ours = journal_digest(&journal);
+        let ours = journal_digest(Sha2Hasher, &journal);
         let theirs: [u8; 32] = risc0_zkvm::Journal::new(journal.clone()).digest().into();
         assert_eq!(ours, theirs, "journal digest differs for {journal:?}");
     }
@@ -60,7 +60,7 @@ fn journal_digest_matches_risc0() {
 fn receipt_claim_ok_digest_matches_risc0() {
     for image_id in image_ids() {
         for journal in journals() {
-            let ours = receipt_claim_ok_digest(&image_id, &journal);
+            let ours = receipt_claim_ok_digest(Sha2Hasher, &image_id, &journal);
 
             let image: Digest = Digest::try_from(image_id).expect("32 bytes is a digest");
             let claim = ReceiptClaim::ok(image, MaybePruned::Value(journal.clone()));
@@ -83,7 +83,12 @@ fn verifier_parameters_digest_and_selector_match_risc0() {
     let bn254_control_id: [u8; 32] = params.bn254_control_id.into();
     let vk_digest: [u8; 32] = params.verifying_key.digest().into();
 
-    let ours = groth16_verifier_parameters_digest(&control_root, &bn254_control_id, &vk_digest);
+    let ours = groth16_verifier_parameters_digest(
+        Sha2Hasher,
+        &control_root,
+        &bn254_control_id,
+        &vk_digest,
+    );
     assert_eq!(
         ours, theirs,
         "verifier parameters digest must match risc0-zkvm, otherwise the seal \
@@ -96,7 +101,7 @@ fn verifier_parameters_digest_and_selector_match_risc0() {
 #[test]
 fn split_digest_recomposes_to_the_reversed_digest() {
     for journal in journals() {
-        let digest = journal_digest(&journal);
+        let digest = journal_digest(Sha2Hasher, &journal);
         let (lo, hi) = split_digest(&digest);
 
         let mut recomposed = [0u8; 32];
@@ -113,7 +118,7 @@ fn groth16_public_inputs_are_five_bn254_scalars() {
     let params = Groth16ReceiptVerifierParameters::default();
     let control_root: [u8; 32] = params.control_root.into();
     let bn254_control_id: [u8; 32] = params.bn254_control_id.into();
-    let claim = receipt_claim_ok_digest(&zkml_prover::prover::image_id(), &[7u8; 96]);
+    let claim = receipt_claim_ok_digest(Sha2Hasher, &zkml_prover::prover::image_id(), &[7u8; 96]);
 
     let inputs = groth16_public_inputs(&control_root, &claim, &bn254_control_id);
 
