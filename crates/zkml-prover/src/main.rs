@@ -5,11 +5,13 @@
 //! ```text
 //! zkml-prover <COMMAND>
 //!
-//! commit   <MODEL>                       Model commitment as 64-char hex
-//! infer    <MODEL> -i <CSV>              Commitment + dequantized output + raw Q16.16
-//! prove    <MODEL> -i <CSV> [-o <FILE>]  VerificationBundle JSON (stdout or file)
-//! validate <MODEL> [--dataset <FILE>]    Quantization validation report
-//! inspect  <MODEL>                       Kind, features, structure, commitment, validity
+//! commit        <MODEL>                       Model commitment as 64-char hex
+//! infer         <MODEL> -i <CSV>              Commitment + dequantized output + raw Q16.16
+//! prove         <MODEL> -i <CSV> [--groth16]  Verification bundle JSON (stdout or file)
+//! verify-bundle <FILE>                        Verify a v2 bundle locally
+//! export-vk     [--format <FMT>]              Constants for the contract's initialize
+//! validate      <MODEL> [--dataset <FILE>]    Quantization validation report
+//! inspect       <MODEL>                       Kind, features, structure, commitment, validity
 //! ```
 //!
 //! Everything of substance lives in [`zkml_prover::cli`] so the command bodies

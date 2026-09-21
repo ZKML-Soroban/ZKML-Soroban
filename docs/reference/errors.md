@@ -49,6 +49,37 @@ Panics (not error codes):
 | `UnsupportedOperator { op_type }`        | Operator outside the allowlist                                 |
 | `ExtractionNotImplemented { .. }`        | Validated graph without an extractor                           |
 
+## ProveError (zkml-prover)
+
+Returned by the proving pipeline. Every variant names what to do about it.
+
+| Variant                              | Cause and fix                                                     |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| `Inference(ZkmlError)`               | Inference failed before proving started                            |
+| `Journal(JournalError)`              | The guest journal did not decode; prover and guest are out of sync |
+| `JournalMismatch(String)`            | The guest and native inference disagree. A determinism bug: do not ship the bundle |
+| `Bundle(BundleError)`                | The bundle could not be assembled (bad seal length, bad journal)   |
+| `Zkvm(String)`                       | The zkVM or the receipt verification failed                        |
+| `UnsupportedPlatform { os, arch }`   | Groth16 compression needs x86_64 Linux                             |
+| `DockerUnavailable(String)`          | Docker is not installed or not running                             |
+| `DevModeHasNoSeal`                   | `RISC0_DEV_MODE=1` produces fake receipts. Unset it for a real proof |
+| `RemoteBackend(String)`              | Remote proving is not implemented; use `--backend local`           |
+| `Serialization(String)`              | The bundle could not be written or read as JSON                    |
+
+## JournalError and BundleError (zkml-common)
+
+| Variant                              | Cause                                                    |
+| ------------------------------------ | -------------------------------------------------------- |
+| `JournalError::BadMagic`             | The journal does not start with `ZKML`                    |
+| `JournalError::UnsupportedVersion`   | Journal version this build does not know                  |
+| `JournalError::InvalidLength`            | The journal is not 96 bytes                               |
+| `JournalError::UnknownModelKind`     | Model kind byte outside the known range                   |
+| `BundleError::BadSealLength`         | The seal is not 260 bytes                                 |
+| `BundleError::UnsupportedVersion`    | Bundle version this build does not know                   |
+| `BundleError::UnknownProofSystem`    | Proof system id outside the known range                   |
+| `BundleError::Truncated`             | The binary encoding ended early                           |
+| `BundleError::BadMagic`              | The binary encoding does not start with `ZKMLBNDL`        |
+
 ## CLI exit codes
 
 | Code | Meaning                                                      |

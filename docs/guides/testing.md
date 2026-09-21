@@ -55,7 +55,8 @@ to `main`:
 | Test                | `cargo test --workspace`                                      |
 | zkml-common without std feature | `cargo build -p zkml-common --no-default-features`            |
 | Verifier WASM       | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
-| zkVM guest (dev mode) | zkVM tests in dev mode, `groth16` and `bonsai` compile checks |
+| zkVM guest (dev mode) | zkVM tests in dev mode, the RISC Zero digest cross-checks, and the `groth16` surface |
+| Groth16 compression (manual) | Real proving and verification; run from the Actions tab |
 | Docs (Mintlify)     | `mint broken-links` over `docs/`                              |
 
 ## What a pull request must include

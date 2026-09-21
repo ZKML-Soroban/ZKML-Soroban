@@ -11,8 +11,10 @@
 //! `LinearClassifier` graphs, so most real `.onnx` files would fail with a
 //! confusing error (extraction is tracked in #5 / #6).
 //!
-//! `prove` emits a structurally valid [`VerificationBundle`] whose Groth16 proof
-//! bytes are still a placeholder; STARK→Groth16 compression is TODO(#11).
+//! `prove --groth16` produces a real RISC Zero Groth16 bundle (v2) and requires
+//! the `groth16` feature plus x86_64 Linux with Docker. Without the flag it
+//! emits the legacy v1 bundle, which carries public inputs but no proof and
+//! must not be treated as evidence.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -27,7 +29,7 @@ use zkml_common::inference::try_run_inference;
 use zkml_common::models::{Model, TreeNode};
 
 use crate::model_io::import_json;
-use crate::prover::{bundle_to_json, generate_proof, model_commitment};
+use crate::prover::{bundle_to_json, model_commitment, ProveError};
 use crate::quantization::{validate_model, QuantizationConfig};
 
 /// Largest input magnitude that survives `FixedPoint::quantize` without the
@@ -72,8 +74,9 @@ pub enum Command {
 
     /// Generate a verification bundle as JSON.
     ///
-    /// The Groth16 proof bytes are a placeholder until issue #11; the bundle is
-    /// structurally valid and round-trips, but must not be submitted on-chain.
+    /// With `--groth16` the bundle is a v2 bundle carrying a real RISC Zero
+    /// Groth16 seal. Without it, the bundle is the legacy v1 format: public
+    /// inputs only, no proof.
     Prove {
         /// Path to a JSON model.
         model: PathBuf,
@@ -83,6 +86,33 @@ pub enum Command {
         /// Write the bundle here instead of stdout.
         #[arg(short, long)]
         out: Option<PathBuf>,
+        /// Prove in the zkVM and compress to Groth16 (requires the `groth16`
+        /// feature, x86_64 Linux and Docker).
+        #[arg(long)]
+        groth16: bool,
+        /// Where to run the Groth16 compression.
+        #[arg(long, default_value = "local", value_parser = ["local", "boundless"])]
+        backend: String,
+    },
+
+    /// Print the constants needed to initialize the verifier contract.
+    ///
+    /// Requires the `zkvm` feature, because the values come from the pinned
+    /// RISC Zero version and the compiled guest.
+    ExportVk {
+        /// `json` for a machine-readable file, `soroban-args` for a ready to
+        /// paste `stellar contract invoke` argument list.
+        #[arg(long, default_value = "json", value_parser = ["json", "soroban-args"])]
+        format: String,
+        /// Write here instead of stdout.
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
+
+    /// Verify a v2 bundle locally against the compiled guest image id.
+    VerifyBundle {
+        /// Path to a bundle written by `prove --groth16`.
+        bundle: PathBuf,
     },
 
     /// Run the quantization validation passes and print the report.
@@ -115,7 +145,9 @@ pub enum Command {
 /// Failures surfaced by the CLI.
 ///
 /// Hand-written `Display` to match [`ZkmlError`] and
-/// [`crate::onnx::OnnxImportError`]; the workspace uses no `thiserror`/`anyhow`.
+/// [`crate::onnx::OnnxImportError`]. [`ProveError`] does use `thiserror`, since
+/// it wraps several foreign error types; the CLI error does not wrap anything
+/// it did not define.
 #[derive(Debug)]
 pub enum CliError {
     /// `--input` was empty or all whitespace.
@@ -148,6 +180,10 @@ pub enum CliError {
     Validation(ZkmlError),
     /// A bundle could not be serialized.
     Serialization(String),
+    /// Proving or bundle verification failed.
+    Prove(ProveError),
+    /// The command needs a feature this binary was not built with.
+    FeatureDisabled { command: String, feature: String },
 }
 
 impl CliError {
@@ -203,7 +239,18 @@ impl core::fmt::Display for CliError {
             CliError::Inference(e) => write!(f, "inference failed: {e}"),
             CliError::Validation(e) => write!(f, "validation failed: {e}"),
             CliError::Serialization(m) => write!(f, "failed to serialize bundle: {m}"),
+            CliError::Prove(e) => write!(f, "{e}"),
+            CliError::FeatureDisabled { command, feature } => write!(
+                f,
+                "`{command}` needs the `{feature}` feature: rebuild with `cargo build -p zkml-prover --features {feature}`"
+            ),
         }
+    }
+}
+
+impl From<ProveError> for CliError {
+    fn from(value: ProveError) -> Self {
+        CliError::Prove(value)
     }
 }
 
@@ -466,7 +513,11 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
             model,
             input,
             out: dest,
-        } => cmd_prove(model, input, dest.as_deref(), out),
+            groth16,
+            backend,
+        } => cmd_prove(model, input, dest.as_deref(), *groth16, backend, out),
+        Command::ExportVk { format, out: dest } => cmd_export_vk(format, dest.as_deref(), out),
+        Command::VerifyBundle { bundle } => cmd_verify_bundle(bundle, out),
         Command::Validate {
             model,
             dataset,
@@ -507,29 +558,183 @@ pub fn cmd_infer(model_path: &Path, raw: &str, out: &mut impl Write) -> Result<(
     .map_err(|e| io_err("<stdout>", e))
 }
 
-/// `prove <MODEL> -i <CSV> [-o <FILE>]`: emit a `VerificationBundle` as JSON.
+/// `prove <MODEL> -i <CSV> [--groth16] [--backend B] [-o <FILE>]`.
 pub fn cmd_prove(
     model_path: &Path,
     raw: &str,
     dest: Option<&Path>,
+    groth16: bool,
+    backend: &str,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let model = load_model(model_path)?;
     let inputs = inputs_for(&model, model_path, raw)?;
 
-    let bundle = generate_proof(&model, &inputs)
+    if groth16 {
+        return cmd_prove_groth16(&model, &inputs, dest, backend, out);
+    }
+
+    #[allow(deprecated)]
+    let bundle = crate::prover::generate_proof(&model, &inputs)
         .map_err(|message| CliError::Inference(ZkmlError::InvalidModel(message)))?;
     let json = bundle_to_json(&bundle).map_err(CliError::Serialization)?;
 
+    writeln!(
+        out,
+        "warning: this is a legacy v1 bundle and carries no proof. Use --groth16 for a real one."
+    )
+    .map_err(|e| io_err("<stdout>", e))?;
+
+    write_or_print(json, dest, "verification bundle", out)
+}
+
+/// Write a payload to a file or to stdout.
+fn write_or_print(
+    payload: String,
+    dest: Option<&Path>,
+    what: &str,
+    out: &mut impl Write,
+) -> Result<(), CliError> {
     match dest {
         Some(path) => {
             let display = path.display().to_string();
-            std::fs::write(path, json.as_bytes()).map_err(|e| io_err(&display, e))?;
-            writeln!(out, "wrote verification bundle to {display}")
-                .map_err(|e| io_err("<stdout>", e))
+            std::fs::write(path, payload.as_bytes()).map_err(|e| io_err(&display, e))?;
+            writeln!(out, "wrote {what} to {display}").map_err(|e| io_err("<stdout>", e))
         }
-        None => writeln!(out, "{json}").map_err(|e| io_err("<stdout>", e)),
+        None => writeln!(out, "{payload}").map_err(|e| io_err("<stdout>", e)),
     }
+}
+
+#[cfg(feature = "groth16")]
+fn cmd_prove_groth16(
+    model: &Model,
+    inputs: &[FixedPoint],
+    dest: Option<&Path>,
+    backend: &str,
+    out: &mut impl Write,
+) -> Result<(), CliError> {
+    use crate::prover::{bundle_from_output, bundle_v2_to_json, prove_groth16, ProverBackend};
+
+    let backend = ProverBackend::parse(backend).ok_or_else(|| {
+        CliError::Prove(ProveError::RemoteBackend(format!(
+            "unknown backend `{backend}`; use `local` or `boundless`"
+        )))
+    })?;
+
+    writeln!(
+        out,
+        "proving in the zkVM and compressing to Groth16, this takes minutes"
+    )
+    .map_err(|e| io_err("<stdout>", e))?;
+
+    let output = prove_groth16(model, inputs, &backend)?;
+    let bundle = bundle_from_output(&output)?;
+    let json = bundle_v2_to_json(&bundle)?;
+
+    writeln!(out, "seal: {} bytes", output.seal.len())
+        .and_then(|()| writeln!(out, "cycles: {}", output.cycles))
+        .and_then(|()| writeln!(out, "proving time: {} ms", output.timings.total_ms))
+        .map_err(|e| io_err("<stdout>", e))?;
+
+    write_or_print(json, dest, "verification bundle (v2)", out)
+}
+
+#[cfg(not(feature = "groth16"))]
+fn cmd_prove_groth16(
+    _model: &Model,
+    _inputs: &[FixedPoint],
+    _dest: Option<&Path>,
+    _backend: &str,
+    _out: &mut impl Write,
+) -> Result<(), CliError> {
+    Err(CliError::FeatureDisabled {
+        command: "prove --groth16".into(),
+        feature: "groth16".into(),
+    })
+}
+
+/// `export-vk [--format json|soroban-args]`: constants for `initialize`.
+#[cfg(feature = "zkvm")]
+pub fn cmd_export_vk(
+    format: &str,
+    dest: Option<&Path>,
+    out: &mut impl Write,
+) -> Result<(), CliError> {
+    use risc0_zkvm::sha::Digestible;
+    use zkml_common::bundle::to_hex as hex;
+    use zkml_common::risc0::selector_from_params_digest;
+
+    let params = risc0_zkvm::Groth16ReceiptVerifierParameters::default();
+    let params_digest: [u8; 32] = params.digest().into();
+    let control_root: [u8; 32] = params.control_root.into();
+    let bn254_control_id: [u8; 32] = params.bn254_control_id.into();
+    let image_id = crate::prover::image_id();
+    let selector = selector_from_params_digest(&params_digest);
+
+    let payload = match format {
+        "soroban-args" => format!(
+            "# Paste after `stellar contract invoke --id <CONTRACT> -- initialize`\n\
+             --image_id {}\n--control_root {}\n--bn254_control_id {}\n--selector {}\n",
+            hex(&image_id),
+            hex(&control_root),
+            hex(&bn254_control_id),
+            hex(&selector)
+        ),
+        _ => format!(
+            "{{\n  \"image_id\": \"{}\",\n  \"control_root\": \"{}\",\n  \"bn254_control_id\": \"{}\",\n  \"selector\": \"{}\",\n  \"verifier_parameters\": \"{}\"\n}}\n",
+            hex(&image_id),
+            hex(&control_root),
+            hex(&bn254_control_id),
+            hex(&selector),
+            hex(&params_digest)
+        ),
+    };
+
+    write_or_print(payload, dest, "verification key", out)
+}
+
+#[cfg(not(feature = "zkvm"))]
+pub fn cmd_export_vk(
+    _format: &str,
+    _dest: Option<&Path>,
+    _out: &mut impl Write,
+) -> Result<(), CliError> {
+    Err(CliError::FeatureDisabled {
+        command: "export-vk".into(),
+        feature: "zkvm".into(),
+    })
+}
+
+/// `verify-bundle <FILE>`: verify a v2 bundle locally.
+#[cfg(feature = "zkvm")]
+pub fn cmd_verify_bundle(path: &Path, out: &mut impl Write) -> Result<(), CliError> {
+    use crate::prover::{bundle_v2_from_json, verify_bundle};
+    use zkml_common::bundle::to_hex as hex;
+
+    let display = path.display().to_string();
+    let text = std::fs::read_to_string(path).map_err(|e| io_err(&display, e))?;
+    let bundle = bundle_v2_from_json(&text)?;
+    let journal = bundle
+        .journal_v1()
+        .map_err(|e| CliError::Serialization(e.to_string()))?;
+
+    verify_bundle(&bundle)?;
+
+    writeln!(out, "bundle verified")
+        .and_then(|()| writeln!(out, "image id    : {}", hex(&bundle.image_id)))
+        .and_then(|()| writeln!(out, "model hash  : {}", hex(&journal.model_hash)))
+        .and_then(|()| writeln!(out, "input hash  : {}", hex(&journal.input_hash)))
+        .and_then(|()| writeln!(out, "output      : {}", journal.output))
+        .and_then(|()| writeln!(out, "class label : {}", journal.class_label))
+        .map_err(|e| io_err("<stdout>", e))
+}
+
+#[cfg(not(feature = "zkvm"))]
+pub fn cmd_verify_bundle(_path: &Path, _out: &mut impl Write) -> Result<(), CliError> {
+    Err(CliError::FeatureDisabled {
+        command: "verify-bundle".into(),
+        feature: "zkvm".into(),
+    })
 }
 
 /// `validate <MODEL> [--dataset <FILE>]`: run the quantization passes.
@@ -677,9 +882,37 @@ mod tests_commands {
 
     #[test]
     fn prove_writes_bundle_json_to_the_writer() {
-        let out = capture(|w| cmd_prove(Path::new(CREDIT), "0.5,0.2,0.9,0.1", None, w)).unwrap();
-        let bundle = crate::prover::bundle_from_json(out.trim()).expect("bundle parses");
+        let out = capture(|w| {
+            cmd_prove(
+                Path::new(CREDIT),
+                "0.5,0.2,0.9,0.1",
+                None,
+                false,
+                "local",
+                w,
+            )
+        })
+        .unwrap();
+        let json = &out[out.find('{').expect("json follows the warning")..];
+        let bundle = crate::prover::bundle_from_json(json.trim()).expect("bundle parses");
         assert_eq!(bundle.public_inputs.output.len(), 8);
+    }
+
+    #[test]
+    fn prove_without_groth16_warns_that_the_bundle_carries_no_proof() {
+        let out = capture(|w| {
+            cmd_prove(
+                Path::new(CREDIT),
+                "0.5,0.2,0.9,0.1",
+                None,
+                false,
+                "local",
+                w,
+            )
+        })
+        .unwrap();
+        assert!(out.contains("carries no proof"), "got: {out}");
+        assert!(out.contains("--groth16"), "got: {out}");
     }
 
     #[test]
@@ -687,7 +920,17 @@ mod tests_commands {
         let dir = std::env::temp_dir().join("zkml_cli_tests_commands");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("bundle.json");
-        let out = capture(|w| cmd_prove(Path::new(KYC), "0.6,0.1,0.0", Some(&path), w)).unwrap();
+        let out = capture(|w| {
+            cmd_prove(
+                Path::new(KYC),
+                "0.6,0.1,0.0",
+                Some(&path),
+                false,
+                "local",
+                w,
+            )
+        })
+        .unwrap();
         assert!(out.contains("wrote verification bundle to"));
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(crate::prover::bundle_from_json(&written).is_ok());

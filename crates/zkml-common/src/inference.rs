@@ -644,6 +644,136 @@ pub fn try_run_inference(model: &Model, inputs: &[FixedPoint]) -> Result<FixedPo
     }
 }
 
+/// Fallible counterpart of [`run_inference_with_decision`].
+///
+/// Returns the raw score and the class label without panicking: a feature-count
+/// mismatch, an arithmetic overflow or a malformed tree surface as
+/// [`ZkmlError`]. The proving pipeline uses this so a bad model cannot abort
+/// the caller.
+pub fn try_run_inference_with_decision(
+    model: &Model,
+    inputs: &[FixedPoint],
+) -> Result<(FixedPoint, i64), ZkmlError> {
+    let expected = model.num_features();
+    if expected != 0 && inputs.len() != expected {
+        return Err(ZkmlError::FeatureCountMismatch {
+            expected,
+            got: inputs.len(),
+        });
+    }
+
+    match model {
+        Model::DecisionTree(tree) => {
+            let score = try_infer_decision_tree(tree, inputs)?;
+            Ok((score, 0))
+        }
+        Model::LogisticRegression(lr) => {
+            let score = try_infer_logistic_regression(lr, inputs)?;
+            Ok((score, binary_decision(score, lr.decision_threshold)))
+        }
+        Model::TinyMLP(mlp) => {
+            mlp.validate()?;
+            let logits = try_infer_tiny_mlp_all_outputs(mlp, inputs)?;
+            let score = logits
+                .first()
+                .copied()
+                .unwrap_or(FixedPoint::from_raw(0, 16));
+            let decision = argmax(&logits).map(|i| i as i64).unwrap_or(0);
+            Ok((score, decision))
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "std")]
+mod tests_decision_fallible {
+    use super::*;
+    use crate::models::{DecisionTree, LogisticRegression, Model, TreeNode};
+
+    fn fp(x: f64) -> FixedPoint {
+        FixedPoint::quantize(x)
+    }
+
+    #[test]
+    fn matches_the_panicking_version() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![fp(0.5), fp(-0.25)],
+            bias: fp(0.1),
+            decision_threshold: fp(0.0),
+        });
+        let inputs = vec![fp(1.0), fp(2.0)];
+        assert_eq!(
+            try_run_inference_with_decision(&model, &inputs).unwrap(),
+            run_inference_with_decision(&model, &inputs)
+        );
+    }
+
+    #[test]
+    fn wrong_feature_count_is_an_error() {
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![fp(1.0), fp(1.0)],
+            bias: fp(0.0),
+            decision_threshold: fp(0.0),
+        });
+        assert_eq!(
+            try_run_inference_with_decision(&model, &[fp(1.0)]),
+            Err(ZkmlError::FeatureCountMismatch {
+                expected: 2,
+                got: 1
+            })
+        );
+    }
+
+    #[test]
+    fn overflow_is_an_error_instead_of_a_panic() {
+        let big = FixedPoint::from_raw(i64::MAX / 2, 16);
+        let model = Model::LogisticRegression(LogisticRegression {
+            weights: vec![big],
+            bias: fp(0.0),
+            decision_threshold: fp(0.0),
+        });
+        assert_eq!(
+            try_run_inference_with_decision(&model, &[big]),
+            Err(ZkmlError::ArithmeticOverflow)
+        );
+    }
+
+    #[test]
+    fn malformed_tree_is_an_error_instead_of_a_panic() {
+        // Node 0 points at itself, so traversal would never terminate.
+        let model = Model::DecisionTree(DecisionTree {
+            num_features: 1,
+            nodes: vec![TreeNode::Split {
+                feature_index: 0,
+                threshold: fp(0.5),
+                left: 0,
+                right: 0,
+            }],
+        });
+        assert!(try_run_inference_with_decision(&model, &[fp(0.1)]).is_err());
+    }
+
+    #[test]
+    fn decision_tree_label_is_zero() {
+        let model = Model::DecisionTree(DecisionTree {
+            num_features: 1,
+            nodes: vec![
+                TreeNode::Split {
+                    feature_index: 0,
+                    threshold: fp(0.5),
+                    left: 1,
+                    right: 2,
+                },
+                TreeNode::Leaf { value: fp(0.0) },
+                TreeNode::Leaf { value: fp(1.0) },
+            ],
+        });
+        let (score, label) = try_run_inference_with_decision(&model, &[fp(0.9)]).unwrap();
+        assert_eq!(label, 0);
+        assert_eq!(score, fp(1.0));
+    }
+}
+
 #[cfg(test)]
 #[cfg(feature = "std")]
 mod tests_validated {

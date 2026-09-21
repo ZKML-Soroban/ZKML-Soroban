@@ -36,8 +36,18 @@ fn run_bin(args: &[&str]) -> std::process::Output {
 #[test]
 fn prove_output_round_trips_and_binds_the_model() {
     let mut buf = Vec::new();
-    cmd_prove(Path::new(CREDIT), "0.5,0.2,0.9,0.1", None, &mut buf).expect("prove succeeds");
-    let json = String::from_utf8(buf).expect("bundle json is utf-8");
+    cmd_prove(
+        Path::new(CREDIT),
+        "0.5,0.2,0.9,0.1",
+        None,
+        false,
+        "local",
+        &mut buf,
+    )
+    .expect("prove succeeds");
+    let out = String::from_utf8(buf).expect("bundle json is utf-8");
+    // `prove` without `--groth16` prints a warning line before the JSON.
+    let json = &out[out.find('{').expect("json follows the warning")..];
 
     let bundle = bundle_from_json(json.trim()).expect("bundle_from_json accepts CLI output");
 
@@ -55,7 +65,15 @@ fn prove_output_round_trips_and_binds_the_model() {
 fn prove_to_file_round_trips() {
     let path = scratch("prove_to_file").join("bundle.json");
     let mut buf = Vec::new();
-    cmd_prove(Path::new(CREDIT), "0.5,0.2,0.9,0.1", Some(&path), &mut buf).expect("prove succeeds");
+    cmd_prove(
+        Path::new(CREDIT),
+        "0.5,0.2,0.9,0.1",
+        Some(&path),
+        false,
+        "local",
+        &mut buf,
+    )
+    .expect("prove succeeds");
 
     let written = std::fs::read_to_string(&path).expect("bundle file exists");
     assert!(bundle_from_json(&written).is_ok());

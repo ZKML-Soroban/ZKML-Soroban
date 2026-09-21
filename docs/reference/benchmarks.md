@@ -41,10 +41,59 @@ Sanity baselines measured with the `timing` feature on a developer laptop:
 | Decision tree       | 3      | Under 1 µs       |
 | Tiny MLP (8-8-1)    | 8      | A few µs         |
 
+## Proving
+
+Measured with `crates/zkml-prover/tests/groth16_bundle.rs::real_groth16_bundle_verifies`
+on `examples/models/credit_lr.json` (logistic regression, 4 features):
+
+| Step | Value |
+| ---- | ----- |
+| Machine | Ryzen AI 9 HX 370, 24 threads, 15 GB RAM, Arch Linux x86_64 under WSL2 |
+| Acceleration | none (CPU only) |
+| Peak prover memory | about 8.9 GB (`r0vm`) |
+| Guest cycles | 9,437,184 |
+| Total wall clock, prove + compress | 1,302 s and 1,506 s over two runs |
+| Seal | 260 bytes (4-byte selector + 256-byte proof) |
+| Journal | 96 bytes |
+| Total on-chain payload | 356 bytes |
+
+Reproduce it with:
+
+```bash
+RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
+  --test groth16_bundle real_groth16 -- --ignored --nocapture
+```
+
+Two things this table is not: a floor and a ceiling. The model is tiny, so
+almost all of that time is the fixed cost of the zkVM and the recursion, not the
+inference; a decision tree or a small MLP lands in the same range. And a machine
+with more memory and a GPU-enabled prover is much faster. Treat 25 minutes as
+what a laptop does, not as what the design costs.
+
+The 260-byte seal meets the Phase 1 target of a proof under 500 bytes.
+
+## GPU
+
+Same model, same machine, with `--features cuda` on an RTX 4070 Laptop (8 GB,
+compute capability 8.9):
+
+| Step | Result |
+| ---- | ------ |
+| Building the CUDA kernels | 8 min 27 s, targeting `sm_89` |
+| zkVM proving on the GPU | ran to completion, 98 to 100% utilisation, 7.9 GB VRAM |
+| Native Groth16 wrap | **failed**: illegal memory access inside `sppark` |
+
+There is no end-to-end GPU number to report, because the run never produced a
+bundle. The witness computation before the crash took 18 seconds, against a
+1,302 second total on the CPU, which hints at what the path could be worth if
+the memory problem is solved on a larger card. That hint is not a measurement.
+
+Note also that `-arch` matters enormously. With nothing set, nvcc targets
+`sm_52` and one rv32im kernel did not finish compiling in over an hour; with
+`-arch=sm_89` the whole build takes eight minutes.
+
 ## Not yet measured
 
-- zkVM proving time (real mode) per model family
-- Groth16 wrap time (local Docker and a remote prover)
-- End-to-end latency on testnet
-
-These depend on the pending Groth16 compression work.
+- Proving time per model family (tree, MLP) under real mode
+- Remote proving latency, once a Boundless client exists
+- End-to-end latency on testnet, which needs on-chain verification (issue #84)

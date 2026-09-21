@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- STARK to Groth16 compression (`prove_groth16`, `prove --groth16`). The prover
+  now produces a real 260-byte seal instead of an empty placeholder. Local
+  compression needs x86_64 Linux with Docker; the platform and Docker are
+  checked before any expensive work starts.
+- `VerificationBundleV2` (`zkml_common::bundle`): hex-encoded image id, seal,
+  journal and provenance metadata, with a compact binary encoding and an
+  `AnyBundle` parser that accepts both versions.
+- `JournalV1` (`zkml_common::journal`): the guest commits a fixed 96-byte
+  record, so the journal layout is versioned and the 80-byte contract public
+  inputs are derived from it.
+- `zkml_common::risc0`: RISC Zero digest arithmetic (tagged structs, claim
+  digest, digest splitting, the five Groth16 public inputs) reimplemented
+  without the RISC Zero crates, so the `no_std` verifier can use it.
+  Cross-checked against `risc0-zkvm` in `tests/risc0_digests.rs`.
+- CLI: `verify-bundle` verifies a v2 bundle with RISC Zero's own verifier, and
+  `export-vk` prints the image id, control root, BN254 control id and seal
+  selector needed at `initialize`.
+- `ProveError`, a typed error per recoverable failure of the proving pipeline,
+  and `try_run_inference_with_decision`, its fallible inference entry point.
+- A manual `workflow_dispatch` CI job that proves and verifies a real Groth16
+  bundle.
+
+### Changed
+- `prove` without `--groth16` prints a warning that the bundle carries no proof.
+- The `bonsai` feature is gone, along with the `bonsai-sdk` and `risc0-groth16`
+  dependencies. RISC Zero shut down Bonsai in December 2025; remote proving is
+  reserved for Boundless and currently returns an error.
+- `generate_proof` is deprecated in favour of `prove_groth16`.
+
+### Fixed
+- The BN254 control id is byte-reversed before being used as a public input, as
+  `risc0_groth16::Verifier::new` does. Without it every pairing check would
+  fail.
+
 ## [0.0.1] - 2026-09-15
 
 First release published to crates.io (`zkml-common`, `zkml-verifier`). The
