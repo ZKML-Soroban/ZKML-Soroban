@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `5`                                     |
+| Interface `VERSION`       | `6`                                     |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -30,6 +30,47 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. |
 | `set_admin(new_admin: Address)` | admin | `()` | Transfers admin rights. |
 | `set_pause(paused: bool)` | admin | `()` | Pauses or resumes verification. |
+| `verify_receipt(seal: Bytes, journal: Bytes)` | none | `Result<(), VerificationError>` | Verifies a RISC Zero Groth16 receipt, enforces the nullifier, records the result, emits `verified`. |
+| `set_risc0_config(config: Risc0Config)` | admin | `()` | Registers the guest image id, control root, BN254 control id and seal selector. |
+| `get_risc0_config()` | none | `Risc0Config` | The registered configuration. Panics if never set. |
+| `set_risc0_vk(vk: VerificationKey)` | admin | `()` | Registers RISC Zero's universal verifying key. Rejects any key without six `ic` points. |
+| `claim_digest(image_id: Bytes, journal: Bytes)` | none | `Bytes` | Recomputes the digest a receipt commits to, so off-chain tools can check agreement. |
+
+### Verifying a RISC Zero receipt
+
+`verify_receipt` takes the two fields of a
+[v2 bundle](/reference/bundle-format) unchanged. Set it up with the values
+`zkml-prover export-vk` prints:
+
+```bash
+cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
+```
+
+Those values are pinned to a RISC Zero version **and** to a guest build. Change
+either and they must be re-exported, or every proof fails.
+
+Two keys are registered, not one. `initialize` takes the key for the
+native-circuit path, which has five `ic` points for four public inputs;
+`set_risc0_vk` takes RISC Zero's universal key, which has six for five. They are
+not interchangeable, and `set_risc0_vk` refuses the wrong length rather than
+letting it fail later as a pairing error.
+
+Checks run cheapest first: the seal's length and selector, then the journal's
+layout, then the registered model hash, and only then the pairing.
+
+The journal is not a public input of the proof. It is bound through the claim
+digest, which the contract recomputes with `env.crypto().sha256()` using the
+same arithmetic the prover runs. That is why a receipt attributed to a different
+guest, or checked against a different control root, fails the pairing rather
+than any cheaper check.
+
+<Warning>
+A corrupted curve point does not return an error. The BN254 host functions trap
+on a point they cannot parse, so the transaction aborts. Nothing is verified
+either way, but the diagnostic is a trap rather than `VerificationFailed`.
+Validating points up front would cost gas on every honest verification to
+improve the message on a dishonest one.
+</Warning>
 
 ## Types
 

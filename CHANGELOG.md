@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Breaking.** `verify_receipt(seal, journal)` verifies a RISC Zero Groth16
+  receipt on chain, against RISC Zero's universal verifying key. The contract
+  `VERSION` is bumped `5 -> 6`. A real receipt verifies at 30,677,367 CPU
+  instructions, against a network limit of 100 million.
+- `set_risc0_config` / `get_risc0_config` for the guest image id, control root,
+  BN254 control id and seal selector, and `set_risc0_vk` for RISC Zero's
+  universal verifying key. That key is a second one, not a replacement: a
+  receipt has five public inputs where the native-circuit path has four, so it
+  carries six `ic` points against the other's five, and `set_risc0_vk` refuses
+  any other length.
+- `claim_digest` as a public view, so off-chain tools can check that they agree
+  with the contract.
+- New error codes: `MalformedSeal` (11), `UnknownSelector` (12),
+  `MalformedJournal` (13), `Risc0NotConfigured` (14).
+- `zkml-prover export-vk` now also prints RISC Zero's universal verifying key in
+  the contract's byte layout, derived from the pinned crate rather than copied.
+- A golden fixture under `crates/zkml-verifier/testdata/`: a real seal and
+  journal, with seventeen tests covering verification, replay, a flipped
+  journal or seal byte, a wrong selector, a truncated seal, a short or
+  malformed journal, another model, another guest, another control root, a
+  paused contract, and an unconfigured one.
+
+### Changed
+- The RISC Zero digest arithmetic takes the hash function as a parameter, so the
+  contract can inject `env.crypto().sha256()` while the prover keeps using
+  `sha2`. Both must agree exactly, and a test asserts they do.
+- `zkml-common` is genuinely `no_std` now, which it was documented as but was
+  not. Poseidon commitments sit behind a `poseidon` feature because their
+  arkworks dependency does not build for `wasm32v1-none`, and serde no longer
+  pulls in its std layer. This is what lets the contract share the journal codec
+  and the digest arithmetic instead of duplicating them.
+
+### Added
 - STARK to Groth16 compression (`prove_groth16`, `prove --groth16`). The prover
   now produces a real 260-byte seal instead of an empty placeholder. Local
   compression needs x86_64 Linux with Docker; the platform and Docker are

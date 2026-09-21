@@ -20,6 +20,10 @@ Returned by `verify_inference` as a Soroban contract error.
 | 8    | `InvalidPublicInputLength`      | Extra bytes after the 80-byte layout                         |
 | 9    | `VerificationKeyLengthMismatch` | `vk.ic` does not have exactly 5 points                       |
 | 10   | `ProofAlreadyUsed`              | The nullifier for these public inputs already exists         |
+| 11   | `MalformedSeal`                 | The seal is not 260 bytes                                    |
+| 12   | `UnknownSelector`               | The seal was made for a different RISC Zero version          |
+| 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout, or its magic or version do not match |
+| 14   | `Risc0NotConfigured`            | `set_risc0_config` or `set_risc0_vk` has not been called     |
 
 Panics (not error codes):
 

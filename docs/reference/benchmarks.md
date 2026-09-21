@@ -13,6 +13,15 @@ satisfies the pairing equation:
 | Operation                                   | CPU instructions | Memory (bytes) | Regression threshold (CPU / memory) |
 | ------------------------------------------- | ---------------- | -------------- | ----------------------------------- |
 | Full `verify_inference` (L assembly + pairing) | 29,289,569    | 277,964        | 50,000,000 / 10,000,000             |
+| Full `verify_receipt` (claim digest + L assembly + pairing) | 30,677,367 | 326,021 | 60,000,000 / 12,000,000 |
+
+Verifying a RISC Zero receipt costs 4.7% more than the native-circuit path and
+uses 31% of the 100 million instructions a Soroban transaction is allowed.
+Reconstructing the claim digest is eight SHA-256 host calls and one extra scalar
+multiplication, which is cheap next to the pairing that dominates both numbers.
+The receipt figure is measured on the golden fixture in
+`crates/zkml-verifier/testdata/`, so it is the cost of a verification that
+succeeds, not of an early rejection.
 
 Breakdown:
 
