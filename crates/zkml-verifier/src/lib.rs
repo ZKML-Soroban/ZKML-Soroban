@@ -1924,6 +1924,54 @@ mod test_golden_receipt {
         assert_eq!(client.get_verification_count(), 1);
     }
 
+    /// What a real receipt costs on chain.
+    ///
+    /// This is the number that decides whether the design is usable at all:
+    /// Soroban caps a transaction at 100 million CPU instructions, and the
+    /// pairing check alone was already 29 million before receipts existed.
+    /// Verifying a receipt adds the claim digest, which is eight SHA-256 host
+    /// calls, and one more scalar multiplication than the native-circuit path.
+    ///
+    /// Measured on the golden fixture, so the number is the cost of a
+    /// verification that actually succeeds, not of a cheap early rejection.
+    #[test]
+    fn a_real_receipt_fits_in_the_transaction_budget() {
+        use std::println;
+
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        env.cost_estimate().budget().reset_default();
+        client.verify_receipt(&seal, &journal);
+
+        let cpu = env.cost_estimate().budget().cpu_instruction_cost();
+        let mem = env.cost_estimate().budget().memory_bytes_cost();
+
+        println!("\n=== verify_receipt on a real bundle ===");
+        println!("CPU instructions : {}", cpu);
+        println!("Memory bytes     : {}", mem);
+        println!("=======================================\n");
+
+        // The network limit, which is what actually matters. If this ever
+        // fails, receipts cannot be verified on chain at all and the design
+        // needs rethinking, not a looser threshold.
+        const SOROBAN_CPU_LIMIT: u64 = 100_000_000;
+        assert!(
+            cpu < SOROBAN_CPU_LIMIT,
+            "verify_receipt costs {cpu} instructions and the network allows {SOROBAN_CPU_LIMIT}"
+        );
+
+        // A regression guard, generous on purpose: it exists to catch a change
+        // that doubles the cost, not to police small movements.
+        const MAX_CPU: u64 = 60_000_000;
+        const MAX_MEM: u64 = 12_000_000;
+        assert!(cpu <= MAX_CPU, "CPU cost regressed: {cpu} over {MAX_CPU}");
+        assert!(
+            mem <= MAX_MEM,
+            "memory cost regressed: {mem} over {MAX_MEM}"
+        );
+    }
+
     #[test]
     fn the_same_receipt_cannot_be_used_twice() {
         let env = Env::default();
