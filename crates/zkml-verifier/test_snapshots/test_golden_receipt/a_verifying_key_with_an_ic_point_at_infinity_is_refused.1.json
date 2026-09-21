@@ -120,7 +120,7 @@
                         "symbol": "image_id"
                       },
                       "val": {
-                        "bytes": "106ea0d99e43645660447732d0c7c169b2f9fba7abf519eedd9b8ce433833489"
+                        "bytes": "04de8993fd7f341c62fcab73aa007eb3d09e4c6882fd31db6a21d56b8612c5ca"
                       }
                     },
                     {
@@ -219,7 +219,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -232,33 +231,6 @@
     "min_temp_entry_ttl": 16,
     "max_entry_ttl": 6312000,
     "ledger_entries": [
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "nullifier"
-                  },
-                  {
-                    "bytes": "a4ed3540bc47a1b6b1b15f1e5715eced064509b813d96e9f229e085bb8cddd08"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "bool": true
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6311999
-      },
       {
         "entry": {
           "last_modified_ledger_seq": 0,
@@ -288,47 +260,6 @@
                       },
                       "val": {
                         "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "lst_res"
-                      },
-                      "val": {
-                        "map": [
-                          {
-                            "key": {
-                              "symbol": "class_label"
-                            },
-                            "val": {
-                              "i64": "1"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "model_hash"
-                            },
-                            "val": {
-                              "bytes": "73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "output"
-                            },
-                            "val": {
-                              "bytes": "3188000000000000"
-                            }
-                          },
-                          {
-                            "key": {
-                              "symbol": "verified_at"
-                            },
-                            "val": {
-                              "u32": 0
-                            }
-                          }
-                        ]
                       }
                     },
                     {
@@ -374,7 +305,7 @@
                               "symbol": "image_id"
                             },
                             "val": {
-                              "bytes": "106ea0d99e43645660447732d0c7c169b2f9fba7abf519eedd9b8ce433833489"
+                              "bytes": "04de8993fd7f341c62fcab73aa007eb3d09e4c6882fd31db6a21d56b8612c5ca"
                             }
                           },
                           {
@@ -526,7 +457,7 @@
                         "symbol": "vrf_cnt"
                       },
                       "val": {
-                        "u32": 1
+                        "u32": 0
                       }
                     }
                   ]
