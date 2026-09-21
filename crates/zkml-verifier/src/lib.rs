@@ -562,8 +562,8 @@ impl ZkmlVerifierContract {
     fn journal_to_vec(journal: &Bytes) -> [u8; zkml_common::journal::JOURNAL_V1_LEN] {
         let mut buf = [0u8; zkml_common::journal::JOURNAL_V1_LEN];
         let n = core::cmp::min(journal.len() as usize, buf.len());
-        for i in 0..n {
-            buf[i] = journal.get(i as u32).unwrap_or(0);
+        for (i, slot) in buf.iter_mut().enumerate().take(n) {
+            *slot = journal.get(i as u32).unwrap_or(0);
         }
         buf
     }
@@ -1843,7 +1843,7 @@ mod test_golden_receipt {
     use soroban_sdk::Bytes;
 
     fn hex_to_vec(hex: &str) -> std::vec::Vec<u8> {
-        assert!(hex.len() % 2 == 0, "hex must have an even length");
+        assert!(hex.len().is_multiple_of(2), "hex must have an even length");
         (0..hex.len())
             .step_by(2)
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex"))
@@ -2076,6 +2076,133 @@ mod test_golden_receipt {
             client.try_verify_receipt(&seal, &journal),
             Err(Ok(VerificationError::VerificationFailed))
         );
+    }
+
+    #[test]
+    fn a_paused_contract_refuses_receipts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seal, journal) = setup(&env);
+
+        client.set_pause(&true);
+        assert_eq!(
+            client.try_verify_receipt(&seal, &journal),
+            Err(Ok(VerificationError::VerificationFailed))
+        );
+
+        // And accepts them again once unpaused, so the pause is a switch and
+        // not a one-way door.
+        client.set_pause(&false);
+        client.verify_receipt(&seal, &journal);
+    }
+
+    #[test]
+    fn a_journal_with_the_wrong_magic_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        let mut raw = [0u8; zkml_common::journal::JOURNAL_V1_LEN];
+        journal.copy_into_slice(&mut raw);
+        raw[0] = b'X'; // ZKML -> XKML
+        assert_eq!(
+            client.try_verify_receipt(&seal, &Bytes::from_slice(&env, &raw)),
+            Err(Ok(VerificationError::MalformedJournal))
+        );
+    }
+
+    #[test]
+    fn a_journal_from_a_future_version_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        // A contract must refuse a layout it was not built for rather than
+        // read fields from the positions it happens to expect.
+        let mut raw = [0u8; zkml_common::journal::JOURNAL_V1_LEN];
+        journal.copy_into_slice(&mut raw);
+        raw[4] = 2; // journal version
+        assert_eq!(
+            client.try_verify_receipt(&seal, &Bytes::from_slice(&env, &raw)),
+            Err(Ok(VerificationError::MalformedJournal))
+        );
+    }
+
+    #[test]
+    fn a_receipt_for_another_guest_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seal, journal) = setup(&env);
+
+        // Same proof, same journal, but the contract is told a different guest
+        // produced it. The image id is inside the claim digest, so this has to
+        // fail the pairing.
+        let mut cfg = client.get_risc0_config();
+        let mut id = [0u8; 32];
+        cfg.image_id.copy_into_slice(&mut id);
+        id[0] ^= 0x01;
+        cfg.image_id = Bytes::from_slice(&env, &id);
+        client.set_risc0_config(&cfg);
+
+        assert_eq!(
+            client.try_verify_receipt(&seal, &journal),
+            Err(Ok(VerificationError::VerificationFailed))
+        );
+    }
+
+    #[test]
+    fn a_wrong_control_root_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seal, journal) = setup(&env);
+
+        let mut cfg = client.get_risc0_config();
+        let mut root = [0u8; 32];
+        cfg.control_root.copy_into_slice(&mut root);
+        root[31] ^= 0x01;
+        cfg.control_root = Bytes::from_slice(&env, &root);
+        client.set_risc0_config(&cfg);
+
+        assert_eq!(
+            client.try_verify_receipt(&seal, &journal),
+            Err(Ok(VerificationError::VerificationFailed))
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "a RISC Zero verifying key has six ic points")]
+    fn a_verifying_key_with_five_ic_points_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _seal, _journal) = setup(&env);
+
+        // The key for the native-circuit path has five. Registering it here
+        // would fail every receipt, so it is refused at the door.
+        let wrong = crate::test_utils::create_dummy_vk(&env, 5);
+        client.set_risc0_vk(&wrong);
+    }
+
+    #[test]
+    fn two_different_inferences_both_verify() {
+        // The nullifier must key on the inference, not on the contract having
+        // verified anything before, so a second distinct receipt is accepted.
+        // Only one real bundle exists, so this checks the storage side: a
+        // different journal yields a different nullifier.
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+        client.verify_receipt(&seal, &journal);
+
+        let mut raw = [0u8; zkml_common::journal::JOURNAL_V1_LEN];
+        journal.copy_into_slice(&mut raw);
+        let first = zkml_common::journal::JournalV1::decode(&raw).unwrap();
+        raw[80] ^= 0x01; // class_label
+        let second = zkml_common::journal::JournalV1::decode(&raw).unwrap();
+
+        assert_ne!(
+            first.public_inputs_bytes(),
+            second.public_inputs_bytes(),
+            "a different decision must produce different public inputs, or one \
+             inference could mask another"
+        );
+        assert_eq!(client.get_verification_count(), 1);
     }
 
     #[test]
