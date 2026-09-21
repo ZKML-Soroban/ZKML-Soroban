@@ -29,3 +29,6 @@ default = []
 zkvm = ["zkml-prover/zkvm"]
 # Enable Groth16 compression (requires x86_64 Linux with Docker at runtime)
 groth16 = ["zkml-prover/groth16"]
+# GPU acceleration; see the zkml-prover manifest for what each one covers.
+cuda = ["zkml-prover/cuda"]
+metal = ["zkml-prover/metal"]

@@ -24,8 +24,18 @@ timing = []
 zkvm = ["dep:risc0-zkvm", "dep:zkml-methods"]
 # STARK to Groth16 compression. The compression itself lives in risc0-zkvm
 # (`ProverOpts::groth16`), so this feature only turns on the CLI surface and the
-# platform checks. Requires x86_64 Linux with Docker at runtime.
+# platform checks. On its own it shells out to a Docker image published for
+# x86_64 only, so it requires x86_64 Linux with Docker at runtime.
 groth16 = ["zkvm"]
+# CUDA acceleration (NVIDIA GPU, Linux). This does two things: it moves segment
+# proving and recursion onto the GPU, and it switches `risc0-groth16` to its
+# native prover, which needs neither Docker nor x86_64. Requires the CUDA
+# toolkit (`nvcc`) at build time.
+cuda = ["groth16", "risc0-zkvm/cuda"]
+# Metal acceleration (Apple Silicon). This speeds up proving only: there is no
+# Metal path for the Groth16 wrap, so compression on macOS still needs Docker
+# with x86 emulation. See `docs/concepts/proving.md`.
+metal = ["zkvm", "risc0-zkvm/metal"]
 
 [dependencies]
 zkml-common = { workspace = true, features = ["std"] }

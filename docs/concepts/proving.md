@@ -15,20 +15,68 @@ to a Groth16 proof, and packages the result as a verification bundle.
 | Commitments (`model_commitment`, `input_commitment`)    | Implemented                             |
 | Guest execution and STARK receipt (`generate_receipt`)  | Implemented, CI in dev mode             |
 | Journal cross-check against native inference            | Implemented                             |
-| STARK to Groth16 (`prove_groth16`)                      | Implemented (x86_64 Linux with Docker)  |
+| STARK to Groth16 (`prove_groth16`)                      | Implemented (see platform support)      |
 | Verification key export (`export-vk`)                   | Implemented                             |
 | `VerificationBundleV2` with real proof bytes            | Implemented                             |
 | On-chain verification of those bundles                  | Pending (issue #84)                     |
 | Remote proving (Boundless)                              | Not implemented (returns an error)      |
 
 <Warning>
-Groth16 compression shells out to a Docker image that runs the Circom witness
-generator, and that image is published for x86_64 only (risc0 issue #1749). On
-any other platform `prove_groth16` fails immediately with
+Without a GPU, Groth16 compression shells out to a Docker image that runs the
+Circom witness generator, and that image is published for x86_64 only (risc0
+issue #1749). On any other platform `prove_groth16` fails immediately with
 `ProveError::UnsupportedPlatform` instead of failing deep inside the prover.
 RISC Zero shut down the Bonsai proving service in December 2025, so there is no
 hosted fallback; the remote path is reserved for Boundless.
 </Warning>
+
+## Platform support
+
+Two things vary by platform: how fast the zkVM proves, and whether the Groth16
+wrap can run locally at all.
+
+| Platform | Inference and commitments | zkVM proving | Groth16 wrap |
+| -------- | ------------------------- | ------------ | ------------ |
+| Linux x86_64, no GPU | yes | CPU | Docker (`--features groth16`) |
+| Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker |
+| Linux aarch64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker |
+| Linux aarch64, no GPU | yes | CPU | not locally: the Docker image is x86_64 only |
+| macOS (Apple Silicon) | yes | GPU (`--features metal`) | not practically: needs x86 emulation |
+| macOS (Intel) | yes | CPU | Docker (`--features groth16`) |
+| Windows | yes | through WSL2 | through WSL2 |
+
+Why the wrap is the awkward part: `risc0-groth16` has two prover paths and picks
+between them at compile time.
+
+```rust
+// risc0-groth16 3.0.5, src/prove/mod.rs
+if #[cfg(feature = "cuda")] { cuda::shrink_wrap(..) } else { docker::shrink_wrap(..) }
+```
+
+The CUDA path bundles a Rust witness calculator and a CUDA Groth16 prover, so it
+needs neither Docker nor x86_64. The Docker path pulls a published image that
+only exists for x86_64. There is no Metal path, which is why Apple Silicon can
+accelerate proving but not the wrap.
+
+### Windows
+
+RISC Zero's toolchain targets Linux and macOS, so proving on Windows goes
+through WSL2. Everything that does not need the zkVM (import, quantization,
+inference, commitments, `commit` / `infer` / `validate` / `inspect`) runs
+natively on Windows with a plain `cargo test --workspace`.
+
+### Choosing a feature
+
+```bash
+cargo build -p zkml-prover --features groth16   # CPU, Docker, x86_64 Linux
+cargo build -p zkml-prover --features cuda      # NVIDIA GPU, no Docker needed
+cargo build -p zkml-prover --features metal     # Apple Silicon, proving only
+```
+
+`cuda` needs the CUDA toolkit (`nvcc`) at build time. Under WSL2 install only
+the toolkit: the GPU driver comes from Windows through `/dev/dxg`, and
+installing a Linux NVIDIA driver package inside WSL overwrites the `libcuda`
+that WSL provides and breaks CUDA.
 
 ## Pinned versions
 
@@ -46,6 +94,8 @@ in `risc0-zkvm` (`ProverOpts::groth16()`), so there is no separate pin for it.
 | --------- | ---------------------------------------------------------------------- |
 | `zkvm`    | `generate_receipt`, `decode_journal`, `verify_bundle`, `export-vk`      |
 | `groth16` | `prove_groth16` and `prove --groth16` (implies `zkvm`)                  |
+| `cuda`    | NVIDIA GPU proving and the native Groth16 wrap (implies `groth16`)      |
+| `metal`   | Apple Silicon GPU proving (implies `zkvm`; no Groth16 path)             |
 | `timing`  | Timing output for inference and proving steps                          |
 
 ## Steps

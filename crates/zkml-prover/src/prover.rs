@@ -11,11 +11,18 @@
 //! | Commitments and native inference | any platform |
 //! | zkVM execution and STARK receipt (`zkvm` feature) | RISC Zero toolchain |
 //! | Groth16 compression (`groth16` feature) | x86_64 Linux with Docker |
+//! | Groth16 compression (`cuda` feature) | NVIDIA GPU on Linux, no Docker |
 //!
-//! The Groth16 step shells out to a Docker image that runs the Circom witness
-//! generator, which is published for x86_64 only (risc0 issue #1749). The
-//! platform is checked up front so the failure is a clear error instead of a
-//! confusing one deep inside the prover.
+//! Without CUDA the Groth16 step shells out to a Docker image that runs the
+//! Circom witness generator, which is published for x86_64 only (risc0 issue
+//! #1749). The platform is checked up front so the failure is a clear error
+//! instead of a confusing one deep inside the prover.
+//!
+//! With the `cuda` feature, `risc0-groth16` uses its native prover: a Rust
+//! witness calculator and a CUDA Groth16 prover. That path needs neither Docker
+//! nor x86_64, so it is also how an ARM Linux machine with an NVIDIA GPU can
+//! compress. `metal` accelerates proving on Apple Silicon but has no Groth16
+//! path, so macOS still needs Docker for the wrap.
 
 use zkml_common::bundle::VerificationBundleV2;
 #[cfg(feature = "zkvm")]
@@ -52,8 +59,8 @@ pub enum ProveError {
     #[error("zkvm: {0}")]
     Zkvm(String),
 
-    /// Groth16 compression needs x86_64 Linux.
-    #[error("Groth16 compression requires x86_64 Linux (current: {os} {arch}). Use a Linux x86_64 machine or WSL2, or prove remotely.")]
+    /// Groth16 compression needs x86_64 Linux, unless built with CUDA.
+    #[error("Groth16 compression through Docker requires x86_64 Linux (current: {os} {arch}). Build with --features cuda to use the native GPU prover instead, or use a Linux x86_64 machine or WSL2.")]
     UnsupportedPlatform {
         /// Operating system of the current build.
         os: &'static str,
@@ -62,7 +69,7 @@ pub enum ProveError {
     },
 
     /// Docker is required by the Groth16 step but is not usable.
-    #[error("Docker is required for Groth16 compression but is not available: {0}")]
+    #[error("Docker is required for Groth16 compression but is not available: {0}. Build with --features cuda to compress without Docker.")]
     DockerUnavailable(String),
 
     /// Dev mode produces fake receipts, which carry no seal.
@@ -154,9 +161,25 @@ pub fn generate_proof(model: &Model, inputs: &[FixedPoint]) -> Result<Verificati
     })
 }
 
+/// True when this build compresses without Docker, using the native CUDA
+/// prover in `risc0-groth16` instead of the x86_64 Docker image.
+pub fn native_groth16_available() -> bool {
+    cfg!(feature = "cuda")
+}
+
+/// A short name for the compression path this build uses, for logs and for the
+/// bundle metadata.
+pub fn groth16_backend_name() -> &'static str {
+    if native_groth16_available() {
+        "cuda"
+    } else {
+        "docker"
+    }
+}
+
 /// True when the current build can run local Groth16 compression.
 pub fn groth16_platform_supported() -> bool {
-    cfg!(all(target_os = "linux", target_arch = "x86_64"))
+    native_groth16_available() || cfg!(all(target_os = "linux", target_arch = "x86_64"))
 }
 
 /// Fail early when the platform cannot run local Groth16 compression.
@@ -172,7 +195,13 @@ pub fn check_groth16_platform() -> Result<(), ProveError> {
 }
 
 /// Fail early when Docker is not usable.
+///
+/// A CUDA build never reaches the Docker path, so this returns `Ok` there
+/// rather than demanding a daemon it will not use.
 pub fn check_docker() -> Result<(), ProveError> {
+    if native_groth16_available() {
+        return Ok(());
+    }
     match std::process::Command::new("docker")
         .arg("info")
         .stdout(std::process::Stdio::null())
@@ -522,13 +551,33 @@ mod tests {
     #[test]
     fn platform_check_matches_target() {
         let result = check_groth16_platform();
-        if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        // A CUDA build compresses natively, so no platform is excluded. A
+        // Docker build only works on the architecture the image is published
+        // for, and must say so rather than fail deep inside the prover.
+        if native_groth16_available() || cfg!(all(target_os = "linux", target_arch = "x86_64")) {
             assert!(result.is_ok());
         } else {
             assert!(matches!(
                 result,
                 Err(ProveError::UnsupportedPlatform { .. })
             ));
+        }
+    }
+
+    #[test]
+    fn the_backend_name_says_which_path_compression_takes() {
+        let name = groth16_backend_name();
+        assert!(matches!(name, "cuda" | "docker"), "got {name}");
+        assert_eq!(name == "cuda", native_groth16_available());
+    }
+
+    #[test]
+    fn docker_is_not_required_by_a_cuda_build() {
+        if native_groth16_available() {
+            assert!(
+                check_docker().is_ok(),
+                "a CUDA build must not demand Docker"
+            );
         }
     }
 }
