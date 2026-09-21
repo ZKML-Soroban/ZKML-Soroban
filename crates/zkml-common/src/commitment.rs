@@ -20,7 +20,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 /// A 32-byte commitment value.
-pub type Commitment = [u8; 32];
+pub use crate::Commitment;
 
 /// Domain tag for model commitments (capacity element initialization).
 const MODEL_DOMAIN: u64 = 1;

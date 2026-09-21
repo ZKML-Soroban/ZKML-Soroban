@@ -39,7 +39,10 @@ icon: "user-shield"
 | Non-determinism between prover and guest | Fixed-point integer math, shared inference engine, journal cross-check | Implemented |
 | Malicious tree causing infinite traversal | Structural validation and bounded iteration | Implemented |
 | Arithmetic overflow changing results | Checked `i128` intermediates, static overflow bounds in `validate` | Implemented |
-| Accepting RISC Zero proofs with mismatched public inputs | Route A verifier adapter | Pending |
+| Accepting RISC Zero proofs with mismatched public inputs | `verify_receipt` recomputes the claim digest from the journal, so a journal, image id or control root that does not match the proof fails the pairing | Implemented (tested against a real proof; not on a live network) |
+| Receipt from a different RISC Zero version | Seal selector checked against the registered one before the pairing | Implemented |
+| Degenerate RISC Zero verifying key | `set_risc0_vk` refuses points off the curve and the point at infinity, which would unbind the journal from the proof | Implemented |
+| Admin registers a guest, key or config that accepts false results | The admin is trusted with what verifies; every change to the RISC Zero configuration emits a public `cfg_upd` event | Accepted: detectable, not prevented |
 | Proof forgery by a quantum computer (Shor on BN254) | Crypto-agile verifier, hybrid and hash-based proofs, see [post-quantum readiness](/security/post-quantum) | Planned |
 
 ## Out of scope (current phase)

@@ -9,10 +9,15 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 
 ## Proving
 
-- **The contract does not verify these proofs yet** (issue #84). The prover
-  produces real Groth16 bundles and `verify-bundle` checks them off-chain, but
-  the on-chain path still expects the Route B layout. Until #84 lands, nothing
-  is verified on Stellar.
+- **Nothing has been verified on a live network yet.** `verify_receipt` accepts
+  a real receipt in the Soroban test environment, at 29.6 million CPU
+  instructions on the compiled WASM against a 100 million limit, but the
+  contract has not been deployed to testnet and no transaction has carried a
+  proof.
+- **`verify_inference` still traps on a corrupted proof point.** `verify_receipt`
+  validates its points and returns a typed error; the native-circuit path does
+  not yet. In both, a G2 point on the curve but outside the subgroup traps,
+  which takes a deliberately crafted point.
 - **Groth16 compression is x86_64 Linux only** and requires Docker. The Circom
   witness generator image is not published for other platforms (risc0 issue
   #1749), so `prove_groth16` fails fast with `UnsupportedPlatform` elsewhere.

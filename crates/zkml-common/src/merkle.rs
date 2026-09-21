@@ -3,7 +3,8 @@
 //! Used to commit to a model whose parameters are chunked into leaves, so an
 //! individual chunk can later be opened without revealing the whole model.
 
-use crate::commitment::{commit_i64, Commitment};
+use crate::commitment::commit_i64;
+use crate::Commitment;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;

@@ -99,9 +99,10 @@ L = IC[0] + sum(x_i * IC[i + 1])
 
 ## Cost
 
-A full `verify_inference` (4 scalar multiplications plus a 4-pair pairing check) measures about
-29.3M CPU instructions and 278 KB of memory in the Soroban test budget. See
-`test_verifier_accept_path_and_resource_budget`.
+Measured on the compiled WASM, `verify_inference` (4 scalar multiplications plus a
+4-pair pairing check) costs 30.2M CPU instructions and `verify_receipt` 29.6M,
+against a 100M limit per transaction. Measure on the WASM rather than natively:
+the native test environment meters only host calls. See the `wasm_budget` tests.
 
 ## Known limitations
 

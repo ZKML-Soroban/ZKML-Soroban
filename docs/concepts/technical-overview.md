@@ -100,8 +100,10 @@ Opset floors: core `>= 17`, `ai.onnx.ml >= 1`. See [ONNX import](/guides/onnx-im
    packaged as a [v2 bundle](/reference/bundle-format). Remote proving is not
    implemented: Bonsai was shut down in December 2025, so `--backend boundless`
    is a placeholder for Boundless or a self-hosted Bento prover.
-6. *(Pending, issue #84)* The contract reconstructs the receipt claim digest
-   from the journal and runs the pairing check on chain.
+6. The contract's `verify_receipt` reconstructs the receipt claim digest from
+   the journal with the host's SHA-256 and runs the pairing check against RISC
+   Zero's universal verifying key. A real receipt verifies this way in the
+   Soroban test environment; it has not yet been exercised on a live network.
 
 CI runs the guest with `RISC0_DEV_MODE=1`.
 
@@ -139,9 +141,9 @@ Future work: multi-model registry, per-subject records, batch verification.
 
 | Metric                  | Phase 1 target | Phase 2 target | Current                   |
 | ----------------------- | -------------- | -------------- | ------------------------- |
-| Proof generation time   | Under 30 s         | Under 5 s          | Not measured (no Groth16 wrap yet) |
-| Proof size              | Under 500 bytes    | Under 200 bytes    | 256 bytes (Groth16 points) |
-| On-chain verification   | Measured       | 50% of Phase 1 | ~29.3M CPU instructions   |
+| Proof generation time   | Under 30 s         | Under 5 s          | About 20 min on a laptop CPU (see benchmarks) |
+| Proof size              | Under 500 bytes    | Under 200 bytes    | 260-byte seal (4-byte selector + 256-byte proof) |
+| On-chain verification   | Measured       | 50% of Phase 1 | 29.6M CPU instructions for a receipt, measured on the WASM |
 | End-to-end latency      | Under 60 s         | Under 15 s         | Not measured              |
 
 See [Benchmarks](/reference/benchmarks).

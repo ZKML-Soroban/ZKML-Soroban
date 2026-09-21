@@ -8,7 +8,9 @@ publish = false
 
 [dependencies]
 # Guest uses the shared, Soroban/RISC Zero-free crate for models + inference.
-zkml-common = { path = "../../crates/zkml-common", default-features = false }
+# Poseidon without std: the guest computes the commitments it puts in the
+# journal, but runs no_std inside the zkVM.
+zkml-common = { path = "../../crates/zkml-common", default-features = false, features = ["poseidon"] }
 # Pinned exactly to match host `risc0-zkvm` and `risc0-build`.
 risc0-zkvm = { version = "=3.0.6", default-features = false, features = ["std"] }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }

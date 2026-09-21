@@ -7,9 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- The contract `VERSION` is bumped `5 -> 6` for `verify_receipt` and the RISC Zero
+  configuration calls below.
+- `zkml-common` built with `default-features = false` no longer includes the
+  `commitment` and `merkle` modules unless the new `poseidon` feature is on.
+  Their arkworks dependency does not build for `wasm32v1-none`, and gating it is
+  what lets the contract link the crate. Default builds are unaffected.
+
 ### Added
+- `verify_receipt(seal, journal)` verifies a RISC Zero Groth16 receipt on chain,
+  against RISC Zero's universal verifying key, and returns the `InferenceRecord`
+  it stores. A real receipt verifies at 29,614,411 CPU instructions on the
+  compiled WASM, against a network limit of 100 million.
+- Checks run cheapest first: the seal's length and selector, the journal's
+  layout, the registered model hash, then replay, so a used receipt is refused
+  before it costs a pairing. Only then are the proof points validated and the
+  pairing run, and the nullifier is spent only on success.
+- The three proof points are validated before the host sees them, so a
+  corrupted seal returns `MalformedProofA`, `MalformedProofB` or
+  `MalformedProofC` instead of aborting the transaction. A test flips each of the
+  356 bytes of the seal and the journal and requires a typed error for every
+  one. `zkml_common::bn254` checks the G2 curve equation, since Soroban has no
+  host function for it, and is tested against `ark-bn254`.
+- `set_risc0_config` / `get_risc0_config` for the guest image id, control root,
+  BN254 control id and seal selector, as fixed-size `BytesN` fields.
+  `set_risc0_config` refuses a control id that is not a valid BN254 scalar,
+  which the host would otherwise reduce silently.
+- `set_risc0_vk` / `get_risc0_vk` for RISC Zero's universal verifying key. That
+  key is a second one, not a replacement: a receipt has five public inputs where
+  the native-circuit path has four, so it carries six `ic` points. It refuses any
+  other length, and any point off its curve or at infinity. A point at infinity
+  would unbind the journal from the proof, so a seal could verify against any
+  journal.
+- Both setters publish a `cfg_upd` event, so a change to what verifies is public.
+- `claim_digest` as a public view, so off-chain tools can check that they agree
+  with the contract. It refuses a journal that is not 96 bytes.
+- Error codes `UnknownSelector` (11), `MalformedSeal` (12), `MalformedJournal`
+  (13) and `Risc0NotConfigured` (14).
+- `zkml-prover export-vk` also prints RISC Zero's universal verifying key,
+  derived from the pinned crate rather than copied, and `--format soroban-args`
+  prints the two admin calls that register everything.
+- A golden fixture under `crates/zkml-verifier/testdata/`, a real seal and
+  journal, with 24 tests against it covering verification, replay, every
+  single-byte change, each proof point, the field-modulus boundary, another
+  model, another guest, another control root, a paused contract, an
+  unconfigured one, and degenerate verifying keys.
+- `wasm_budget` tests that measure both entry points on the compiled WASM,
+  because the native test environment only meters host calls.
 - STARK to Groth16 compression (`prove_groth16`, `prove --groth16`). The prover
-  now produces a real 260-byte seal instead of an empty placeholder. Local
+  produces a real 260-byte seal instead of an empty placeholder. Local
   compression needs x86_64 Linux with Docker; the platform and Docker are
   checked before any expensive work starts.
 - `VerificationBundleV2` (`zkml_common::bundle`): hex-encoded image id, seal,
@@ -19,28 +66,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record, so the journal layout is versioned and the 80-byte contract public
   inputs are derived from it.
 - `zkml_common::risc0`: RISC Zero digest arithmetic (tagged structs, claim
-  digest, digest splitting, the five Groth16 public inputs) reimplemented
-  without the RISC Zero crates, so the `no_std` verifier can use it.
-  Cross-checked against `risc0-zkvm` in `tests/risc0_digests.rs`.
-- CLI: `verify-bundle` verifies a v2 bundle with RISC Zero's own verifier, and
-  `export-vk` prints the image id, control root, BN254 control id and seal
-  selector needed at `initialize`.
+  digest, digest splitting, the five Groth16 public inputs) without the RISC
+  Zero crates, with the hash function injected so the contract can use
+  `env.crypto().sha256()` while the prover uses `sha2`. Cross-checked against
+  `risc0-zkvm` in `tests/risc0_digests.rs`, over more than 200 journals.
+- CLI: `verify-bundle` verifies a v2 bundle with RISC Zero's own verifier.
 - `ProveError`, a typed error per recoverable failure of the proving pipeline,
   and `try_run_inference_with_decision`, its fallible inference entry point.
 - A manual `workflow_dispatch` CI job that proves and verifies a real Groth16
   bundle.
 
 ### Changed
+- `zkml-common` is genuinely `no_std` now, which it was documented as but was
+  not: Poseidon sits behind the `poseidon` feature, and serde no longer pulls in
+  its std layer. This is what lets the contract share the journal codec and the
+  digest arithmetic instead of duplicating them.
 - `prove` without `--groth16` prints a warning that the bundle carries no proof.
 - The `bonsai` feature is gone, along with the `bonsai-sdk` and `risc0-groth16`
   dependencies. RISC Zero shut down Bonsai in December 2025; remote proving is
   reserved for Boundless and currently returns an error.
 - `generate_proof` is deprecated in favour of `prove_groth16`.
+- The crates.io dry run packages the crates together, so the verifier is
+  checked against the `zkml-common` in the same checkout.
 
 ### Fixed
 - The BN254 control id is byte-reversed before being used as a public input, as
   `risc0_groth16::Verifier::new` does. Without it every pairing check would
   fail.
+- `tagged_struct` refuses more digests or data words than its fixed buffer holds,
+  instead of silently hashing a truncated struct in release builds.
+- `cargo test --workspace` passes on Windows: the main thread gets the same 8 MB
+  of stack it has on Linux and macOS.
 
 ## [0.0.1] - 2026-09-15
 

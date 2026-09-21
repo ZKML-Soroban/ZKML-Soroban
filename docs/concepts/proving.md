@@ -18,7 +18,7 @@ to a Groth16 proof, and packages the result as a verification bundle.
 | STARK to Groth16 (`prove_groth16`)                      | Implemented (see platform support)      |
 | Verification key export (`export-vk`)                   | Implemented                             |
 | `VerificationBundleV2` with real proof bytes            | Implemented                             |
-| On-chain verification of those bundles                  | Pending (issue #84)                     |
+| On-chain verification of those bundles (`verify_receipt`) | Implemented, not yet on a live network  |
 | Remote proving (Boundless)                              | Not implemented (returns an error)      |
 
 <Warning>
@@ -262,7 +262,8 @@ crates/zkml-prover   host: generate_receipt, prove_groth16, verify_bundle, bundl
 
 ## Known limitations
 
-- The contract does not verify these bundles yet; that is issue #84.
+- The contract verifies these bundles in the Soroban test environment, but no
+  bundle has been verified by a deployed contract on a live network yet.
 - Remote proving (`--backend boundless`) returns `ProveError::RemoteBackend`.
 - Compression needs roughly 10 GB of RAM and takes minutes on a laptop.
 - Model and input commitments share domain `0` in the proving path.

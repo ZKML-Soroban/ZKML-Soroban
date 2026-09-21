@@ -21,7 +21,14 @@ default = []
 timing = []
 # RISC Zero guest proving. Enable with `--features zkvm` (requires rzup toolchain).
 # CI runs this under RISC0_DEV_MODE=1 in the zkvm job.
-zkvm = ["dep:risc0-zkvm", "dep:zkml-methods"]
+zkvm = [
+    "dep:risc0-zkvm",
+    "dep:zkml-methods",
+    "dep:ark-groth16",
+    "dep:ark-bn254",
+    "dep:ark-ff",
+    "dep:ark-serialize",
+]
 # STARK to Groth16 compression. The compression itself lives in risc0-zkvm
 # (`ProverOpts::groth16`), so this feature only turns on the CLI surface and the
 # platform checks. On its own it shells out to a Docker image published for
@@ -38,8 +45,8 @@ cuda = ["groth16", "risc0-zkvm/cuda"]
 metal = ["zkvm", "risc0-zkvm/metal"]
 
 [dependencies]
-zkml-common = { workspace = true, features = ["std"] }
-serde = { workspace = true }
+zkml-common = { workspace = true, features = ["std", "sha2", "poseidon"] }
+serde = { workspace = true, features = ["std"] }
 serde_json = "1"
 
 # CLI argument parsing. Loose version like serde/soroban-sdk; exact `=` pins are
@@ -53,8 +60,24 @@ zkml-methods = { path = "../../methods", optional = true }
 # Typed errors for the proving pipeline.
 thiserror = "2"
 
+# Reading RISC Zero's universal Groth16 verifying key. risc0-groth16 keeps the
+# points private and only exposes them through serde, so `export-vk` round
+# trips the key through ark's uncompressed encoding to emit the contract's
+# byte layout. Both crates are already in the tree via risc0-groth16; these
+# entries only make the dependency direct. Deriving the key from the pinned
+# risc0 version is the point: a version bump regenerates it instead of
+# silently disagreeing with the proofs.
+ark-groth16 = { version = "0.5", default-features = false, optional = true }
+ark-bn254 = { version = "0.5", default-features = false, features = ["curve"], optional = true }
+ark-ff = { version = "0.5", default-features = false, optional = true }
+ark-serialize = { version = "0.5", default-features = false, optional = true }
+
 # ONNX protobuf decoding (pinned; API surface used by the importer foundation).
 prost = "=0.13.5"
 
 [dev-dependencies]
 proptest = "1.5"
+# The reference implementation `tests/bn254_points.rs` compares the contract's
+# point checks against. A dev-dependency so that test runs without `zkvm`.
+ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
+ark-ff = { version = "0.5", default-features = false }

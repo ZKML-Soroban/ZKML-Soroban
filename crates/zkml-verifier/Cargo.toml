@@ -19,7 +19,23 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
-soroban-sdk = "27"
+# The `alloc` feature brings the SDK's bump allocator. It is here to satisfy
+# the linker, not the hot path: the shared journal codec and the RISC Zero
+# digest arithmetic allocate nothing, but other modules of zkml-common are
+# compiled alongside them and reference alloc. Costs about 6 KB of WASM.
+soroban-sdk = { version = "27", features = ["alloc"] }
+
+# Shared wire formats and RISC Zero digest arithmetic. no_std and without a
+# bundled SHA-256: the contract injects env.crypto().sha256(), which is a host
+# function. The prover and the contract must agree byte for byte on the claim
+# digest, so they share one implementation rather than two that can drift.
+zkml-common = { workspace = true, default-features = false }
 
 [dev-dependencies]
 soroban-sdk = { version = "27", features = ["testutils"] }
+# Only the tests need a SHA-256 of their own: they check that the host
+# function and sha2 agree. The contract itself never links it.
+zkml-common = { workspace = true, default-features = false, features = ["sha2"] }
+# Reading the golden fixture in `testdata/`, which is a real bundle and a real
+# verifying key rather than values made up to make a test pass.
+serde_json = { workspace = true }

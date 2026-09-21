@@ -124,11 +124,14 @@ linear algebra, dense layers with ReLU) produce Groth16 proofs directly, with
 fewer constraints and smaller verification keys. Requires writing and auditing
 circuits per model family.
 
-> **Note.** The current contract treats
-> `(model_hash, input_hash, output, class_label)` as the Groth16 public inputs.
-> That layout fits Route B directly. A RISC Zero Groth16 proof exposes different
-> public inputs, so Route A needs an adapted verifier. See
-> [Known limitations](/security/known-limitations).
+> **Note.** The contract has one entry point per route, because the two expose
+> different public inputs. `verify_inference` takes
+> `(model_hash, input_hash, output, class_label)` directly, which is the Route B
+> layout. `verify_receipt` takes a RISC Zero seal and journal, whose proof
+> exposes the control root, the claim digest and the BN254 control id instead,
+> and rebuilds the claim digest from the journal before the pairing. Each route
+> has its own verifying key. See
+> [the verifier contract](/reference/verifier-contract#verifying-a-risc-zero-receipt).
 
 ## Dependency graph
 

@@ -73,12 +73,15 @@ jobs:
           fi
 
       - name: Check packages
+        # All crates in one invocation, not one at a time. zkml-verifier depends
+        # on zkml-common; packaged alone, Cargo resolves zkml-common from
+        # crates.io, which holds the last *published* version and not the one in
+        # this checkout. Packaged together, Cargo uses the zkml-common it just
+        # packaged, which is what a release publishes first anyway.
         run: |
-          for crate in $CRATES; do
-            echo "::group::cargo package -p $crate"
-            cargo package -p "$crate"
-            echo "::endgroup::"
-          done
+          args=()
+          for crate in $CRATES; do args+=(-p "$crate"); done
+          cargo package "${args[@]}"
 
   publish:
     name: Publish to crates.io

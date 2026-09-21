@@ -14,17 +14,28 @@ documentation = "https://docs.rs/zkml-common"
 readme = "README.md"
 
 [features]
-default = ["std"]
+default = ["std", "sha2", "poseidon"]
 std = []
+# Poseidon commitments and the Merkle tree built on them. This pulls in
+# light-poseidon and arkworks, whose transitive num-traits does not build for
+# `wasm32v1-none`, so the Soroban contract leaves it off and takes only the
+# wire formats and the RISC Zero digests.
+poseidon = ["dep:light-poseidon", "dep:ark-bn254", "dep:ark-ff"]
+# Bundle a SHA-256 implementation for off-chain callers. A Soroban contract
+# leaves this off and injects `env.crypto().sha256()` instead, which is a host
+# function and far cheaper than the same work compiled into WASM.
+sha2 = ["dep:sha2"]
 
 [dependencies]
-serde = { workspace = true }
-light-poseidon = "0.4"
-ark-bn254 = "0.5"
-ark-ff = "0.5"
+# `alloc` only: the contract builds this crate for `wasm32v1-none`, where
+# serde's std layer does not compile.
+serde = { workspace = true, features = ["alloc"] }
+light-poseidon = { version = "0.4", optional = true }
+ark-bn254 = { version = "0.5", optional = true }
+ark-ff = { version = "0.5", optional = true }
 # RISC Zero claim digests are SHA-256 based; `default-features = false` keeps
 # the guest build free of std.
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.10", default-features = false, optional = true }
 
 [dev-dependencies]
 proptest = "1.5"
