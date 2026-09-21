@@ -35,15 +35,20 @@ hosted fallback; the remote path is reserved for Boundless.
 Two things vary by platform: how fast the zkVM proves, and whether the Groth16
 wrap can run locally at all.
 
-| Platform | Inference and commitments | zkVM proving | Groth16 wrap |
-| -------- | ------------------------- | ------------ | ------------ |
-| Linux x86_64, no GPU | yes | CPU | Docker (`--features groth16`) |
-| Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker |
-| Linux aarch64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker |
-| Linux aarch64, no GPU | yes | CPU | not locally: the Docker image is x86_64 only |
-| macOS (Apple Silicon) | yes | partly GPU (`--features metal`) | not practically: needs x86 emulation |
-| macOS (Intel) | yes | CPU | Docker (`--features groth16`) |
-| Windows | yes | through WSL2 | through WSL2 |
+| Platform | Inference and commitments | zkVM proving | Groth16 wrap | Evidence |
+| -------- | ------------------------- | ------------ | ------------ | -------- |
+| Linux x86_64, no GPU | yes | CPU | Docker (`--features groth16`) | **run**: full suite, two real proofs |
+| Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker | **run**: built and proved on an RTX 4070 |
+| Windows | yes | through WSL2 | through WSL2 | **run**: full suite natively |
+| macOS (Apple Silicon) | yes | partly GPU (`--features metal`) | not practically: needs x86 emulation | CI (`macos-latest`) for the non-zkVM suite; the rest read from the risc0 sources |
+| macOS (Intel) | yes | CPU | Docker (`--features groth16`) | read from the risc0 sources |
+| Linux aarch64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker | read from the risc0 sources, no hardware to confirm |
+| Linux aarch64, no GPU | yes | CPU | not locally: the Docker image is x86_64 only | read from the risc0 sources |
+
+The last column matters. "Run" means someone executed it and the result is in
+this repository's history. The rest follow from what the risc0 crates do at
+compile time, which is checkable but is not the same as a passing test. Treat
+them as expectations, not guarantees, and tell us if one is wrong.
 
 Why the wrap is the awkward part: `risc0-groth16` has two prover paths and picks
 between them at compile time.
