@@ -108,6 +108,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install RISC Zero toolchain
+        # rzup resolves the release through the GitHub API. Unauthenticated,
+        # that shares a rate limit with every other runner on the same egress
+        # IP, and the macOS pool hits it. The job token lifts the limit; it
+        # needs no permission beyond reading a public release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -L https://risczero.com/install | bash
           echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
@@ -143,6 +149,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install RISC Zero toolchain
+        # rzup resolves the release through the GitHub API. Unauthenticated,
+        # that shares a rate limit with every other runner on the same egress
+        # IP, and the macOS pool hits it. The job token lifts the limit; it
+        # needs no permission beyond reading a public release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -L https://risczero.com/install | bash
           echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
