@@ -38,7 +38,7 @@ cuda = ["groth16", "risc0-zkvm/cuda"]
 metal = ["zkvm", "risc0-zkvm/metal"]
 
 [dependencies]
-zkml-common = { workspace = true, features = ["std", "sha2"] }
+zkml-common = { workspace = true, features = ["std", "sha2", "poseidon"] }
 serde = { workspace = true, features = ["std"] }
 serde_json = "1"
 

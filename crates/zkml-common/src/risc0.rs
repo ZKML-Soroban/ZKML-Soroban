@@ -17,9 +17,6 @@
 //! and `risc0-zkvm` 3.0.x; `crates/zkml-prover/tests/risc0_digests.rs`
 //! cross-checks the values against those crates.
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-
 /// A 32-byte SHA-256 digest, in RISC Zero byte order.
 pub type Digest = [u8; 32];
 
@@ -69,18 +66,40 @@ impl Sha256 for Sha2Hasher {
 /// where `data` words are little-endian `u32` and `down_count` is a
 /// little-endian `u16`.
 pub fn tagged_struct<H: Sha256>(sha: H, tag: &str, down: &[Digest], data: &[u32]) -> Digest {
-    let mut buf = Vec::with_capacity(32 * (down.len() + 1) + 4 * data.len() + 2);
-    buf.extend_from_slice(&sha.hash(tag.as_bytes()));
-    for digest in down {
-        buf.extend_from_slice(digest);
+    // No allocation: a Soroban contract has no global allocator, and every
+    // struct hashed here is small and known. The largest is ReceiptClaim, at
+    // 32 + 4*32 + 2*4 + 2 = 170 bytes.
+    debug_assert!(down.len() <= MAX_DOWN, "too many down digests");
+    debug_assert!(data.len() <= MAX_DATA, "too many data words");
+
+    let mut buf = [0u8; TAGGED_STRUCT_CAPACITY];
+    let mut n = 0usize;
+
+    let tag_digest = sha.hash(tag.as_bytes());
+    buf[n..n + 32].copy_from_slice(&tag_digest);
+    n += 32;
+
+    for digest in down.iter().take(MAX_DOWN) {
+        buf[n..n + 32].copy_from_slice(digest);
+        n += 32;
     }
-    for word in data {
-        buf.extend_from_slice(&word.to_le_bytes());
+    for word in data.iter().take(MAX_DATA) {
+        buf[n..n + 4].copy_from_slice(&word.to_le_bytes());
+        n += 4;
     }
     let count = down.len() as u16;
-    buf.extend_from_slice(&count.to_le_bytes());
-    sha.hash(&buf)
+    buf[n..n + 2].copy_from_slice(&count.to_le_bytes());
+    n += 2;
+
+    sha.hash(&buf[..n])
 }
+
+/// The most `down` digests any struct hashed here has: `ReceiptClaim`.
+const MAX_DOWN: usize = 4;
+/// The most `data` words any struct hashed here has: the two exit codes.
+const MAX_DATA: usize = 2;
+/// Enough for the tag digest, the down digests, the data words and the count.
+const TAGGED_STRUCT_CAPACITY: usize = 32 + 32 * MAX_DOWN + 4 * MAX_DATA + 2;
 
 /// Digest of a `SystemState`.
 pub fn system_state_digest<H: Sha256>(sha: H, merkle_root: &Digest, pc: u32) -> Digest {
