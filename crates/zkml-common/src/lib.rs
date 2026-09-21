@@ -11,6 +11,7 @@
 extern crate alloc;
 
 pub mod activation;
+pub mod bn254;
 pub mod bundle;
 #[cfg(feature = "poseidon")]
 pub mod commitment;
