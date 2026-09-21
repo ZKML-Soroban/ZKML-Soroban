@@ -41,7 +41,7 @@ wrap can run locally at all.
 | Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker |
 | Linux aarch64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker |
 | Linux aarch64, no GPU | yes | CPU | not locally: the Docker image is x86_64 only |
-| macOS (Apple Silicon) | yes | GPU (`--features metal`) | not practically: needs x86 emulation |
+| macOS (Apple Silicon) | yes | partly GPU (`--features metal`) | not practically: needs x86 emulation |
 | macOS (Intel) | yes | CPU | Docker (`--features groth16`) |
 | Windows | yes | through WSL2 | through WSL2 |
 
@@ -55,15 +55,37 @@ if #[cfg(feature = "cuda")] { cuda::shrink_wrap(..) } else { docker::shrink_wrap
 
 The CUDA path bundles a Rust witness calculator and a CUDA Groth16 prover, so it
 needs neither Docker nor x86_64. The Docker path pulls a published image that
-only exists for x86_64. There is no Metal path, which is why Apple Silicon can
-accelerate proving but not the wrap.
+only exists for x86_64. There is no Metal path at all, which is why Apple
+Silicon cannot do the wrap locally.
+
+Metal coverage is partial in the rest of the pipeline too, so do not expect
+CUDA-like speedups on a Mac. Counting the kernels shipped in risc0 3.0.6:
+
+| Crate | Metal kernels | CUDA kernels |
+| ----- | ------------- | ------------ |
+| `risc0-sys` (NTT, Poseidon2) | 7 | 7 |
+| `risc0-circuit-recursion-sys` | 3 | 9 |
+| `risc0-circuit-rv32im-sys` | 0 | 7 |
+| `risc0-circuit-keccak-sys` | 0 | 24 |
+| `risc0-groth16-sys` | 0 | 1 |
+
+`risc0-circuit-rv32im` is the circuit that proves guest execution, and it has no
+Metal kernels and no `metal` feature, so the main proving step stays on the CPU
+on macOS. Metal accelerates the recursion circuit and the shared primitives
+only.
 
 ### Windows
 
 RISC Zero's toolchain targets Linux and macOS, so proving on Windows goes
 through WSL2. Everything that does not need the zkVM (import, quantization,
 inference, commitments, `commit` / `infer` / `validate` / `inspect`) runs
-natively on Windows with a plain `cargo test --workspace`.
+natively on Windows, and `cargo test --workspace` passes there.
+
+That needs one thing, which `.cargo/config.toml` sets for you: Windows gives
+the main thread a 1 MB stack where Linux and macOS give 8 MB, and the Poseidon
+commitment path overflows 1 MB in an unoptimized build. Without the larger
+stack, `zkml-prover commit` exits with `0xC00000FD` (stack overflow) on Windows
+debug builds while working everywhere else.
 
 ### Choosing a feature
 
@@ -135,7 +157,7 @@ in `risc0-zkvm` (`ProverOpts::groth16()`), so there is no separate pin for it.
 | `zkvm`    | `generate_receipt`, `decode_journal`, `verify_bundle`, `export-vk`      |
 | `groth16` | `prove_groth16` and `prove --groth16` (implies `zkvm`)                  |
 | `cuda`    | NVIDIA GPU proving and the native Groth16 wrap (implies `groth16`)      |
-| `metal`   | Apple Silicon GPU proving (implies `zkvm`; no Groth16 path)             |
+| `metal`   | Apple Silicon GPU for recursion and primitives only (implies `zkvm`)    |
 | `timing`  | Timing output for inference and proving steps                          |
 
 ## Steps

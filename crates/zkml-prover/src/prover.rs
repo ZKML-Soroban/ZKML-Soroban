@@ -331,9 +331,7 @@ mod zkvm_prove {
             seal,
             image_id: image_id(),
             timings: ProveTimings {
-                execute_ms: 0,
-                prove_ms,
-                compress_ms: 0,
+                prove_and_compress_ms: prove_ms,
                 total_ms: started.elapsed().as_millis() as u64,
             },
             cycles: prove_info.stats.total_cycles,

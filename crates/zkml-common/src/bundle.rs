@@ -55,13 +55,15 @@ impl ProofSystemId {
 /// Timings of one proving run, in milliseconds.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProveTimings {
-    /// Executing the guest and producing the session.
-    pub execute_ms: u64,
-    /// Producing the STARK receipt.
-    pub prove_ms: u64,
-    /// Compressing the STARK receipt to Groth16.
-    pub compress_ms: u64,
-    /// Total wall time.
+    /// Proving the guest and compressing the receipt.
+    ///
+    /// `ProverOpts::groth16()` runs execution, segment proving, recursion and
+    /// the Groth16 wrap inside one `prove_with_opts` call and does not report
+    /// the stages separately, so this is one number rather than three. It is
+    /// the honest granularity; splitting it would mean publishing zeros.
+    pub prove_and_compress_ms: u64,
+    /// Total wall time, including building the executor environment and the
+    /// cross-check against native inference.
     pub total_ms: u64,
 }
 
@@ -202,9 +204,7 @@ impl VerificationBundleV2 {
         push_bytes(&mut out, self.meta.prover_version.as_bytes());
         out.extend_from_slice(&self.meta.created_at.to_le_bytes());
         out.extend_from_slice(&self.meta.cycles.to_le_bytes());
-        out.extend_from_slice(&self.meta.timings.execute_ms.to_le_bytes());
-        out.extend_from_slice(&self.meta.timings.prove_ms.to_le_bytes());
-        out.extend_from_slice(&self.meta.timings.compress_ms.to_le_bytes());
+        out.extend_from_slice(&self.meta.timings.prove_and_compress_ms.to_le_bytes());
         out.extend_from_slice(&self.meta.timings.total_ms.to_le_bytes());
         out
     }
@@ -227,9 +227,7 @@ impl VerificationBundleV2 {
         let created_at = i64::from_le_bytes(as_array8(cursor.take(8)?));
         let cycles = u64::from_le_bytes(as_array8(cursor.take(8)?));
         let timings = ProveTimings {
-            execute_ms: u64::from_le_bytes(as_array8(cursor.take(8)?)),
-            prove_ms: u64::from_le_bytes(as_array8(cursor.take(8)?)),
-            compress_ms: u64::from_le_bytes(as_array8(cursor.take(8)?)),
+            prove_and_compress_ms: u64::from_le_bytes(as_array8(cursor.take(8)?)),
             total_ms: u64::from_le_bytes(as_array8(cursor.take(8)?)),
         };
 
@@ -423,9 +421,7 @@ mod tests {
                 created_at: 1_700_000_000,
                 cycles: 123_456,
                 timings: ProveTimings {
-                    execute_ms: 10,
-                    prove_ms: 20,
-                    compress_ms: 30,
+                    prove_and_compress_ms: 20,
                     total_ms: 60,
                 },
             },

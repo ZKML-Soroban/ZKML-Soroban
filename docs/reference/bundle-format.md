@@ -25,7 +25,7 @@ bundle is readable and roughly half the size of the v1 JSON.
     "prover_version": "0.0.1",
     "created_at": 1789937782,
     "cycles": 9437184,
-    "timings": { "execute_ms": 0, "prove_ms": 1301629, "compress_ms": 0, "total_ms": 1301685 }
+    "timings": { "prove_and_compress_ms": 1301629, "total_ms": 1301685 }
   }
 }
 ```
