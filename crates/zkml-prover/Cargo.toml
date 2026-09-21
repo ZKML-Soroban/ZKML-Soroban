@@ -39,7 +39,7 @@ metal = ["zkvm", "risc0-zkvm/metal"]
 
 [dependencies]
 zkml-common = { workspace = true, features = ["std", "sha2"] }
-serde = { workspace = true }
+serde = { workspace = true, features = ["std"] }
 serde_json = "1"
 
 # CLI argument parsing. Loose version like serde/soroban-sdk; exact `=` pins are

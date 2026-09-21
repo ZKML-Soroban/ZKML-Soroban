@@ -14,7 +14,7 @@ clap = { version = "4", features = ["derive"] }
 # Workspace dependencies
 zkml-prover = { path = "../zkml-prover" }
 zkml-verifier = { path = "../zkml-verifier" }
-serde = { workspace = true }
+serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 
 # Async runtime for contract interaction

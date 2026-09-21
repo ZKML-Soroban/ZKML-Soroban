@@ -26,7 +26,10 @@ keywords = ["zkml", "zero-knowledge", "stellar", "soroban", "groth16"]
 # Internal crates. `version` is required for crates.io and must match
 # `workspace.package.version`.
 zkml-common = { path = "crates/zkml-common", version = "0.0.1", default-features = false }
-serde = { version = "1", features = ["derive"] }
+# `default-features = false` so `zkml-common` can build for `wasm32v1-none`.
+# Crates that need the std layer ask for it themselves; with workspace
+# inheritance a member cannot turn default features off again.
+serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1"
 # Pinned exactly: RISC Zero API changes are a tracked project risk (roadmap).
 risc0-zkvm = { version = "=3.0.6" }

@@ -21,5 +21,11 @@ doctest = false
 [dependencies]
 soroban-sdk = "27"
 
+# Shared wire formats and RISC Zero digest arithmetic. no_std and without a
+# bundled SHA-256: the contract injects env.crypto().sha256(), which is a host
+# function. The prover and the contract must agree byte for byte on the claim
+# digest, so they share one implementation rather than two that can drift.
+zkml-common = { workspace = true, default-features = false }
+
 [dev-dependencies]
 soroban-sdk = { version = "27", features = ["testutils"] }

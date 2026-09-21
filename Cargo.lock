@@ -6460,6 +6460,7 @@ name = "zkml-verifier"
 version = "0.0.1"
 dependencies = [
  "soroban-sdk 27.0.3",
+ "zkml-common",
 ]
 
 [[package]]

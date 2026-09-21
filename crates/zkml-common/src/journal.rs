@@ -21,8 +21,8 @@
 //! Any change to this layout is a breaking change for the guest, the prover and
 //! the verifier contract at once.
 
-use crate::commitment::Commitment;
 use crate::models::Model;
+use crate::Commitment;
 
 /// Byte length of an encoded [`JournalV1`].
 pub const JOURNAL_V1_LEN: usize = 96;
