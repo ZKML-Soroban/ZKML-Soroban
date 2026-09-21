@@ -95,13 +95,16 @@ pub enum Command {
         backend: String,
     },
 
-    /// Print the constants needed to initialize the verifier contract.
+    /// Print what the verifier contract needs to verify RISC Zero receipts.
     ///
-    /// Requires the `zkvm` feature, because the values come from the pinned
-    /// RISC Zero version and the compiled guest.
+    /// The guest image id, RISC Zero's control root, BN254 control id and seal
+    /// selector, and its universal verifying key. Requires the `zkvm` feature,
+    /// because the values come from the pinned RISC Zero version and the
+    /// compiled guest.
     ExportVk {
-        /// `json` for a machine-readable file, `soroban-args` for a ready to
-        /// paste `stellar contract invoke` argument list.
+        /// `json` for a machine-readable file, `soroban-args` for the two
+        /// `stellar contract invoke` calls (`set_risc0_config`, `set_risc0_vk`)
+        /// that register them.
         #[arg(long, default_value = "json", value_parser = ["json", "soroban-args"])]
         format: String,
         /// Write here instead of stdout.
@@ -683,26 +686,41 @@ pub fn cmd_export_vk(
 
     let payload = match format {
         "soroban-args" => {
-            let ic_args = vk
+            // Two admin calls, not arguments to `initialize`: the RISC Zero
+            // values belong to `set_risc0_config(config: Risc0Config)` and
+            // `set_risc0_vk(vk: VerificationKey)`, which each take a struct.
+            // The Stellar CLI takes a struct as JSON, with bytes as hex.
+            let ic_json = vk
                 .ic
                 .iter()
-                .map(|point| hex(point))
+                .map(|point| format!(r#""{}""#, hex(point)))
                 .collect::<Vec<_>>()
                 .join(",");
-            format!(
-                "# Paste after `stellar contract invoke --id <CONTRACT> -- initialize`\n\
-                 --image_id {}\n--control_root {}\n--bn254_control_id {}\n--selector {}\n\
-                 --vk_alpha {}\n--vk_beta {}\n--vk_gamma {}\n--vk_delta {}\n--vk_ic {}\n",
+            let config = format!(
+                r#"{{"image_id":"{}","control_root":"{}","bn254_control_id":"{}","selector":"{}"}}"#,
                 hex(&image_id),
                 hex(&control_root),
                 hex(&bn254_control_id),
                 hex(&selector),
+            );
+            let vk_arg = format!(
+                r#"{{"alpha":"{}","beta":"{}","gamma":"{}","delta":"{}","ic":[{}]}}"#,
                 hex(&vk.alpha),
                 hex(&vk.beta),
                 hex(&vk.gamma),
                 hex(&vk.delta),
-                ic_args
-            )
+                ic_json,
+            );
+            let invoke = "stellar contract invoke --id <CONTRACT> --source-account <ADMIN> --";
+            [
+                "# 1. The guest and RISC Zero's parameters.".to_string(),
+                format!("{invoke} set_risc0_config --config '{config}'"),
+                String::new(),
+                "# 2. RISC Zero's universal verifying key.".to_string(),
+                format!("{invoke} set_risc0_vk --vk '{vk_arg}'"),
+                String::new(),
+            ]
+            .join("\n")
         }
         _ => format!(
             "{{\n  \"image_id\": \"{}\",\n  \"control_root\": \"{}\",\n  \"bn254_control_id\": \"{}\",\n  \"selector\": \"{}\",\n  \"verifier_parameters\": \"{}\",\n  \"vk\": {{\n    \"alpha\": \"{}\",\n    \"beta\": \"{}\",\n    \"gamma\": \"{}\",\n    \"delta\": \"{}\",\n    \"ic\": [\n{}\n    ]\n  }}\n}}\n",

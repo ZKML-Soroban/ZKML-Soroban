@@ -21,7 +21,14 @@ default = []
 timing = []
 # RISC Zero guest proving. Enable with `--features zkvm` (requires rzup toolchain).
 # CI runs this under RISC0_DEV_MODE=1 in the zkvm job.
-zkvm = ["dep:risc0-zkvm", "dep:zkml-methods"]
+zkvm = [
+    "dep:risc0-zkvm",
+    "dep:zkml-methods",
+    "dep:ark-groth16",
+    "dep:ark-bn254",
+    "dep:ark-ff",
+    "dep:ark-serialize",
+]
 # STARK to Groth16 compression. The compression itself lives in risc0-zkvm
 # (`ProverOpts::groth16`), so this feature only turns on the CLI surface and the
 # platform checks. On its own it shells out to a Docker image published for
@@ -60,13 +67,17 @@ thiserror = "2"
 # entries only make the dependency direct. Deriving the key from the pinned
 # risc0 version is the point: a version bump regenerates it instead of
 # silently disagreeing with the proofs.
-ark-groth16 = { version = "0.5", default-features = false }
-ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
-ark-ff = { version = "0.5", default-features = false }
-ark-serialize = { version = "0.5", default-features = false }
+ark-groth16 = { version = "0.5", default-features = false, optional = true }
+ark-bn254 = { version = "0.5", default-features = false, features = ["curve"], optional = true }
+ark-ff = { version = "0.5", default-features = false, optional = true }
+ark-serialize = { version = "0.5", default-features = false, optional = true }
 
 # ONNX protobuf decoding (pinned; API surface used by the importer foundation).
 prost = "=0.13.5"
 
 [dev-dependencies]
 proptest = "1.5"
+# The reference implementation `tests/bn254_points.rs` compares the contract's
+# point checks against. A dev-dependency so that test runs without `zkvm`.
+ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
+ark-ff = { version = "0.5", default-features = false }

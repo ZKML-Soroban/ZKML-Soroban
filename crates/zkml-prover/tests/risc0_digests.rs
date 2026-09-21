@@ -23,13 +23,27 @@ use zkml_common::risc0::{
 /// A handful of journals, including the empty one and the 96-byte layout the
 /// guest actually commits.
 fn journals() -> Vec<Vec<u8>> {
-    vec![
+    let mut out = vec![
         Vec::new(),
         vec![0u8],
         b"zkml".to_vec(),
         (0u8..96).collect(),
         vec![0xffu8; 96],
-    ]
+    ];
+    // And many more from a fixed pseudo-random sequence, at lengths that
+    // straddle SHA-256's 55/56/64-byte padding boundaries, so a failure
+    // reproduces and length-dependent bugs have somewhere to show.
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for len in (0..=200).chain([255, 256, 257, 511, 512, 1000]) {
+        out.push((0..len).map(|_| next() as u8).collect());
+    }
+    out
 }
 
 fn image_ids() -> Vec<[u8; 32]> {
