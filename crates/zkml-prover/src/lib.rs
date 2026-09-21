@@ -14,3 +14,5 @@ pub mod onnx;
 pub mod prover;
 pub mod quantization;
 pub mod timing;
+#[cfg(feature = "zkvm")]
+pub mod vk;

@@ -671,22 +671,51 @@ pub fn cmd_export_vk(
     let image_id = crate::prover::image_id();
     let selector = selector_from_params_digest(&params_digest);
 
+    // The verifying key the receipts are checked against. Six ic points,
+    // because a RISC Zero receipt has five public inputs.
+    let vk = crate::vk::universal_verifying_key()?;
+    let ic_json = vk
+        .ic
+        .iter()
+        .map(|point| format!("    \"{}\"", hex(point)))
+        .collect::<Vec<_>>()
+        .join(",\n");
+
     let payload = match format {
-        "soroban-args" => format!(
-            "# Paste after `stellar contract invoke --id <CONTRACT> -- initialize`\n\
-             --image_id {}\n--control_root {}\n--bn254_control_id {}\n--selector {}\n",
-            hex(&image_id),
-            hex(&control_root),
-            hex(&bn254_control_id),
-            hex(&selector)
-        ),
+        "soroban-args" => {
+            let ic_args = vk
+                .ic
+                .iter()
+                .map(|point| hex(point))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "# Paste after `stellar contract invoke --id <CONTRACT> -- initialize`\n\
+                 --image_id {}\n--control_root {}\n--bn254_control_id {}\n--selector {}\n\
+                 --vk_alpha {}\n--vk_beta {}\n--vk_gamma {}\n--vk_delta {}\n--vk_ic {}\n",
+                hex(&image_id),
+                hex(&control_root),
+                hex(&bn254_control_id),
+                hex(&selector),
+                hex(&vk.alpha),
+                hex(&vk.beta),
+                hex(&vk.gamma),
+                hex(&vk.delta),
+                ic_args
+            )
+        }
         _ => format!(
-            "{{\n  \"image_id\": \"{}\",\n  \"control_root\": \"{}\",\n  \"bn254_control_id\": \"{}\",\n  \"selector\": \"{}\",\n  \"verifier_parameters\": \"{}\"\n}}\n",
+            "{{\n  \"image_id\": \"{}\",\n  \"control_root\": \"{}\",\n  \"bn254_control_id\": \"{}\",\n  \"selector\": \"{}\",\n  \"verifier_parameters\": \"{}\",\n  \"vk\": {{\n    \"alpha\": \"{}\",\n    \"beta\": \"{}\",\n    \"gamma\": \"{}\",\n    \"delta\": \"{}\",\n    \"ic\": [\n{}\n    ]\n  }}\n}}\n",
             hex(&image_id),
             hex(&control_root),
             hex(&bn254_control_id),
             hex(&selector),
-            hex(&params_digest)
+            hex(&params_digest),
+            hex(&vk.alpha),
+            hex(&vk.beta),
+            hex(&vk.gamma),
+            hex(&vk.delta),
+            ic_json
         ),
     };
 

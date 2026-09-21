@@ -53,6 +53,18 @@ zkml-methods = { path = "../../methods", optional = true }
 # Typed errors for the proving pipeline.
 thiserror = "2"
 
+# Reading RISC Zero's universal Groth16 verifying key. risc0-groth16 keeps the
+# points private and only exposes them through serde, so `export-vk` round
+# trips the key through ark's uncompressed encoding to emit the contract's
+# byte layout. Both crates are already in the tree via risc0-groth16; these
+# entries only make the dependency direct. Deriving the key from the pinned
+# risc0 version is the point: a version bump regenerates it instead of
+# silently disagreeing with the proofs.
+ark-groth16 = { version = "0.5", default-features = false }
+ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
+ark-ff = { version = "0.5", default-features = false }
+ark-serialize = { version = "0.5", default-features = false }
+
 # ONNX protobuf decoding (pinned; API surface used by the importer foundation).
 prost = "=0.13.5"
 
