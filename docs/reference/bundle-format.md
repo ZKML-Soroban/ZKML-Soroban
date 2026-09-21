@@ -18,14 +18,14 @@ bundle is readable and roughly half the size of the v1 JSON.
 {
   "version": 2,
   "proof_system": "Risc0Groth16",
-  "image_id": "425259543d32dc7a3726d0839ff3686dbda0a13b7a24d2b92be594ed049764eb",
-  "seal": "73c457ba2bfab67fc4abb1eb...",
-  "journal": "5a4b4d4c0100010073e881ed...",
+  "image_id": "04de8993fd7f341c62fcab73aa007eb3d09e4c6882fd31db6a21d56b8612c5ca",
+  "seal": "73c457ba2e0f32f8faf15e48...",
+  "journal": "5a4b4d4c0100010073e881eda8...",
   "meta": {
     "prover_version": "0.0.1",
-    "created_at": 1789937782,
+    "created_at": 1790002334,
     "cycles": 9437184,
-    "timings": { "prove_and_compress_ms": 1301629, "total_ms": 1301685 }
+    "timings": { "prove_and_compress_ms": 1172526, "total_ms": 1172573 }
   }
 }
 ```
@@ -101,8 +101,8 @@ quickest way to a failing verification.
 model_hash (32) || input_hash (32) || output (8, LE) || class_label (8, LE)   = 80 bytes
 ```
 
-This is what `verify_inference` hashes into the nullifier and compares against
-the registered model hash. See the
+This is what `verify_inference` and `verify_receipt` hash into the nullifier,
+and what the model hash is checked against. See the
 [verifier contract reference](/reference/verifier-contract#public-inputs).
 
 **The Groth16 proof's five field elements**, which are what the pairing check
@@ -118,6 +118,14 @@ verifier recomputes it from the journal it was given with
 `groth16_public_inputs`. The journal is therefore bound to the proof even though
 it is not a public input itself. See
 [the proving pipeline](/concepts/proving#what-a-groth16-receipt-actually-proves).
+
+## Verifying on chain
+
+The contract's `verify_receipt(seal, journal)` takes the `seal` and `journal`
+fields of a v2 bundle unchanged. It rebuilds the claim digest from the journal
+and the registered image id, so the `image_id` field of the bundle is not sent:
+a bundle from another guest fails the pairing. See
+[the verifier contract](/reference/verifier-contract#verifying-a-risc-zero-receipt).
 
 ## Legacy v1 (`VerificationBundle`)
 

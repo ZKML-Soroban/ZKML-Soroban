@@ -11,12 +11,17 @@ the Soroban cost estimator, each on a proof that genuinely verifies:
 
 | Operation | CPU instructions | Memory (bytes) | Share of the 100M limit |
 | --------- | ---------------- | -------------- | ----------------------- |
-| `verify_inference` (L assembly + pairing) | 30,198,101 | 1,662,342 | 30% |
-| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 33,251,381 | 1,711,079 | 33% |
+| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,614,411 | 1,806,345 | 30% |
+| `verify_inference` (L assembly + pairing) | 30,208,647 | 1,674,128 | 30% |
 
-Verifying a RISC Zero receipt costs 10.1% more than the native-circuit path.
-The extra is the claim digest (eight SHA-256 host calls), one more scalar
-multiplication, and checking the three proof points before the host sees them.
+Verifying a RISC Zero receipt is slightly cheaper than the native-circuit path,
+although it does more: it checks the three proof points, rebuilds the claim
+digest (seven SHA-256 host calls) and has five public inputs to the other's
+four. The difference is how L is assembled. `verify_receipt` uses one
+multi-scalar multiplication, `g1_msm`; `verify_inference` still makes one host
+call per multiplication and per addition. Moving it to `g1_msm` is an easy
+saving that has not been made yet.
+
 The receipt figure uses the golden fixture in `crates/zkml-verifier/testdata/`.
 
 Reproduce with:
@@ -30,15 +35,15 @@ cargo test -p zkml-verifier wasm_budget -- --ignored --nocapture
 Measure on the WASM, not natively. The ordinary contract tests run it as native
 Rust, and the native test environment meters only host function calls: code
 running inside the contract is free there and not free on chain. The native
-tests report 30.7M for a receipt, which undercounts by 2.6M. For the G2 point
+tests undercount a receipt by a few million instructions. For the G2 point
 check, which is pure Rust, the native figure was off by a factor of more than 3,000.
 </Note>
 
 ### Checking proof points
 
 `verify_receipt` validates A, B and C before the pairing, so a corrupted proof
-returns a typed error instead of aborting the transaction in the host. On the
-WASM this costs 776,552 instructions, 2.4% of a verification.
+returns a typed error instead of aborting the transaction in the host. Measured
+on the WASM when the checks were added, they cost 776,552 instructions.
 
 A first version checked G2 with double-and-add multiplication and cost
 24,855,241 instructions, a 76% increase, which is why it uses Montgomery
@@ -46,16 +51,16 @@ multiplication now. The native tests reported that version as costing 7,355.
 
 Breakdown:
 
-- **L assembly:** 4 G1 scalar multiplications and 4 G1 additions for
-  `L = IC[0] + sum(x_i * IC[i + 1])`.
-- **Pairing check:** one 4-pair BN254 pairing via the CAP-0074 host function.
-- **Fixture:** non-degenerate G2 points from the soroban-env-host test suite,
-  G1 generator for every IC entry, and `C = -L` so the product of pairings is 1.
+- **`verify_inference`:** 4 G1 scalar multiplications and 4 G1 additions for
+  `L = IC[0] + sum(x_i * IC[i + 1])`, then one 4-pair BN254 pairing. Its fixture
+  uses non-degenerate G2 points from the soroban-env-host test suite, the G1
+  generator for every IC entry, and `C = -L` so the product of pairings is 1.
+- **`verify_receipt`:** point validation, seven SHA-256 calls for the claim
+  digest, one 5-point `g1_msm` for L, then the same 4-pair pairing. Its fixture
+  is a real receipt.
 
-The test fails if the cost exceeds the threshold, which catches large
-regressions.
-
-Run it with output:
+The native tests also assert generous thresholds, as a fast guard against large
+regressions:
 
 ```bash
 cargo test -p zkml-verifier test_verifier_accept_path_and_resource_budget -- --nocapture

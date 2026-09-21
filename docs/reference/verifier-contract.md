@@ -30,33 +30,58 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. |
 | `set_admin(new_admin: Address)` | admin | `()` | Transfers admin rights. |
 | `set_pause(paused: bool)` | admin | `()` | Pauses or resumes verification. |
-| `verify_receipt(seal: Bytes, journal: Bytes)` | none | `Result<(), VerificationError>` | Verifies a RISC Zero Groth16 receipt, enforces the nullifier, records the result, emits `verified`. |
-| `set_risc0_config(config: Risc0Config)` | admin | `()` | Registers the guest image id, control root, BN254 control id and seal selector. |
+| `verify_receipt(seal: Bytes, journal: Bytes)` | none | `Result<InferenceRecord, VerificationError>` | Verifies a RISC Zero Groth16 receipt, enforces the nullifier, records the result, emits `verified`, and returns the record. |
+| `set_risc0_config(config: Risc0Config)` | admin | `()` | Registers the guest image id, control root, BN254 control id and seal selector. Refuses a control id that is not a valid BN254 scalar. Emits `cfg_upd`. |
 | `get_risc0_config()` | none | `Risc0Config` | The registered configuration. Panics if never set. |
-| `set_risc0_vk(vk: VerificationKey)` | admin | `()` | Registers RISC Zero's universal verifying key. Rejects any key without six `ic` points. |
-| `claim_digest(image_id: Bytes, journal: Bytes)` | none | `Bytes` | Recomputes the digest a receipt commits to, so off-chain tools can check agreement. |
+| `set_risc0_vk(vk: VerificationKey)` | admin | `()` | Registers RISC Zero's universal verifying key. Refuses a key without six `ic` points, or with any point off its curve or at infinity. Emits `cfg_upd`. |
+| `get_risc0_vk()` | none | `VerificationKey` | The registered key, so anyone can check it is RISC Zero's. Panics if never set. |
+| `claim_digest(image_id: BytesN<32>, journal: Bytes)` | none | `BytesN<32>` | Recomputes the digest a receipt commits to, so off-chain tools can check agreement. Panics on a journal that is not 96 bytes. |
 
 ### Verifying a RISC Zero receipt
 
 `verify_receipt` takes the two fields of a
-[v2 bundle](/reference/bundle-format) unchanged. Set it up with the values
-`zkml-prover export-vk` prints:
+[v2 bundle](/reference/bundle-format) unchanged. Set it up with the two admin
+calls `zkml-prover export-vk` prints:
 
 ```bash
 cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
 ```
 
-Those values are pinned to a RISC Zero version **and** to a guest build. Change
-either and they must be re-exported, or every proof fails.
+```text
+# 1. The guest and RISC Zero's parameters.
+stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_config --config '{"image_id":"…","control_root":"…","bn254_control_id":"…","selector":"…"}'
+
+# 2. RISC Zero's universal verifying key.
+stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_vk --vk '{"alpha":"…","beta":"…","gamma":"…","delta":"…","ic":["…",…]}'
+```
+
+The function and field names are checked against the contract's own interface,
+but these exact commands have not yet been run against a live network.
+
+Those values are pinned to a RISC Zero version **and** to a guest build. Any
+change to the guest or to `zkml-common` changes the image id, so re-export
+after either, or every proof fails.
 
 Two keys are registered, not one. `initialize` takes the key for the
 native-circuit path, which has five `ic` points for four public inputs;
 `set_risc0_vk` takes RISC Zero's universal key, which has six for five. They are
-not interchangeable, and `set_risc0_vk` refuses the wrong length rather than
-letting it fail later as a pairing error.
+not interchangeable. That is also why the RISC Zero values are set by their own
+calls instead of by `initialize`: a contract serves both routes, and each needs
+its own key.
 
-Checks run cheapest first: the seal's length and selector, then the journal's
-layout, then the registered model hash, and only then the pairing.
+Checks run cheapest first, and everything that can fail without cryptography
+does:
+
+1. The seal's length (`MalformedSeal`) and selector (`UnknownSelector`).
+2. The journal's length, magic and version (`MalformedJournal`).
+3. The registered model hash (`VerificationFailed`).
+4. Replay (`ProofAlreadyUsed`). The nullifier depends only on the journal, so a
+   used receipt is refused before it costs a pairing.
+5. The three proof points (`MalformedProofA`, `MalformedProofB`,
+   `MalformedProofC`).
+6. The claim digest and the pairing (`VerificationFailed`).
+
+The nullifier is written only after the pairing succeeds.
 
 The journal is not a public input of the proof. It is bound through the claim
 digest, which the contract recomputes with `env.crypto().sha256()` using the
@@ -67,9 +92,9 @@ than any cheaper check.
 The three proof points are validated before the host sees them, because the
 BN254 host functions trap on a point they cannot parse, which aborts the
 transaction without saying why. A corrupted A, B or C returns
-`MalformedProofA`, `MalformedProofB` or `MalformedProofC` instead. Every
-single-byte change to the seal or the journal returns a typed error; a test
-tries all 356 of them. This costs 2.4% of a verification.
+`MalformedProofA`, `MalformedProofB` or `MalformedProofC` instead. A test flips
+each of the 356 bytes of the seal and the journal in turn and requires a typed
+error for every one. The checks cost about 776,000 instructions.
 
 G1 uses the host's `g1_is_on_curve` after a range check, since that function
 traps on an unreduced coordinate. G2 has no host function, so its curve
@@ -83,6 +108,16 @@ without a typed error. Corruption does not produce such a point: a changed byte
 lands back on the curve with probability about `1/p`. It takes a crafted one.
 </Note>
 
+<Warning>
+The admin is trusted with what verifies. It can register a different image id,
+which is to say a guest of its own that commits whatever journal it likes, so a
+compromised admin key can have false results accepted. The verifying key being
+settable adds nothing to that. What the contract does is make every such change
+public, through a `cfg_upd` event, and refuse keys that are malformed or
+degenerate: a point at infinity in the key would unbind the journal from the
+proof altogether.
+</Warning>
+
 ## Types
 
 ```rust
@@ -91,7 +126,15 @@ pub struct VerificationKey {
     pub beta: Bytes,      // G2, 128 bytes
     pub gamma: Bytes,     // G2, 128 bytes
     pub delta: Bytes,     // G2, 128 bytes
-    pub ic: Vec<Bytes>,   // G1 points, 64 bytes each; exactly 5 entries
+    pub ic: Vec<Bytes>,   // G1 points, 64 bytes each; 5 for verify_inference,
+                          // 6 for RISC Zero's key (set_risc0_vk)
+}
+
+pub struct Risc0Config {
+    pub image_id: BytesN<32>,          // which guest produced the journal
+    pub control_root: BytesN<32>,      // RISC Zero's recursion control root
+    pub bn254_control_id: BytesN<32>,  // must be a valid BN254 scalar, reversed
+    pub selector: BytesN<4>,           // what a seal must start with
 }
 
 pub struct InferenceRecord {
@@ -170,8 +213,17 @@ On success the contract publishes:
 | Topics | `("verified", model_hash: Bytes)`              |
 | Data   | `(verified_at: u32, output: Bytes)`            |
 
-Indexers can filter by `model_hash` topic. Admin setters emit logs only, not
-events.
+Indexers can filter by `model_hash` topic.
+
+Changing the RISC Zero configuration also publishes an event, so anyone can see
+when the admin changes what verifies:
+
+| Call | Topics | Data |
+| ---- | ------ | ---- |
+| `set_risc0_config` | `("cfg_upd", "risc0")` | the new `image_id` |
+| `set_risc0_vk` | `("cfg_upd", "risc0_vk")` | `()` |
+
+The other admin setters emit logs only, not events.
 
 ## Storage
 
@@ -182,7 +234,9 @@ events.
 | `init`     | Initialization flag        |
 | `admin`    | Admin `Address`            |
 | `mdl_hash` | Model commitment           |
-| `vk`       | `VerificationKey`          |
+| `vk`       | `VerificationKey` for `verify_inference` |
+| `r0_cfg`   | `Risc0Config`              |
+| `r0_vk`    | RISC Zero's `VerificationKey` |
 | `lst_res`  | Last `InferenceRecord`     |
 | `vrf_cnt`  | Verification counter       |
 | `paused`   | Pause flag                 |
@@ -211,8 +265,8 @@ verifications do not bump TTL. Nullifier entries are extended to
 
 ## Cost
 
-Measured on the compiled WASM, `verify_inference` costs 30.2M CPU instructions
-and `verify_receipt` 33.3M, against a 100M limit per transaction. See
+Measured on the compiled WASM, `verify_receipt` costs 29.6M CPU instructions and
+`verify_inference` 30.2M, against a 100M limit per transaction. See
 [Benchmarks](/reference/benchmarks).
 
 ## Known limitations

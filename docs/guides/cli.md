@@ -28,7 +28,7 @@ prove         <MODEL> -i <CSV> [-o <FILE>]      Verification bundle JSON (stdout
                       [--groth16]               Produce a real proof (needs the groth16 feature)
                       [--backend local|boundless]
 verify-bundle <FILE>                            Verify a v2 bundle locally (needs zkvm)
-export-vk     [--format json|soroban-args]      Constants for the contract's initialize
+export-vk     [--format json|soroban-args]      What the contract needs to verify receipts
               [-o <FILE>]
 validate      <MODEL> [--dataset <FILE>]
                       [--max-input-magnitude <F>]    default 1.0
@@ -138,17 +138,30 @@ failure costs nothing, an on-chain failure costs fees.
 
 ### export-vk
 
-Prints the constants the contract needs at `initialize`: the guest image id, the
-control root, the BN254 control id and the seal selector. `--format json` (the
-default) is machine-readable; `--format soroban-args` prints them as arguments
-to paste after `stellar contract invoke`.
+Prints what the contract needs to verify receipts: the guest image id, the
+control root, the BN254 control id, the seal selector, and RISC Zero's universal
+verifying key. `--format json` (the default) is machine-readable.
+`--format soroban-args` prints the two admin calls that register them, ready to
+run once `<CONTRACT>` and `<ADMIN>` are filled in:
 
 ```bash
 cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
 ```
 
-These values change whenever the guest or the pinned RISC Zero version changes,
-so re-export after either.
+```text
+# 1. The guest and RISC Zero's parameters.
+stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_config --config '{"image_id":"…",…}'
+
+# 2. RISC Zero's universal verifying key.
+stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_vk --vk '{"alpha":"…",…,"ic":[…]}'
+```
+
+These are not arguments to `initialize`, which takes the key for the
+native-circuit path. See
+[the verifier contract](/reference/verifier-contract#verifying-a-risc-zero-receipt).
+
+The values change whenever the guest, `zkml-common` or the pinned RISC Zero
+version changes, so re-export after any of them.
 
 ### validate
 

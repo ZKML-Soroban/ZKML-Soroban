@@ -10,7 +10,7 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 ## Proving
 
 - **Nothing has been verified on a live network yet.** `verify_receipt` accepts
-  a real receipt in the Soroban test environment, at 33.3 million CPU
+  a real receipt in the Soroban test environment, at 29.6 million CPU
   instructions on the compiled WASM against a 100 million limit, but the
   contract has not been deployed to testnet and no transaction has carried a
   proof.

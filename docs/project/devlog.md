@@ -140,10 +140,11 @@ five public inputs and verify these bundles on Stellar (issue #84).
 ## September 2026: verified on chain
 
 `verify_receipt` accepts a real RISC Zero receipt inside the contract, at
-33,251,381 CPU instructions on the compiled WASM against a 100 million limit,
-which is 10.1% more than the native-circuit path. The receipt was regenerated from the guest this
-code builds, so the test proves this repository's output rather than a stored
-artefact.
+29,614,411 CPU instructions on the compiled WASM against a 100 million limit.
+The receipt was regenerated from the guest this code builds (image id
+`04de8993fd7f341c…`), so the test proves this repository's output rather than a
+stored artefact. That stays true only until the guest or `zkml-common` changes
+again: either one changes the image id.
 
 The work mostly consisted of not breaking things quietly:
 
@@ -170,7 +171,22 @@ is checked in plain Rust.
 The first G2 version used double-and-add multiplication and the native tests
 said it cost 7,355 instructions. On the compiled WASM it cost 24.9 million, a
 76% increase, because the native test environment does not meter code running
-inside the contract. Montgomery multiplication brought it to 776,552, or 2.4%.
+inside the contract. Montgomery multiplication brought it to 776,552.
 Two lessons stayed: measure before claiming a cost, and measure on the WASM.
+
+**An adversarial review found what testing had not.** Three independent
+reviews of the branch, one with only the diff, one with the repository and one
+against the issue's spec, turned up a forgery: `set_risc0_vk` accepted a point
+at infinity, and with gamma at infinity the journal drops out of the pairing, so
+a seal verifies against any journal. It needs the admin to register such a key,
+but the check that was meant to catch a bad key let the most dangerous one
+through. It now refuses it, and a test pins that.
+
+The same review found smaller things worth fixing: replays paid for the whole
+pairing before being refused, a public view returned confident wrong digests
+for journals of the wrong length, `tagged_struct` could truncate silently in a
+release build, and `export-vk` printed instructions for the wrong function.
+Using `g1_msm` for L, as the spec had asked, then made a receipt cheaper to
+verify than a native-circuit proof, 29.6M against 30.2M.
 
 **Next.** Deploy to testnet and verify a receipt in a real transaction.

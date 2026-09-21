@@ -100,7 +100,7 @@ L = IC[0] + sum(x_i * IC[i + 1])
 ## Cost
 
 Measured on the compiled WASM, `verify_inference` (4 scalar multiplications plus a
-4-pair pairing check) costs 30.2M CPU instructions and `verify_receipt` 33.3M,
+4-pair pairing check) costs 30.2M CPU instructions and `verify_receipt` 29.6M,
 against a 100M limit per transaction. Measure on the WASM rather than natively:
 the native test environment meters only host calls. See the `wasm_budget` tests.
 
