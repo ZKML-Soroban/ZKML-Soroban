@@ -72,6 +72,26 @@ what a laptop does, not as what the design costs.
 
 The 260-byte seal meets the Phase 1 target of a proof under 500 bytes.
 
+## GPU
+
+Same model, same machine, with `--features cuda` on an RTX 4070 Laptop (8 GB,
+compute capability 8.9):
+
+| Step | Result |
+| ---- | ------ |
+| Building the CUDA kernels | 8 min 27 s, targeting `sm_89` |
+| zkVM proving on the GPU | ran to completion, 98 to 100% utilisation, 7.9 GB VRAM |
+| Native Groth16 wrap | **failed**: illegal memory access inside `sppark` |
+
+There is no end-to-end GPU number to report, because the run never produced a
+bundle. The witness computation before the crash took 18 seconds, against a
+1,302 second total on the CPU, which hints at what the path could be worth if
+the memory problem is solved on a larger card. That hint is not a measurement.
+
+Note also that `-arch` matters enormously. With nothing set, nvcc targets
+`sm_52` and one rv32im kernel did not finish compiling in over an hour; with
+`-arch=sm_89` the whole build takes eight minutes.
+
 ## Not yet measured
 
 - Proving time per model family (tree, MLP) under real mode

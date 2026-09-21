@@ -38,7 +38,7 @@ wrap can run locally at all.
 | Platform | Inference and commitments | zkVM proving | Groth16 wrap | Evidence |
 | -------- | ------------------------- | ------------ | ------------ | -------- |
 | Linux x86_64, no GPU | yes | CPU | Docker (`--features groth16`) | **run**: full suite, two real proofs |
-| Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker | **run**: built and proved on an RTX 4070 |
+| Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native in theory, see below | **partly run**: the build and zkVM proving ran on an RTX 4070; the native wrap crashed |
 | Windows | yes | through WSL2 | through WSL2 | **run**: full suite natively |
 | macOS (Apple Silicon) | yes | partly GPU (`--features metal`) | not practically: needs x86 emulation | CI (`macos-latest`): full suite, zkVM in dev mode, and that `metal` compiles |
 | macOS (Intel) | yes | CPU | Docker (`--features groth16`) | read from the risc0 sources |
@@ -58,10 +58,30 @@ between them at compile time.
 if #[cfg(feature = "cuda")] { cuda::shrink_wrap(..) } else { docker::shrink_wrap(..) }
 ```
 
-The CUDA path bundles a Rust witness calculator and a CUDA Groth16 prover, so it
-needs neither Docker nor x86_64. The Docker path pulls a published image that
-only exists for x86_64. There is no Metal path at all, which is why Apple
-Silicon cannot do the wrap locally.
+The CUDA path bundles a Rust witness calculator and a CUDA Groth16 prover, so on
+paper it needs neither Docker nor x86_64. The Docker path pulls a published
+image that only exists for x86_64. There is no Metal path at all, which is why
+Apple Silicon cannot do the wrap locally.
+
+<Warning>
+The native CUDA wrap has not been made to work here. On an 8 GB RTX 4070 it
+loads the Circom graph and computes the witness in about 18 seconds, then aborts
+inside `sppark`:
+
+```text
+sppark_error: cudaStreamSynchronize(stream)@sppark/util/gpu_t.cuh:158 failed:
+              "an illegal memory access was encountered"
+```
+
+zkVM proving had already filled 7.9 GB of the card's 8.2 GB, so the most likely
+cause is that the Groth16 step has nothing left to allocate. It may well work on
+a 16 GB or 24 GB card; nobody has tried. Until someone does, treat the CUDA wrap
+as unproven and use the Docker path, which is what the measured numbers come
+from.
+
+The CUDA build itself and GPU zkVM proving do work: see
+[benchmarks](/reference/benchmarks).
+</Warning>
 
 Metal coverage is partial in the rest of the pipeline too, so do not expect
 CUDA-like speedups on a Mac. Counting the kernels shipped in risc0 3.0.6:
