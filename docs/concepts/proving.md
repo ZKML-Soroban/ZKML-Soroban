@@ -73,10 +73,50 @@ cargo build -p zkml-prover --features cuda      # NVIDIA GPU, no Docker needed
 cargo build -p zkml-prover --features metal     # Apple Silicon, proving only
 ```
 
-`cuda` needs the CUDA toolkit (`nvcc`) at build time. Under WSL2 install only
-the toolkit: the GPU driver comes from Windows through `/dev/dxg`, and
-installing a Linux NVIDIA driver package inside WSL overwrites the `libcuda`
-that WSL provides and breaks CUDA.
+`cuda` needs the CUDA toolkit (`nvcc`) at build time, plus one runtime
+component:
+
+```bash
+rzup install risc0-groth16   # needs rzup >= 0.5.0
+```
+
+That component carries the Groth16 proving key. The Docker path ships it inside
+the image, so this is only needed for the native CUDA path. Without it the zkVM
+proof succeeds and then compression fails with
+`Missing required risc0-groth16 rzup component`, minutes into the run.
+
+### Building the CUDA path
+
+Four things bite in practice, and none of them are obvious from the error
+messages:
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `calling a __host__ function("__assert_fail") from a __global__ function` | `sppark` calls `assert()` in device code, which nvcc rejects unless `NDEBUG` is defined. `cc-rs` does not define it, in debug or release | `NVCC_PREPEND_FLAGS=-DNDEBUG` |
+| `the global scope has no "CUdevice"` in `/usr/include/cccl/...` | `risc0-sys` 1.5 cannot compile the CCCL 13 headers | Use CUDA 12.x |
+| `identifier "__builtin_operator_new" is undefined` in `/usr/include/c++/16/...` | `risc0-sys` hardcodes `-ccbin=c++`, and nvcc 12.x cannot parse libstdc++ 16 headers | Put a `c++` that points at a supported g++ (14) first on `PATH` |
+| `ptxas` runs for over an hour on one kernel | nvcc defaults to `sm_52` when nothing sets an architecture, and the rv32im kernels are huge | `NVCC_PREPEND_FLAGS=-arch=sm_<your cc>` |
+
+Putting it together, on a machine with an Ada GPU (compute capability 8.9):
+
+```bash
+export NVCC_PREPEND_FLAGS="-DNDEBUG -arch=sm_89"
+export PATH="$HOME/.cuda-ccbin:/opt/cuda/bin:$PATH"   # c++ -> g++-14
+cargo build -p zkml-prover --features cuda
+```
+
+That build takes about 8 minutes. With the wrong architecture it does not
+finish at all.
+
+Under WSL2 install only the toolkit: the GPU driver comes from Windows through
+`/dev/dxg`, and installing a Linux NVIDIA driver package inside WSL overwrites
+the `libcuda` that WSL provides and breaks CUDA.
+
+<Note>
+Compression is memory-hungry on the GPU too. On an 8 GB card it uses about
+7.9 GB of VRAM, which leaves almost nothing for the desktop and makes the whole
+machine sluggish while it runs. Budget for that, or prove on a headless box.
+</Note>
 
 ## Pinned versions
 
