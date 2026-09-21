@@ -18,6 +18,12 @@
 
 #![no_std]
 
+// The contract is no_std; its tests are not. The golden fixture lives on disk
+// and is read with std::fs, which keeps a real proof in the repository instead
+// of a wall of hex constants in this file.
+#[cfg(test)]
+extern crate std;
+
 use soroban_sdk::crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, log, symbol_short, vec, Address, Bytes,
@@ -31,6 +37,10 @@ use zkml_common::risc0::{Digest, SEAL_LEN};
 const MODEL_HASH: Symbol = symbol_short!("mdl_hash");
 /// RISC Zero image id, control root, BN254 control id and seal selector.
 const RISC0_CFG: Symbol = symbol_short!("r0_cfg");
+/// RISC Zero's universal Groth16 verifying key. Separate from [`VERIFICATION_KEY`]
+/// because a receipt has five public inputs where the native-circuit path has
+/// four, so the two keys have different `ic` lengths and are not interchangeable.
+const RISC0_VK: Symbol = symbol_short!("r0_vk");
 const VERIFICATION_KEY: Symbol = symbol_short!("vk");
 const LAST_RESULT: Symbol = symbol_short!("lst_res");
 const INITIALIZED: Symbol = symbol_short!("init");
@@ -51,7 +61,7 @@ const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 
 /// Contract interface version, bumped on breaking interface changes.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -168,6 +178,132 @@ impl ZkmlVerifierContract {
             .instance()
             .get(&RISC0_CFG)
             .expect("risc0 config has not been set")
+    }
+
+    /// Register RISC Zero's universal Groth16 verifying key.
+    ///
+    /// This is not the key used by [`Self::verify_inference`]. A receipt has
+    /// five public inputs, so this key carries six `ic` points against the
+    /// other's five, and using one where the other belongs fails every proof.
+    pub fn set_risc0_vk(env: Env, vk: VerificationKey) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized");
+        admin.require_auth();
+        if vk.ic.len() != 6 {
+            panic!("a RISC Zero verifying key has six ic points");
+        }
+        env.storage().instance().set(&RISC0_VK, &vk);
+        Self::bump_instance_ttl(&env);
+        log!(&env, "RISC Zero verifying key updated by admin");
+    }
+
+    /// Verify a Groth16 receipt produced by `zkml-prover prove --groth16`.
+    ///
+    /// Takes the seal and the journal exactly as the bundle carries them. The
+    /// journal is not a public input of the proof: it is bound through the
+    /// claim digest, which this recomputes, so a journal that does not match
+    /// the proof cannot pass.
+    ///
+    /// Checks run cheapest first. Length, selector, journal layout and the
+    /// registered model hash all fail before the pairing, which is the only
+    /// expensive step.
+    pub fn verify_receipt(env: Env, seal: Bytes, journal: Bytes) -> Result<(), VerificationError> {
+        if !env.storage().instance().has(&INITIALIZED) {
+            return Err(VerificationError::ContractNotInitialized);
+        }
+        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if paused {
+            return Err(VerificationError::VerificationFailed);
+        }
+
+        let config: Risc0Config = env
+            .storage()
+            .instance()
+            .get(&RISC0_CFG)
+            .ok_or(VerificationError::Risc0NotConfigured)?;
+        let vk: VerificationKey = env
+            .storage()
+            .instance()
+            .get(&RISC0_VK)
+            .ok_or(VerificationError::Risc0NotConfigured)?;
+
+        Self::check_seal(&seal, &config)?;
+        let journal_v1 = Self::decode_journal(&journal)?;
+
+        // The result must come from the model this contract was told about.
+        let stored_model_hash: Bytes = env
+            .storage()
+            .instance()
+            .get(&MODEL_HASH)
+            .ok_or(VerificationError::ContractNotInitialized)?;
+        if Bytes::from_slice(&env, &journal_v1.model_hash) != stored_model_hash {
+            return Err(VerificationError::VerificationFailed);
+        }
+
+        // Rebuild what the proof actually commits to.
+        let claim = Self::claim_digest_inner(&env, &config.image_id, &journal)?;
+        let mut control_root = [0u8; 32];
+        config.control_root.copy_into_slice(&mut control_root);
+        let mut bn254_control_id = [0u8; 32];
+        config
+            .bn254_control_id
+            .copy_into_slice(&mut bn254_control_id);
+        let inputs =
+            zkml_common::risc0::groth16_public_inputs(&control_root, &claim, &bn254_control_id);
+
+        let bn254 = env.crypto().bn254();
+        let alpha_g1 = Self::deserialize_vk_alpha(&env, &vk.alpha)?;
+        let beta_g2 = Self::deserialize_vk_g2(&env, &vk.beta)?;
+        let gamma_g2 = Self::deserialize_vk_g2(&env, &vk.gamma)?;
+        let delta_g2 = Self::deserialize_vk_g2(&env, &vk.delta)?;
+        let l = Self::compute_l_be(&env, &vk, &inputs)?;
+
+        // The seal carries the points in the layout Soroban reads, so they are
+        // sliced out and passed through unchanged: G1 as be(x) || be(y), G2 as
+        // be(x.c1) || be(x.c0) || be(y.c1) || be(y.c0).
+        let proof_a = Self::deserialize_g1(&env, &seal.slice(4..68))?;
+        let proof_b = Self::deserialize_g2(&env, &seal.slice(68..196))?;
+        let proof_c = Self::deserialize_g1(&env, &seal.slice(196..260))?;
+
+        let neg_a = -proof_a;
+        let vp1 = vec![&env, neg_a, alpha_g1, l, proof_c];
+        let vp2 = vec![&env, proof_b, beta_g2, gamma_g2, delta_g2];
+        if !bn254.pairing_check(vp1, vp2) {
+            return Err(VerificationError::VerificationFailed);
+        }
+
+        // Replay protection keys on the same 80 bytes the native-circuit path
+        // uses, so the same inference cannot be recorded twice by arriving
+        // through a different route.
+        let public_inputs = Bytes::from_slice(&env, &journal_v1.public_inputs_bytes());
+        let nullifier = Self::derive_nullifier(&env, &public_inputs);
+        let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
+        if env.storage().persistent().has(&nullifier_key) {
+            return Err(VerificationError::ProofAlreadyUsed);
+        }
+        let ttl_ledgers = env.storage().max_ttl();
+        env.storage().persistent().set(&nullifier_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&nullifier_key, ttl_ledgers, ttl_ledgers);
+
+        let record = InferenceRecord {
+            model_hash: Bytes::from_slice(&env, &journal_v1.model_hash),
+            output: Bytes::from_slice(&env, &journal_v1.output.to_le_bytes()),
+            class_label: journal_v1.class_label,
+            verified_at: env.ledger().sequence(),
+        };
+        env.storage().instance().set(&LAST_RESULT, &record);
+
+        let count: u32 = env.storage().instance().get(&VERIFY_CNT).unwrap_or(0);
+        env.storage().instance().set(&VERIFY_CNT, &(count + 1));
+        Self::bump_instance_ttl(&env);
+        Self::emit_verified_event(&env, &record);
+
+        Ok(())
     }
 
     /// Recompute the claim digest a Groth16 receipt commits to.
@@ -350,6 +486,44 @@ impl ZkmlVerifierContract {
     }
 
     /// Deserialize a G2 point from 128 bytes (Ethereum-compatible format).
+    /// A big-endian 32-byte value as a field element.
+    ///
+    /// Deliberately not [`Self::bytes_to_fr`], which reads little-endian. The
+    /// native-circuit path feeds little-endian `i64` fields; RISC Zero's five
+    /// public inputs are big-endian, and reading one as the other produces a
+    /// valid-looking scalar that fails every pairing with nothing to point at.
+    fn bytes_to_fr_be(env: &Env, bytes: &[u8; 32]) -> Bn254Fr {
+        let buf = Bytes::from_slice(env, bytes);
+        U256::from_be_bytes(env, &buf).into()
+    }
+
+    /// `L = ic[0] + sum(input_i * ic[i + 1])` over big-endian scalars.
+    fn compute_l_be(
+        env: &Env,
+        vk: &VerificationKey,
+        inputs: &[zkml_common::risc0::Digest; 5],
+    ) -> Result<Bn254G1Affine, VerificationError> {
+        if vk.ic.len() as usize != inputs.len() + 1 {
+            return Err(VerificationError::VerificationKeyLengthMismatch);
+        }
+        let bn254 = env.crypto().bn254();
+        let ic0 = vk
+            .ic
+            .get(0)
+            .ok_or(VerificationError::MalformedVerificationKey)?;
+        let mut l = Self::deserialize_vk_ic(env, &ic0)?;
+        for (i, input) in inputs.iter().enumerate() {
+            let ic_bytes = vk
+                .ic
+                .get(i as u32 + 1)
+                .ok_or(VerificationError::MalformedVerificationKey)?;
+            let ic_point = Self::deserialize_vk_ic(env, &ic_bytes)?;
+            let term = bn254.g1_mul(&ic_point, &Self::bytes_to_fr_be(env, input));
+            l = bn254.g1_add(&l, &term);
+        }
+        Ok(l)
+    }
+
     /// SHA-256 through the Soroban host, shaped for `zkml_common::risc0`.
     ///
     /// The host returns a `BytesN<32>`; the digest arithmetic works on
@@ -1641,5 +1815,238 @@ mod test_risc0_receipts {
         let env = Env::default();
         let (client, _admin) = setup(&env);
         client.get_risc0_config();
+    }
+}
+
+/// The golden fixture: a real receipt, verified on chain.
+///
+/// Everything else in this file tests the contract against values chosen to
+/// exercise a path. This tests it against a proof that a real zkVM run really
+/// produced, with the verifying key the pinned RISC Zero version really uses.
+/// It is the only test here that would notice if the digest arithmetic, the
+/// byte orders, or the key were subtly wrong, because every one of those
+/// produces a valid-looking failure rather than an error.
+///
+/// The fixture in `testdata/` took 22 minutes of CPU to make. Regenerate it
+/// with:
+///
+/// ```text
+/// RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
+///     --test groth16_bundle real_groth16 -- --ignored
+/// cargo run -p zkml-prover --features zkvm -- export-vk --format json \
+///     -o crates/zkml-verifier/testdata/risc0_vk.json
+/// ```
+#[cfg(test)]
+mod test_golden_receipt {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::Bytes;
+
+    fn hex_to_vec(hex: &str) -> std::vec::Vec<u8> {
+        assert!(hex.len() % 2 == 0, "hex must have an even length");
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex"))
+            .collect()
+    }
+
+    fn read(name: &str) -> serde_json::Value {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata")
+            .join(name);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
+        serde_json::from_str(&text).expect("valid json")
+    }
+
+    fn bytes(env: &Env, hex: &str) -> Bytes {
+        Bytes::from_slice(env, &hex_to_vec(hex))
+    }
+
+    /// The contract, initialised for the model the fixture's journal names and
+    /// configured for the guest that produced it.
+    fn setup(env: &Env) -> (ZkmlVerifierContractClient<'_>, Bytes, Bytes) {
+        env.mock_all_auths();
+        let bundle = read("groth16_bundle.json");
+        let vk_json = read("risc0_vk.json");
+
+        let seal = bytes(env, bundle["seal"].as_str().unwrap());
+        let journal = bytes(env, bundle["journal"].as_str().unwrap());
+
+        // The model hash the journal carries. Registering anything else must
+        // make verification fail, which a later test checks.
+        let journal_raw = hex_to_vec(bundle["journal"].as_str().unwrap());
+        let decoded = zkml_common::journal::JournalV1::decode(&journal_raw).expect("journal");
+        let model_hash = Bytes::from_slice(env, &decoded.model_hash);
+
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        let route_b_vk = crate::test_utils::create_dummy_vk(env, 5);
+        client.initialize(&admin, &model_hash, &route_b_vk);
+
+        // The image id comes from the bundle, not from whatever guest this
+        // checkout builds: a bundle is self-describing, and the fixture was
+        // produced by an earlier guest.
+        client.set_risc0_config(&Risc0Config {
+            image_id: bytes(env, bundle["image_id"].as_str().unwrap()),
+            control_root: bytes(env, vk_json["control_root"].as_str().unwrap()),
+            bn254_control_id: bytes(env, vk_json["bn254_control_id"].as_str().unwrap()),
+            selector: bytes(env, vk_json["selector"].as_str().unwrap()),
+        });
+
+        let vk = &vk_json["vk"];
+        let mut ic = Vec::new(env);
+        for point in vk["ic"].as_array().unwrap() {
+            ic.push_back(bytes(env, point.as_str().unwrap()));
+        }
+        client.set_risc0_vk(&VerificationKey {
+            alpha: bytes(env, vk["alpha"].as_str().unwrap()),
+            beta: bytes(env, vk["beta"].as_str().unwrap()),
+            gamma: bytes(env, vk["gamma"].as_str().unwrap()),
+            delta: bytes(env, vk["delta"].as_str().unwrap()),
+            ic,
+        });
+
+        (client, seal, journal)
+    }
+
+    #[test]
+    fn a_real_receipt_verifies_on_chain() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        client.verify_receipt(&seal, &journal);
+
+        // And the result it recorded is the one the journal carries.
+        let record = client.get_result();
+        assert_eq!(record.class_label, 1);
+        assert_eq!(client.get_verification_count(), 1);
+    }
+
+    #[test]
+    fn the_same_receipt_cannot_be_used_twice() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        client.verify_receipt(&seal, &journal);
+        assert_eq!(
+            client.try_verify_receipt(&seal, &journal),
+            Err(Ok(VerificationError::ProofAlreadyUsed))
+        );
+    }
+
+    #[test]
+    fn one_flipped_byte_of_the_journal_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        let mut raw = [0u8; zkml_common::journal::JOURNAL_V1_LEN];
+        journal.copy_into_slice(&mut raw);
+        raw[72] ^= 0x01; // the output field
+        let tampered = Bytes::from_slice(&env, &raw);
+
+        // The journal reaches the proof only through the claim digest, so this
+        // has to fail the pairing rather than any cheaper check.
+        assert_eq!(
+            client.try_verify_receipt(&seal, &tampered),
+            Err(Ok(VerificationError::VerificationFailed))
+        );
+    }
+
+    #[test]
+    fn one_flipped_byte_of_the_seal_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        let mut raw = std::vec![0u8; seal.len() as usize];
+        seal.copy_into_slice(&mut raw);
+        raw[100] ^= 0x01; // inside the B point
+        let tampered = Bytes::from_slice(&env, &raw);
+
+        // Not a contract error: flipping a byte inside a curve point usually
+        // takes it off the curve, and the BN254 host functions trap on a point
+        // they cannot parse rather than returning. The transaction fails either
+        // way; only the diagnostic differs. Validating points up front would
+        // cost gas on every honest verification to improve the message on a
+        // dishonest one, which is the wrong trade.
+        assert_eq!(
+            client.try_verify_receipt(&tampered, &journal),
+            Err(Err(soroban_sdk::InvokeError::Abort)),
+            "a corrupted proof point traps in the host"
+        );
+    }
+
+    #[test]
+    fn a_seal_from_another_risc0_version_is_rejected_by_its_selector() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        let mut raw = std::vec![0u8; seal.len() as usize];
+        seal.copy_into_slice(&mut raw);
+        raw[0] ^= 0xff;
+        let tampered = Bytes::from_slice(&env, &raw);
+
+        // Caught before the pairing, and with an error that names the cause.
+        assert_eq!(
+            client.try_verify_receipt(&tampered, &journal),
+            Err(Ok(VerificationError::UnknownSelector))
+        );
+    }
+
+    #[test]
+    fn a_truncated_seal_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+        let short = seal.slice(0..259);
+        assert_eq!(
+            client.try_verify_receipt(&short, &journal),
+            Err(Ok(VerificationError::MalformedSeal))
+        );
+    }
+
+    #[test]
+    fn a_journal_of_the_wrong_length_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+        let short = journal.slice(0..95);
+        assert_eq!(
+            client.try_verify_receipt(&seal, &short),
+            Err(Ok(VerificationError::MalformedJournal))
+        );
+    }
+
+    #[test]
+    fn a_receipt_for_another_model_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seal, journal) = setup(&env);
+
+        // Re-register the contract for a different model.
+        client.set_model_hash(&Bytes::from_slice(&env, &[0x99; 32]));
+        assert_eq!(
+            client.try_verify_receipt(&seal, &journal),
+            Err(Ok(VerificationError::VerificationFailed))
+        );
+    }
+
+    #[test]
+    fn verifying_before_configuring_says_so() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let bundle = read("groth16_bundle.json");
+        let seal = bytes(&env, bundle["seal"].as_str().unwrap());
+        let journal = bytes(&env, bundle["journal"].as_str().unwrap());
+
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let vk = crate::test_utils::create_dummy_vk(&env, 5);
+        client.initialize(&admin, &Bytes::from_slice(&env, &[0x11; 32]), &vk);
+
+        assert_eq!(
+            client.try_verify_receipt(&seal, &journal),
+            Err(Ok(VerificationError::Risc0NotConfigured))
+        );
     }
 }

@@ -36,3 +36,6 @@ soroban-sdk = { version = "27", features = ["testutils"] }
 # Only the tests need a SHA-256 of their own: they check that the host
 # function and sha2 agree. The contract itself never links it.
 zkml-common = { workspace = true, default-features = false, features = ["sha2"] }
+# Reading the golden fixture in `testdata/`, which is a real bundle and a real
+# verifying key rather than values made up to make a test pass.
+serde_json = { workspace = true }
