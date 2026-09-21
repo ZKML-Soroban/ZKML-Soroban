@@ -64,13 +64,24 @@ same arithmetic the prover runs. That is why a receipt attributed to a different
 guest, or checked against a different control root, fails the pairing rather
 than any cheaper check.
 
-<Warning>
-A corrupted curve point does not return an error. The BN254 host functions trap
-on a point they cannot parse, so the transaction aborts. Nothing is verified
-either way, but the diagnostic is a trap rather than `VerificationFailed`.
-Validating points up front would cost gas on every honest verification to
-improve the message on a dishonest one.
-</Warning>
+The three proof points are validated before the host sees them, because the
+BN254 host functions trap on a point they cannot parse, which aborts the
+transaction without saying why. A corrupted A, B or C returns
+`MalformedProofA`, `MalformedProofB` or `MalformedProofC` instead. Every
+single-byte change to the seal or the journal returns a typed error; a test
+tries all 356 of them. This costs 2.4% of a verification.
+
+G1 uses the host's `g1_is_on_curve` after a range check, since that function
+traps on an unreduced coordinate. G2 has no host function, so its curve
+equation is checked in plain Rust by `zkml_common::bn254`, tested against
+`ark-bn254` on thousands of points.
+
+<Note>
+The G2 check does not test subgroup membership. A point on the curve but
+outside the subgroup still traps in the pairing, so it is still rejected, only
+without a typed error. Corruption does not produce such a point: a changed byte
+lands back on the curve with probability about `1/p`. It takes a crafted one.
+</Note>
 
 ## Types
 
@@ -200,13 +211,14 @@ verifications do not bump TTL. Nullifier entries are extended to
 
 ## Cost
 
-A full `verify_inference` measures about 29.3M CPU instructions and 278 KB of
-memory in the Soroban test budget. See [Benchmarks](/reference/benchmarks).
+Measured on the compiled WASM, `verify_inference` costs 30.2M CPU instructions
+and `verify_receipt` 33.3M, against a 100M limit per transaction. See
+[Benchmarks](/reference/benchmarks).
 
 ## Known limitations
 
-- A corrupted curve point in a proof or seal traps in the host rather than
-  returning `VerificationFailed`. Nothing is verified either way.
+- `verify_inference` does not validate its proof points, so a corrupted one
+  traps in the host there. `verify_receipt` does.
 - Neither entry point has been exercised by a deployed contract on a live
   network yet.
 - A `(model, input, output, class_label)` tuple can be recorded only once.

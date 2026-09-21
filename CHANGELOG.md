@@ -10,8 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Breaking.** `verify_receipt(seal, journal)` verifies a RISC Zero Groth16
   receipt on chain, against RISC Zero's universal verifying key. The contract
-  `VERSION` is bumped `5 -> 6`. A real receipt verifies at 30,677,367 CPU
-  instructions, against a network limit of 100 million.
+  `VERSION` is bumped `5 -> 6`. A real receipt verifies at 33,251,381 CPU
+  instructions on the compiled WASM, against a network limit of 100 million.
+- `verify_receipt` validates the three proof points before the host sees them,
+  so a corrupted seal returns `MalformedProofA`, `MalformedProofB` or
+  `MalformedProofC` instead of aborting the transaction. Every single-byte
+  change to the seal or the journal returns a typed error. This costs 2.4% of a
+  verification. `zkml_common::bn254` checks the G2 curve equation, since
+  Soroban has no host function for it, and is tested against `ark-bn254`.
+- `set_risc0_vk` refuses a key whose points are not on the curve, rather than
+  letting every later verification trap.
 - `set_risc0_config` / `get_risc0_config` for the guest image id, control root,
   BN254 control id and seal selector, and `set_risc0_vk` for RISC Zero's
   universal verifying key. That key is a second one, not a replacement: a

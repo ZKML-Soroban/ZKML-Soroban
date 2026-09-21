@@ -141,9 +141,9 @@ Future work: multi-model registry, per-subject records, batch verification.
 
 | Metric                  | Phase 1 target | Phase 2 target | Current                   |
 | ----------------------- | -------------- | -------------- | ------------------------- |
-| Proof generation time   | Under 30 s         | Under 5 s          | Not measured (no Groth16 wrap yet) |
-| Proof size              | Under 500 bytes    | Under 200 bytes    | 256 bytes (Groth16 points) |
-| On-chain verification   | Measured       | 50% of Phase 1 | ~29.3M CPU instructions   |
+| Proof generation time   | Under 30 s         | Under 5 s          | About 20 min on a laptop CPU (see benchmarks) |
+| Proof size              | Under 500 bytes    | Under 200 bytes    | 260-byte seal (4-byte selector + 256-byte proof) |
+| On-chain verification   | Measured       | 50% of Phase 1 | 33.3M CPU instructions for a receipt, measured on the WASM |
 | End-to-end latency      | Under 60 s         | Under 15 s         | Not measured              |
 
 See [Benchmarks](/reference/benchmarks).

@@ -6,15 +6,15 @@ icon: "triangle-exclamation"
 
 ## VerificationError (contract)
 
-Returned by `verify_inference` as a Soroban contract error.
+Returned by `verify_inference` and `verify_receipt` as a Soroban contract error.
 
 | Code | Variant                         | Cause                                                        |
 | ---- | ------------------------------- | ------------------------------------------------------------ |
 | 1    | `ContractNotInitialized`        | `initialize` has not been called                             |
 | 2    | `PublicInputsTooShort`          | Public inputs end before a required field                    |
-| 3    | `MalformedProofA`               | `proof_a` is not 64 bytes (also returned for a wrong-length `proof_c`) |
-| 4    | `MalformedProofB`               | `proof_b` is not 128 bytes                                   |
-| 5    | `MalformedProofC`               | Reserved; wrong-length `proof_c` currently reports code 3    |
+| 3    | `MalformedProofA`               | `proof_a` is not 64 bytes (also returned for a wrong-length `proof_c`), or, in `verify_receipt`, seal point A is not on the curve |
+| 4    | `MalformedProofB`               | `proof_b` is not 128 bytes, or, in `verify_receipt`, seal point B is not on the curve |
+| 5    | `MalformedProofC`               | In `verify_receipt`, seal point C is not on the curve. In `verify_inference`, a wrong-length `proof_c` still reports code 3 |
 | 6    | `MalformedVerificationKey`      | A verification key point has the wrong length              |
 | 7    | `VerificationFailed`            | Pairing check failed, `model_hash` mismatch, or contract paused |
 | 8    | `InvalidPublicInputLength`      | Extra bytes after the 80-byte layout                         |

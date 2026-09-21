@@ -6,22 +6,43 @@ icon: "gauge"
 
 ## On-chain verification budget
 
-Measured with the Soroban SDK cost estimator (`env.cost_estimate().budget()`) in
-`test_verifier_accept_path_and_resource_budget`, using a fixture that genuinely
-satisfies the pairing equation:
+Measured on the compiled contract (`wasm32v1-none`, `contract` profile) with
+the Soroban cost estimator, each on a proof that genuinely verifies:
 
-| Operation                                   | CPU instructions | Memory (bytes) | Regression threshold (CPU / memory) |
-| ------------------------------------------- | ---------------- | -------------- | ----------------------------------- |
-| Full `verify_inference` (L assembly + pairing) | 29,289,569    | 277,964        | 50,000,000 / 10,000,000             |
-| Full `verify_receipt` (claim digest + L assembly + pairing) | 30,677,367 | 326,021 | 60,000,000 / 12,000,000 |
+| Operation | CPU instructions | Memory (bytes) | Share of the 100M limit |
+| --------- | ---------------- | -------------- | ----------------------- |
+| `verify_inference` (L assembly + pairing) | 30,198,101 | 1,662,342 | 30% |
+| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 33,251,381 | 1,711,079 | 33% |
 
-Verifying a RISC Zero receipt costs 4.7% more than the native-circuit path and
-uses 31% of the 100 million instructions a Soroban transaction is allowed.
-Reconstructing the claim digest is eight SHA-256 host calls and one extra scalar
-multiplication, which is cheap next to the pairing that dominates both numbers.
-The receipt figure is measured on the golden fixture in
-`crates/zkml-verifier/testdata/`, so it is the cost of a verification that
-succeeds, not of an early rejection.
+Verifying a RISC Zero receipt costs 10.1% more than the native-circuit path.
+The extra is the claim digest (eight SHA-256 host calls), one more scalar
+multiplication, and checking the three proof points before the host sees them.
+The receipt figure uses the golden fixture in `crates/zkml-verifier/testdata/`.
+
+Reproduce with:
+
+```bash
+cargo build -p zkml-verifier --target wasm32v1-none --profile contract
+cargo test -p zkml-verifier wasm_budget -- --ignored --nocapture
+```
+
+<Note>
+Measure on the WASM, not natively. The ordinary contract tests run it as native
+Rust, and the native test environment meters only host function calls: code
+running inside the contract is free there and not free on chain. The native
+tests report 30.7M for a receipt, which undercounts by 2.6M. For the G2 point
+check, which is pure Rust, the native figure was off by a factor of more than 3,000.
+</Note>
+
+### Checking proof points
+
+`verify_receipt` validates A, B and C before the pairing, so a corrupted proof
+returns a typed error instead of aborting the transaction in the host. On the
+WASM this costs 776,552 instructions, 2.4% of a verification.
+
+A first version checked G2 with double-and-add multiplication and cost
+24,855,241 instructions, a 76% increase, which is why it uses Montgomery
+multiplication now. The native tests reported that version as costing 7,355.
 
 Breakdown:
 

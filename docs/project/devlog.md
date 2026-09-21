@@ -140,8 +140,8 @@ five public inputs and verify these bundles on Stellar (issue #84).
 ## September 2026: verified on chain
 
 `verify_receipt` accepts a real RISC Zero receipt inside the contract, at
-30,677,367 CPU instructions against a 100 million limit, which is 4.7% more
-than the native-circuit path. The receipt was regenerated from the guest this
+33,251,381 CPU instructions on the compiled WASM against a 100 million limit,
+which is 10.1% more than the native-circuit path. The receipt was regenerated from the guest this
 code builds, so the test proves this repository's output rather than a stored
 artefact.
 
@@ -160,9 +160,17 @@ hand, turned out to be stored in exactly the order Soroban reads, so they pass
 through untouched. Either mistake would have produced a well-formed scalar or
 point that fails every pairing with nothing to point at.
 
-**One behaviour is documented rather than fixed.** A corrupted curve point traps
-in the host instead of returning an error. Validating points up front would
-cost gas on every honest verification to improve the message on a dishonest
-one.
+**A trap became a typed error, and a cheap-looking fix turned out not to be.**
+A corrupted curve point made the host abort the transaction. The first
+reaction was to document it, on the claim that validating points would cost
+too much; the claim had not been measured. Measured, G1 validation costs about
+3,000 instructions through a host function. G2 has none, so its curve equation
+is checked in plain Rust.
+
+The first G2 version used double-and-add multiplication and the native tests
+said it cost 7,355 instructions. On the compiled WASM it cost 24.9 million, a
+76% increase, because the native test environment does not meter code running
+inside the contract. Montgomery multiplication brought it to 776,552, or 2.4%.
+Two lessons stayed: measure before claiming a cost, and measure on the WASM.
 
 **Next.** Deploy to testnet and verify a receipt in a real transaction.
