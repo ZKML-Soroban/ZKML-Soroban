@@ -40,7 +40,7 @@ wrap can run locally at all.
 | Linux x86_64, no GPU | yes | CPU | Docker (`--features groth16`) | **run**: full suite, two real proofs |
 | Linux x86_64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker | **run**: built and proved on an RTX 4070 |
 | Windows | yes | through WSL2 | through WSL2 | **run**: full suite natively |
-| macOS (Apple Silicon) | yes | partly GPU (`--features metal`) | not practically: needs x86 emulation | CI (`macos-latest`) for the non-zkVM suite; the rest read from the risc0 sources |
+| macOS (Apple Silicon) | yes | partly GPU (`--features metal`) | not practically: needs x86 emulation | CI (`macos-latest`): full suite, zkVM in dev mode, and that `metal` compiles |
 | macOS (Intel) | yes | CPU | Docker (`--features groth16`) | read from the risc0 sources |
 | Linux aarch64 + NVIDIA | yes | GPU (`--features cuda`) | native, no Docker | read from the risc0 sources, no hardware to confirm |
 | Linux aarch64, no GPU | yes | CPU | not locally: the Docker image is x86_64 only | read from the risc0 sources |
