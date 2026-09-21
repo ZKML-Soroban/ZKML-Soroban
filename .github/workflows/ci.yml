@@ -59,6 +59,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p zkml-common --no-default-features
 
+  cross-platform:
+    name: Tests on ${{ matrix.os }}
+    # Everything that does not need the RISC Zero toolchain must work on the
+    # three platforms contributors actually use. This job is what would have
+    # caught the Windows stack overflow in the Poseidon path.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
   contract:
     name: Verifier WASM
     runs-on: ubuntu-latest

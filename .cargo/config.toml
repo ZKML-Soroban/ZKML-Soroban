@@ -1,0 +1,12 @@
+# Windows gives the main thread a 1 MB stack; Linux and macOS give 8 MB. The
+# Poseidon commitment path (light-poseidon over ark-bn254) overflows 1 MB in an
+# unoptimized build, so `zkml-prover commit` died with 0xC00000FD on Windows
+# debug builds while working everywhere else. Ask the MSVC linker for the same
+# 8 MB the other platforms provide.
+#
+# This only affects binaries linked for Windows; nothing else changes.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
