@@ -105,4 +105,5 @@ Note also that `-arch` matters enormously. With nothing set, nvcc targets
 
 - Proving time per model family (tree, MLP) under real mode
 - Remote proving latency, once a Boundless client exists
-- End-to-end latency on testnet, which needs on-chain verification (issue #84)
+- End-to-end latency on testnet: proof, submission and verification. On-chain
+  verification exists and is measured above, but nothing has been deployed

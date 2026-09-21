@@ -205,8 +205,10 @@ memory in the Soroban test budget. See [Benchmarks](/reference/benchmarks).
 
 ## Known limitations
 
-- A RISC Zero Groth16 proof exposes RISC Zero's own public inputs (control root,
-  claim digest), not this layout; Route A needs an adapted verifier.
+- A corrupted curve point in a proof or seal traps in the host rather than
+  returning `VerificationFailed`. Nothing is verified either way.
+- Neither entry point has been exercised by a deployed contract on a live
+  network yet.
 - A `(model, input, output, class_label)` tuple can be recorded only once.
 - `get_result` is a single global slot overwritten by the next verification.
 - Pausing returns the generic `VerificationFailed`.

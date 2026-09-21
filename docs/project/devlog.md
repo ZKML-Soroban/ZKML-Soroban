@@ -136,3 +136,33 @@ expensive work starts and CI runs the real thing only on demand.
 
 **Next.** The contract side: reconstruct the claim digest on chain, build the
 five public inputs and verify these bundles on Stellar (issue #84).
+
+## September 2026: verified on chain
+
+`verify_receipt` accepts a real RISC Zero receipt inside the contract, at
+30,677,367 CPU instructions against a 100 million limit, which is 4.7% more
+than the native-circuit path. The receipt was regenerated from the guest this
+code builds, so the test proves this repository's output rather than a stored
+artefact.
+
+The work mostly consisted of not breaking things quietly:
+
+**The contract could not link zkml-common.** Poseidon pulled in arkworks, whose
+`num-traits` does not build for `wasm32v1-none`, and serde came in with its
+std layer because the workspace enabled default features. The crate had been
+documented as `no_std` and was not. Poseidon now sits behind a feature, and
+serde's features are decided at the workspace root.
+
+**Two byte-order traps were caught by reading, not by failing.** The existing
+scalar conversion reads little-endian, but RISC Zero's public inputs are
+big-endian, so receipts got their own. The seal's curve points, on the other
+hand, turned out to be stored in exactly the order Soroban reads, so they pass
+through untouched. Either mistake would have produced a well-formed scalar or
+point that fails every pairing with nothing to point at.
+
+**One behaviour is documented rather than fixed.** A corrupted curve point traps
+in the host instead of returning an error. Validating points up front would
+cost gas on every honest verification to improve the message on a dishonest
+one.
+
+**Next.** Deploy to testnet and verify a receipt in a real transaction.
