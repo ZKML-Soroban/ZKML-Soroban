@@ -36,9 +36,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # Advisory until the existing warnings are fixed; then add `-- -D warnings`.
-      - run: cargo clippy --workspace --all-targets
-        continue-on-error: true
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     # Job name must stay `test`: it is the required status check on main.
