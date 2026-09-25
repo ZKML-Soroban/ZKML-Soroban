@@ -57,7 +57,9 @@ fn tensor_to_f64(tensor: &TensorProto) -> Result<Vec<f64>, OnnxImportError> {
         }
         Ok(tensor
             .raw_data
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64)
             .collect())
     } else if !tensor.float_data.is_empty() {

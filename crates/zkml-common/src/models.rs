@@ -113,7 +113,7 @@ impl TinyMLP {
                 "TinyMLP must have at least one layer".into(),
             ));
         }
-        for (_i, layer) in self.layers.iter().enumerate() {
+        for layer in self.layers.iter() {
             let expected_weights = layer.input_size.saturating_mul(layer.output_size);
             if layer.weights.len() != expected_weights {
                 #[cfg(feature = "std")]

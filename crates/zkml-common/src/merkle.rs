@@ -36,7 +36,7 @@ pub fn merkle_root(leaves: &[Commitment]) -> Commitment {
         return [0u8; 32];
     }
     // Hash leaves with domain separation
-    let mut level: Vec<Commitment> = leaves.iter().map(|leaf| hash_leaf(leaf)).collect();
+    let mut level: Vec<Commitment> = leaves.iter().map(hash_leaf).collect();
     while level.len() > 1 {
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
@@ -81,11 +81,11 @@ pub fn generate_proof(leaves: &[Commitment], index: usize) -> Option<MerkleProof
     }
 
     let mut siblings = Vec::new();
-    let mut level: Vec<Commitment> = leaves.iter().map(|leaf| hash_leaf(leaf)).collect();
+    let mut level: Vec<Commitment> = leaves.iter().map(hash_leaf).collect();
     let mut current_index = index;
 
     while level.len() > 1 {
-        let sibling_index = if current_index % 2 == 0 {
+        let sibling_index = if current_index.is_multiple_of(2) {
             current_index + 1
         } else {
             current_index - 1
@@ -101,7 +101,7 @@ pub fn generate_proof(leaves: &[Commitment], index: usize) -> Option<MerkleProof
         siblings.push(sibling);
 
         // Move up the tree
-        current_index = current_index / 2;
+        current_index /= 2;
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
             let a = pair[0];
@@ -122,13 +122,13 @@ pub fn verify_proof(root: &Commitment, leaf: &Commitment, proof: &MerkleProof) -
     let mut current_index = proof.index;
 
     for sibling in &proof.siblings {
-        let (left, right) = if current_index % 2 == 0 {
+        let (left, right) = if current_index.is_multiple_of(2) {
             (computed, *sibling)
         } else {
             (*sibling, computed)
         };
         computed = hash_internal(&left, &right);
-        current_index = current_index / 2;
+        current_index /= 2;
     }
 
     computed == *root
