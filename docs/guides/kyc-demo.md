@@ -14,7 +14,7 @@ risk score, and verify it on-chain.
 | --------------------------------------- | --------------------------------------------------- |
 | Synthetic dataset (`generate_dataset.py`) | Works                                             |
 | Training and ONNX export (`train_model.py`) | Works, exports with `target_opset=17`           |
-| ONNX import into `zkml-prover`          | Blocked: the importer requires core opset `>= 17`   |
+| ONNX import into `zkml-prover`          | Works: a decision tree of 43 nodes over 10 features |
 | Model commitment                        | Available via `zkml-prover commit` (JSON models)    |
 | Contract build and deployment           | Works with the `stellar` CLI ([guide](/guides/deployment)) |
 | On-chain Groth16 verification           | Implemented in the contract                         |

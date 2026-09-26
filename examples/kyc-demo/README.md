@@ -12,8 +12,8 @@ Deployment with the `stellar` CLI: [docs/guides/deployment.md](../../docs/guides
 | Step | Status |
 | ---- | ------ |
 | Synthetic dataset (`generate_dataset.py`) | Works |
-| Training and ONNX export (`train_model.py`) | Works, but exports with `target_opset=12` |
-| ONNX import into `zkml-prover` | Blocked until the export uses core opset 17 or later |
+| Training and ONNX export (`train_model.py`) | Works, exports with `target_opset=17` |
+| ONNX import into `zkml-prover` | Works: a decision tree of 43 nodes over 10 features |
 | Verifier contract with Groth16 (BN254) verification | Implemented |
 | Poseidon model commitment | Implemented (`zkml-prover commit` for JSON models) |
 | Contract build and deployment | Works with the `stellar` CLI (see the deployment guide) |
@@ -52,8 +52,15 @@ python train_model.py
 Trains a decision tree (`max_depth=5`, risk tiers 0 low, 1 medium, 2 high) and
 exports `kyc_decision_tree.onnx`.
 
-**Known issue:** the script passes `target_opset=12`. The importer requires core
-opset 17 or later, so update the export before importing the model.
+The export uses `target_opset=17`, the floor the importer enforces for the core
+domain. To check the file before importing it:
+
+```bash
+python check_model.py
+```
+
+It prints every opset import and every operator, and exits non-zero when the
+model would be rejected.
 
 ## 3. Deploy the verifier
 
@@ -110,7 +117,7 @@ are not mapped to a tier yet.
 1. STARK to Groth16 compression in `zkml-prover`
 2. Verification key export
 3. Contract path for RISC Zero Groth16 public inputs
-4. Update `train_model.py` opset and `deploy.sh` to the `stellar` CLI
+4. Update `deploy.sh` to the `stellar` CLI
 5. Implement the `zkml-demo` pipeline with metrics
 
 ## References
