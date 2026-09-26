@@ -63,10 +63,10 @@ pub struct GraphProto {
     #[prost(string, tag = "2")]
     pub name: String,
     /// Input tensors.
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag = "11")]
     pub input: Vec<ValueInfoProto>,
     /// Output tensors.
-    #[prost(message, repeated, tag = "4")]
+    #[prost(message, repeated, tag = "12")]
     pub output: Vec<ValueInfoProto>,
     /// Pre-initialised tensors (constant weights / biases).
     #[prost(message, repeated, tag = "5")]
@@ -192,25 +192,20 @@ pub struct AttributeProto {
     #[prost(message, optional, tag = "6")]
     pub g: Option<GraphProto>,
     /// Float values (for thresholds, leaf values, class weights).
-    #[prost(double, repeated, tag = "7")]
-    pub floats: Vec<f64>,
+    ///
+    /// `repeated float` in the ONNX schema, so 32 bit on the wire.
+    #[prost(float, repeated, tag = "7")]
+    pub floats: Vec<f32>,
     /// Integer values (for feature indices, node IDs, class IDs).
     #[prost(int64, repeated, tag = "8")]
     pub ints: Vec<i64>,
     /// String values (for node modes like "BRANCH_LEQ").
-    #[prost(string, repeated, tag = "9")]
-    pub strings: Vec<String>,
-    /// List of float values (f32).
-    #[prost(float, repeated, tag = "11")]
-    pub floats_f32: Vec<f32>,
-    /// List of int64 values.
-    #[prost(int64, repeated, tag = "12")]
-    pub ints_extra: Vec<i64>,
-    /// List of string values (as bytes).
-    #[prost(bytes, repeated, tag = "13")]
-    pub strings_bytes: Vec<Vec<u8>>,
+    ///
+    /// `repeated bytes` in the ONNX schema, so the caller decodes the UTF-8.
+    #[prost(bytes, repeated, tag = "9")]
+    pub strings: Vec<Vec<u8>>,
     /// Sparse tensor value.
-    #[prost(message, optional, tag = "14")]
+    #[prost(message, optional, tag = "22")]
     pub sparse_tensor: Option<SparseTensorProto>,
     /// Type identifier (proto enum).
     #[prost(int32, tag = "20")]
