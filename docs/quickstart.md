@@ -50,8 +50,12 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32v1-none
 ```
 
-Both Apple Silicon and Intel work. The `metal` feature of `zkml-prover`
-only compiles on Apple Silicon.
+On Apple Silicon, `zkml-prover` has a `metal` feature that moves the
+recursion circuit and the shared primitives to the GPU. The main proving step
+stays on the CPU, because the circuit that proves guest execution has no Metal
+kernels. CI runs the full suite on Apple Silicon. Intel Macs are expected to
+work on the CPU but are not tested: see [proving](/concepts/proving) for the
+platform matrix and what each row is based on.
 </Tab>
 <Tab title="Windows">
 Install Rust from [rustup.rs](https://rustup.rs/), which pulls the MSVC
