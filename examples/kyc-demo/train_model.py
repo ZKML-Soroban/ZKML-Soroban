@@ -70,7 +70,9 @@ def export_to_onnx(model, output_path):
         # The importer rejects anything below 17 for the core domain:
         # see MIN_OPSET_CORE in crates/zkml-prover/src/onnx/validate.rs.
         target_opset=17,
-        zipmap=False  # Disable class probability outputs
+        # `zipmap` moved into `options` in skl2onnx; passing it directly raises
+        # TypeError. False keeps the output a plain tensor instead of a map.
+        options={type(model): {"zipmap": False}},
     )
     
     # Save the ONNX model
