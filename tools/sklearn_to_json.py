@@ -65,10 +65,11 @@ def convert_decision_tree(model):
         right = int(tree.children_right[i])
 
         if left == -1 and right == -1:
-            # Leaf value is the class the tree predicts here: the index of the
-            # largest count in the node, mapped back through `classes_`.
-            counts = tree.value[i][0]
-            predicted = model.classes_[int(counts.argmax())]
+            # The class this leaf predicts. Recent scikit-learn stores the
+            # class proportions here, older releases stored raw counts, and
+            # argmax picks the same class either way.
+            proportions = tree.value[i][0]
+            predicted = model.classes_[int(proportions.argmax())]
             nodes.append({"type": "leaf", "value": float(predicted)})
         else:
             nodes.append(
