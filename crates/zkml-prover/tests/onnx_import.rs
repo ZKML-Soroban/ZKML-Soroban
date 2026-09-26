@@ -231,3 +231,46 @@ fn real_exporter_output_imports_into_a_decision_tree() {
         other => panic!("expected a decision tree, got {other:?}"),
     }
 }
+
+/// A two layer MLP written by the official `onnx` Python library.
+///
+/// The tree fixture only exercises attributes. This one carries weights as
+/// initialisers, which is where `TensorProto` is read: its `dims`, `data_type`
+/// and `float_data` all sat on the wrong tags, so a real file decoded as
+/// garbage or not at all.
+#[test]
+fn real_initialisers_decode_with_the_right_shapes() {
+    let bytes = fixture("onnx_helper_mlp.onnx");
+
+    let proto = parse_model_proto(&bytes).expect("a real file with initialisers decodes");
+    let graph = proto.graph.as_ref().expect("graph");
+
+    let shapes: Vec<(String, Vec<i64>, i32)> = graph
+        .initializer
+        .iter()
+        .map(|t| (t.name.clone(), t.dims.clone(), t.data_type))
+        .collect();
+
+    assert_eq!(
+        shapes,
+        vec![
+            ("W1".to_string(), vec![2, 2], 1),
+            ("B1".to_string(), vec![2], 1),
+            ("W2".to_string(), vec![2, 1], 1),
+            ("B2".to_string(), vec![1], 1),
+        ],
+        "names come from tag 8, dims from tag 1 and data_type from tag 2"
+    );
+
+    let model = import_onnx(&bytes).expect("a real MLP imports");
+
+    match model {
+        zkml_common::models::Model::TinyMLP(mlp) => {
+            assert_eq!(mlp.layers.len(), 2);
+            assert_eq!(mlp.layers[0].input_size, 2);
+            assert_eq!(mlp.layers[0].output_size, 2);
+            assert_eq!(mlp.layers[1].output_size, 1);
+        }
+        other => panic!("expected a TinyMLP, got {other:?}"),
+    }
+}

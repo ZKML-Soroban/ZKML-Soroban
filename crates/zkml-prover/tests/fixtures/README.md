@@ -14,6 +14,7 @@ foundation (protobuf parse, opset check, operator allowlist).
 | `low_opset_tree.onnx` | Core 13 + ml 3 + tree op. Must fail with `UnsupportedOpset` on the core domain. |
 | `tinymlp_valid.onnx` | Core 17 + Gemm + Relu + Gemm. 2-layer MLP matching the golden network in `tinymlp_inference.rs`. Validation passes and imports into a TinyMLP. |
 | `skl2onnx_real_tree.onnx` | Written by skl2onnx, not by this crate. An iris tree of depth 2. Guards the wire types in `proto.rs` against drifting from the ONNX schema. |
+| `onnx_helper_mlp.onnx` | Written by the official `onnx` Python library: Gemm, Relu, Gemm with real initialisers. Guards `TensorProto`, which the attribute-only fixtures never touch. |
 
 ## How these fixtures were generated
 
@@ -21,8 +22,8 @@ Every file except `skl2onnx_real_tree.onnx` is a **synthetic `ModelProto`
 encoding** written with the same `prost` field tags the importer decodes with.
 That makes them self-consistent, so a field declared with the wrong wire type
 stays invisible to them: this is how `AttributeProto.floats` sat as `double`
-instead of `float`, and `GraphProto.input` on tag 3 instead of 11, while every
-test passed. `skl2onnx_real_tree.onnx` exists to close that blind spot.
+instead of `float`, `GraphProto.input` on tag 3 instead of 11, and the whole of
+`TensorProto` sat one tag out of place, while every test passed. `skl2onnx_real_tree.onnx` exists to close that blind spot.
 
 Opset pairs mirror real exporters: **never** set `ai.onnx.ml` to 17 (that
 domain tops out around 5).
