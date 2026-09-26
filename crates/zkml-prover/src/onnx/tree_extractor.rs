@@ -170,7 +170,7 @@ fn get_floats_attribute(node: &NodeProto, name: &str) -> Result<Vec<f64>, OnnxIm
     node.attribute
         .iter()
         .find(|attr| attr.name == name)
-        .map(|attr| attr.floats.clone())
+        .map(|attr| attr.floats.iter().map(|&x| x as f64).collect())
         .ok_or_else(|| OnnxImportError::MalformedModel(format!("missing attribute '{name}'")))
 }
 
@@ -179,7 +179,12 @@ fn get_strings_attribute(node: &NodeProto, name: &str) -> Result<Vec<String>, On
     node.attribute
         .iter()
         .find(|attr| attr.name == name)
-        .map(|attr| attr.strings.clone())
+        .map(|attr| {
+            attr.strings
+                .iter()
+                .filter_map(|bytes| String::from_utf8(bytes.clone()).ok())
+                .collect()
+        })
         .ok_or_else(|| OnnxImportError::MalformedModel(format!("missing attribute '{name}'")))
 }
 

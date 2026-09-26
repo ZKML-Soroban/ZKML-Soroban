@@ -97,9 +97,7 @@ pub(crate) fn get_floats_attribute(node: &NodeProto, name: &str) -> Option<Vec<f
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.floats.is_empty() {
-                Some(attr.floats.clone())
-            } else if !attr.floats_f32.is_empty() {
-                Some(attr.floats_f32.iter().map(|&x| x as f64).collect())
+                Some(attr.floats.iter().map(|&x| x as f64).collect())
             } else {
                 None
             }
@@ -127,10 +125,8 @@ fn get_strings_attribute(node: &NodeProto, name: &str) -> Option<Vec<String>> {
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.strings.is_empty() {
-                Some(attr.strings.clone())
-            } else if !attr.strings_bytes.is_empty() {
                 Some(
-                    attr.strings_bytes
+                    attr.strings
                         .iter()
                         .filter_map(|bytes| String::from_utf8(bytes.clone()).ok())
                         .collect(),
@@ -151,9 +147,7 @@ fn get_string_attribute(node: &NodeProto, name: &str) -> Option<String> {
         .find(|attr| attr.name == name)
         .and_then(|attr| {
             if !attr.strings.is_empty() {
-                attr.strings.first().cloned()
-            } else if !attr.strings_bytes.is_empty() {
-                attr.strings_bytes
+                attr.strings
                     .first()
                     .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
             } else if !attr.s.is_empty() {
@@ -179,7 +173,7 @@ mod tests {
             attribute: vec![
                 AttributeProto {
                     name: "coefficients".into(),
-                    floats: coeffs.iter().map(|&x| x as f64).collect(),
+                    floats: coeffs.to_vec(),
                     f: 0.0,
                     i: 0,
                     ints: vec![],
@@ -187,15 +181,12 @@ mod tests {
                     strings: vec![],
                     t: None,
                     g: None,
-                    floats_f32: vec![],
-                    ints_extra: vec![],
-                    strings_bytes: vec![],
                     sparse_tensor: None,
                     r#type: 0,
                 },
                 AttributeProto {
                     name: "intercepts".into(),
-                    floats: intercepts.iter().map(|&x| x as f64).collect(),
+                    floats: intercepts.to_vec(),
                     f: 0.0,
                     i: 0,
                     ints: vec![],
@@ -203,9 +194,6 @@ mod tests {
                     strings: vec![],
                     t: None,
                     g: None,
-                    floats_f32: vec![],
-                    ints_extra: vec![],
-                    strings_bytes: vec![],
                     sparse_tensor: None,
                     r#type: 0,
                 },
@@ -235,9 +223,6 @@ mod tests {
             strings: vec![],
             t: None,
             g: None,
-            floats_f32: vec![],
-            ints_extra: vec![],
-            strings_bytes: vec![],
             sparse_tensor: None,
             r#type: 0,
         });
