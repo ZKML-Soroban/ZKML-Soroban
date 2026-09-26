@@ -170,17 +170,31 @@ fn get_floats_attribute(node: &NodeProto, name: &str) -> Result<Vec<f64>, OnnxIm
     node.attribute
         .iter()
         .find(|attr| attr.name == name)
-        .map(|attr| attr.floats.clone())
+        .map(|attr| attr.floats.iter().map(|&x| x as f64).collect())
         .ok_or_else(|| OnnxImportError::MalformedModel(format!("missing attribute '{name}'")))
 }
 
 /// Get a vector of string attribute values by name.
+///
+/// Invalid UTF-8 is an error rather than a skipped entry, so a dropped mode
+/// cannot quietly shorten `nodes_modes` below the length check above.
 fn get_strings_attribute(node: &NodeProto, name: &str) -> Result<Vec<String>, OnnxImportError> {
-    node.attribute
+    let attr = node
+        .attribute
         .iter()
         .find(|attr| attr.name == name)
-        .map(|attr| attr.strings.clone())
-        .ok_or_else(|| OnnxImportError::MalformedModel(format!("missing attribute '{name}'")))
+        .ok_or_else(|| OnnxImportError::MalformedModel(format!("missing attribute '{name}'")))?;
+
+    attr.strings
+        .iter()
+        .map(|bytes| {
+            String::from_utf8(bytes.clone()).map_err(|_| {
+                OnnxImportError::MalformedModel(format!(
+                    "attribute '{name}' holds a string that is not valid UTF-8"
+                ))
+            })
+        })
+        .collect()
 }
 
 /// Validate tree structure: index bounds, no cycles, leaf reachability.
