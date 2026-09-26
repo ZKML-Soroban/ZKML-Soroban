@@ -39,6 +39,37 @@ For ONNX files, see [ONNX import](/guides/onnx-import).
 
 Node `0` is the root. A split goes `left` when `feature <= threshold`.
 
+## From scikit-learn
+
+`tools/sklearn_to_json.py` converts a pickled estimator into this format:
+
+```bash
+python tools/sklearn_to_json.py model.pkl -o model.json
+```
+
+It handles `LogisticRegression` with a single output and
+`DecisionTreeClassifier`. Anything else stops with a message naming what it
+found, rather than writing a file that looks right and is not.
+
+Check the result with the CLI:
+
+```bash
+cargo run -p zkml-prover -- inspect model.json
+cargo run -p zkml-prover -- infer model.json --input="0.5,0.2,0.1,0.9"
+```
+
+Use `--input=` with an equals sign when a feature is negative, otherwise the
+leading minus is read as a flag.
+
+Two things carry over unchanged, so the conversion is a relabelling rather than
+a translation: scikit-learn sends a sample left when `feature <= threshold`,
+which is the rule here, and its tree arrays already put the root at index `0`
+with children referenced by index. A leaf keeps the class with the largest
+count at that node, mapped back through `classes_`.
+
+Expect the scores to differ from scikit-learn in the fifth decimal or so. The
+weights and the inputs are quantized to Q16.16, whose step is `1/65536`.
+
 ## Tiny MLP
 
 ```json
