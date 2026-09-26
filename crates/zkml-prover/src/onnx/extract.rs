@@ -33,7 +33,7 @@ pub fn extract_linear_classifier(node: &NodeProto) -> Result<LogisticRegression,
 
     // Check if this is multi-class by looking at classlabels attributes
     let classlabels_ints = get_ints_attribute(node, "classlabels_ints");
-    let classlabels_strings = get_strings_attribute(node, "classlabels_strings");
+    let classlabels_strings = get_strings_attribute(node, "classlabels_strings")?;
 
     let num_classes = if let Some(labels) = classlabels_ints {
         labels.len()
@@ -61,7 +61,7 @@ pub fn extract_linear_classifier(node: &NodeProto) -> Result<LogisticRegression,
     }
 
     // Check post_transform attribute
-    if let Some(post_transform) = get_string_attribute(node, "post_transform") {
+    if let Some(post_transform) = get_string_attribute(node, "post_transform")? {
         if post_transform != "NONE" && post_transform != "LOGISTIC" {
             return Err(OnnxImportError::MalformedModel(format!(
                 "Unsupported post_transform '{}'. Only NONE and LOGISTIC are supported (LOGISTIC is dropped in favor of thresholding the raw score).",
@@ -118,44 +118,53 @@ fn get_ints_attribute(node: &NodeProto, name: &str) -> Option<Vec<i64>> {
         })
 }
 
+/// Decode one attribute string, which the ONNX schema stores as bytes.
+///
+/// Invalid UTF-8 is an error rather than a skipped entry: the number of
+/// `classlabels_strings` is what decides whether a model counts as
+/// multi-class, so a dropped label could carry a rejected model past that gate.
+fn decode_attribute_string(bytes: &[u8], attribute: &str) -> Result<String, OnnxImportError> {
+    String::from_utf8(bytes.to_vec()).map_err(|_| {
+        OnnxImportError::MalformedModel(format!(
+            "attribute '{attribute}' holds a string that is not valid UTF-8"
+        ))
+    })
+}
+
 /// Helper to get a list of strings from an attribute.
-fn get_strings_attribute(node: &NodeProto, name: &str) -> Option<Vec<String>> {
-    node.attribute
-        .iter()
-        .find(|attr| attr.name == name)
-        .and_then(|attr| {
-            if !attr.strings.is_empty() {
-                Some(
-                    attr.strings
-                        .iter()
-                        .filter_map(|bytes| String::from_utf8(bytes.clone()).ok())
-                        .collect(),
-                )
-            } else if !attr.s.is_empty() {
-                // Single value stored in 's' field
-                String::from_utf8(attr.s.clone()).ok().map(|s| vec![s])
-            } else {
-                None
-            }
-        })
+pub(crate) fn get_strings_attribute(
+    node: &NodeProto,
+    name: &str,
+) -> Result<Option<Vec<String>>, OnnxImportError> {
+    let Some(attr) = node.attribute.iter().find(|attr| attr.name == name) else {
+        return Ok(None);
+    };
+
+    if !attr.strings.is_empty() {
+        let mut decoded = Vec::with_capacity(attr.strings.len());
+        for bytes in &attr.strings {
+            decoded.push(decode_attribute_string(bytes, name)?);
+        }
+        return Ok(Some(decoded));
+    }
+
+    if !attr.s.is_empty() {
+        // Single value stored in 's' field
+        return Ok(Some(vec![decode_attribute_string(&attr.s, name)?]));
+    }
+
+    Ok(None)
 }
 
 /// Helper to get a single string from an attribute.
-fn get_string_attribute(node: &NodeProto, name: &str) -> Option<String> {
-    node.attribute
-        .iter()
-        .find(|attr| attr.name == name)
-        .and_then(|attr| {
-            if !attr.strings.is_empty() {
-                attr.strings
-                    .first()
-                    .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
-            } else if !attr.s.is_empty() {
-                String::from_utf8(attr.s.clone()).ok()
-            } else {
-                None
-            }
-        })
+fn get_string_attribute(node: &NodeProto, name: &str) -> Result<Option<String>, OnnxImportError> {
+    Ok(get_strings_attribute(node, name)?.and_then(|mut values| {
+        if values.is_empty() {
+            None
+        } else {
+            Some(values.remove(0))
+        }
+    }))
 }
 
 #[cfg(test)]
@@ -198,6 +207,40 @@ mod tests {
                     r#type: 0,
                 },
             ],
+        }
+    }
+
+    /// Three class labels, one of them invalid UTF-8.
+    ///
+    /// Dropping the bad entry would leave `num_classes` at 2 and let a
+    /// three-class model through the gate that rejects multi-class.
+    #[test]
+    fn a_label_that_is_not_utf8_is_an_error_not_a_dropped_entry() {
+        let mut node = make_node_with_coefficients(vec![1.0, 2.0, 3.0], vec![0.1, 0.2, 0.3]);
+        node.attribute.push(AttributeProto {
+            name: "classlabels_strings".into(),
+            strings: vec![b"low".to_vec(), vec![0xff, 0xfe], b"high".to_vec()],
+            floats: vec![],
+            f: 0.0,
+            i: 0,
+            ints: vec![],
+            s: vec![],
+            t: None,
+            g: None,
+            sparse_tensor: None,
+            r#type: 0,
+        });
+
+        let err = extract_linear_classifier(&node).unwrap_err();
+
+        match err {
+            OnnxImportError::MalformedModel(message) => {
+                assert!(
+                    message.contains("not valid UTF-8"),
+                    "expected the decode to be reported, got: {message}"
+                );
+            }
+            other => panic!("expected MalformedModel, got {other:?}"),
         }
     }
 
