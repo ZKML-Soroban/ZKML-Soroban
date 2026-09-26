@@ -13,7 +13,7 @@ risk score, and verify it on-chain.
 | Step                                    | Status                                              |
 | --------------------------------------- | --------------------------------------------------- |
 | Synthetic dataset (`generate_dataset.py`) | Works                                             |
-| Training and ONNX export (`train_model.py`) | Works, but exports with `target_opset=12`       |
+| Training and ONNX export (`train_model.py`) | Works, exports with `target_opset=17`           |
 | ONNX import into `zkml-prover`          | Blocked: the importer requires core opset `>= 17`   |
 | Model commitment                        | Available via `zkml-prover commit` (JSON models)    |
 | Contract build and deployment           | Works with the `stellar` CLI ([guide](/guides/deployment)) |
@@ -44,9 +44,17 @@ python train_model.py           # writes kyc_decision_tree.onnx
 The model is a `DecisionTreeClassifier` with `max_depth=5` and three risk tiers
 (0 low, 1 medium, 2 high).
 
-> **Known issue.** `train_model.py` passes `target_opset=12`. Change it to at
-> least 17 for the core domain before importing, otherwise `import_onnx` returns
-> `UnsupportedOpset`. See also the tier mapping limitation below.
+`train_model.py` exports with `target_opset=17`, which is the floor the
+importer enforces for the core domain (`MIN_OPSET_CORE`). To check the file
+before importing it, run:
+
+```bash
+python check_model.py
+```
+
+It prints every opset import and every operator in the graph, and exits with a
+non-zero status when the core opset is too low. See also the tier mapping
+limitation below.
 
 ## 3. Deploy the verifier
 
