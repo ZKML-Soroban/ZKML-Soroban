@@ -227,6 +227,33 @@ structure: valid
 `structure` reports the result of `DecisionTree::validate` or
 `TinyMLP::validate` instead of failing, so `inspect` works on broken models.
 
+## Inspecting a bundle
+
+`tools/inspect_bundle.py` prints what the contract receives, and rebuilds the
+80-byte public input from the bundle:
+
+```bash
+cargo run -p zkml-prover -- prove examples/models/credit_lr.json --input="0.5,0.2,0.9,0.1" -o bundle.json
+python tools/inspect_bundle.py bundle.json --check
+```
+
+```text
+Bundle: bundle.json
+  model_hash  : 73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710
+  input_hash  : 13ef0480b1bb673f48acf6cc99825503330b7c0c486cdf16e5378c2ade3e230a
+  output      : 34865 raw Q16.16, 0.5319976806640625
+  class_label : 1
+  public input (80 bytes):
+    73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce71013ef04...
+  check: 80 bytes, every field the right size
+```
+
+The `model_hash` is the same value `commit` prints for that model, which is the
+quickest way to confirm a bundle belongs to the model you think it does.
+
+`--check` validates the field sizes and exits with `1` when something is off,
+so it works in a script.
+
 ## Input validation
 
 Every `--input` field must be present and parse. Errors name the 1-based
