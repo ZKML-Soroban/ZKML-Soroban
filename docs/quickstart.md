@@ -16,6 +16,66 @@ rustup target add wasm32v1-none
 - Optional: the [Stellar CLI](https://developers.stellar.org/docs/tools/cli) for deployment
 - Optional: the [RISC Zero toolchain](https://dev.risczero.com/api/zkvm/install) (`rzup`, version `3.0.6`) to run the zkVM guest
 
+## Platform notes
+
+<Tabs>
+<Tab title="Linux">
+Install Rust with [rustup](https://rustup.rs/), then add the contract target:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add wasm32v1-none
+```
+
+On Debian and Ubuntu, the linker and the usual build headers come from
+`build-essential`:
+
+```bash
+sudo apt install build-essential pkg-config
+```
+
+On Fedora, the equivalent is:
+
+```bash
+sudo dnf install @development-tools pkgconf-pkg-config
+```
+</Tab>
+<Tab title="macOS">
+Install the Xcode command line tools, which provide the linker, then Rust:
+
+```bash
+xcode-select --install
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add wasm32v1-none
+```
+
+Both Apple Silicon and Intel work. The `metal` feature of `zkml-prover`
+only compiles on Apple Silicon.
+</Tab>
+<Tab title="Windows">
+Install Rust from [rustup.rs](https://rustup.rs/), which pulls the MSVC
+toolchain, then add the target from PowerShell:
+
+```powershell
+rustup target add wasm32v1-none
+```
+
+The Poseidon commitment path needs more stack than the 1 MB Windows gives
+the main thread, so an unoptimized build of `zkml-prover commit` would exit
+with `0xC00000FD`. Inside this workspace nothing is needed: `.cargo/config.toml`
+asks the MSVC linker for the same 8 MB that Linux and macOS provide. Outside
+it, for example when depending on the crates from another project, either
+copy that setting or build with `--release`:
+
+```powershell
+cargo run --release -p zkml-prover -- infer examples/models/credit_lr.json -i "0.5,0.2,0.9,0.1"
+```
+
+See [known limitations](/security/known-limitations) and
+[proving](/concepts/proving) for the detail.
+</Tab>
+</Tabs>
+
 ## Build and test
 
 ```bash
