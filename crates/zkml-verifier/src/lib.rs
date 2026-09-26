@@ -1908,6 +1908,37 @@ mod test_pause_and_counter {
         );
         assert_eq!(client.get_verification_count(), 2);
     }
+
+    #[test]
+    fn a_replay_is_refused_and_leaves_the_counter_alone() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let vk = create_accept_fixture_vk(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash(&env, 3), &vk);
+
+        let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+        let inputs = public_inputs(&env, 3, 5, 42, 7);
+
+        assert_eq!(client.try_verify_inference(&a, &b, &c, &inputs), Ok(Ok(())));
+        assert_eq!(client.get_verification_count(), 1);
+
+        // Same public inputs hash to the same nullifier, which is what step 9
+        // of the documented order refuses.
+        assert_eq!(
+            client.try_verify_inference(&a, &b, &c, &inputs),
+            Err(Ok(VerificationError::ProofAlreadyUsed)),
+            "the second submission of the same public inputs is a replay"
+        );
+        assert_eq!(
+            client.get_verification_count(),
+            1,
+            "a refused replay must not move the counter"
+        );
+    }
 }
 
 /// The contract side of RISC Zero receipt verification.
