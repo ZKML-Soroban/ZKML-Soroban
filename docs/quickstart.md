@@ -34,10 +34,11 @@ On Debian and Ubuntu, the linker and the usual build headers come from
 sudo apt install build-essential pkg-config
 ```
 
-On Fedora, the equivalent is:
+On Fedora, the equivalent is `@c-development`, which carries gcc, binutils
+and make. `@development-tools` is version control and editors, not a compiler:
 
 ```bash
-sudo dnf install @development-tools pkgconf-pkg-config
+sudo dnf install @c-development
 ```
 </Tab>
 <Tab title="macOS">
