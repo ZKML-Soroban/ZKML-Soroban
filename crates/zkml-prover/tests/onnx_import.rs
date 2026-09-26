@@ -202,3 +202,32 @@ fn fixture_tinymlp_extracts_and_matches_json() {
         );
     }
 }
+
+/// A file produced by skl2onnx, not by the fixture generator in this crate.
+///
+/// The synthetic fixtures are encoded with the same `prost` definitions the
+/// importer decodes with, so a field declared with the wrong wire type stays
+/// invisible to them. This one is written by the reference exporter, so it
+/// fails if `proto.rs` drifts from the ONNX schema again.
+#[test]
+fn real_exporter_output_imports_into_a_decision_tree() {
+    let bytes = fixture("skl2onnx_real_tree.onnx");
+
+    let proto = parse_model_proto(&bytes).expect("a real exporter file decodes");
+    let graph = proto.graph.as_ref().expect("graph");
+    assert!(!graph.input.is_empty(), "graph inputs are read from tag 11");
+    assert!(
+        !graph.output.is_empty(),
+        "graph outputs are read from tag 12"
+    );
+
+    let model = import_onnx(&bytes).expect("a real decision tree imports");
+
+    match model {
+        zkml_common::models::Model::DecisionTree(tree) => {
+            assert_eq!(tree.num_features, 4, "iris has four features");
+            assert!(!tree.nodes.is_empty());
+        }
+        other => panic!("expected a decision tree, got {other:?}"),
+    }
+}

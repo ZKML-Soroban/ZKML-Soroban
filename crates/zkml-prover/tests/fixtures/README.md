@@ -13,12 +13,19 @@ foundation (protobuf parse, opset check, operator allowlist).
 | `unsupported_conv.onnx` | Core 17 + `Conv`. Must fail with `UnsupportedOperator { op_type: "Conv" }`. |
 | `low_opset_tree.onnx` | Core 13 + ml 3 + tree op. Must fail with `UnsupportedOpset` on the core domain. |
 | `tinymlp_valid.onnx` | Core 17 + Gemm + Relu + Gemm. 2-layer MLP matching the golden network in `tinymlp_inference.rs`. Validation passes and imports into a TinyMLP. |
+| `skl2onnx_real_tree.onnx` | Written by skl2onnx, not by this crate. An iris tree of depth 2. Guards the wire types in `proto.rs` against drifting from the ONNX schema. |
 
 ## How these fixtures were generated
 
-The committed binaries are **synthetic `ModelProto` encodings** written with
-the same `prost` field tags as official ONNX. Opset pairs mirror real
-exporters: **never** set `ai.onnx.ml` to 17 (that domain tops out around 5).
+Every file except `skl2onnx_real_tree.onnx` is a **synthetic `ModelProto`
+encoding** written with the same `prost` field tags the importer decodes with.
+That makes them self-consistent, so a field declared with the wrong wire type
+stays invisible to them: this is how `AttributeProto.floats` sat as `double`
+instead of `float`, and `GraphProto.input` on tag 3 instead of 11, while every
+test passed. `skl2onnx_real_tree.onnx` exists to close that blind spot.
+
+Opset pairs mirror real exporters: **never** set `ai.onnx.ml` to 17 (that
+domain tops out around 5).
 
 Regenerate them with:
 
@@ -26,10 +33,10 @@ Regenerate them with:
 cargo run -p zkml-prover --example generate_onnx_fixtures
 ```
 
-### Optional: skl2onnx decision tree (reference)
+### Regenerating the real fixture
 
-When Python tooling is available, a production-style tree can be exported as
-follows (for local experiments; not required by CI):
+`skl2onnx_real_tree.onnx` is committed, so this is only needed if it has to
+change. It requires Python tooling:
 
 ```bash
 pip install "scikit-learn>=1.4" "skl2onnx>=1.16" "onnx>=1.15"
@@ -49,13 +56,11 @@ onx = convert_sklearn(
     initial_types=[("X", FloatTensorType([None, X.shape[1]]))],
     # Core domain 17; ml domain stays in 1–5 (skl2onnx rejects ml=17).
     target_opset={"": 17, "ai.onnx.ml": 3},
+    options={type(clf): {"zipmap": False}},
 )
-with open("decision_tree_skl2onnx.onnx", "wb") as f:
+with open("crates/zkml-prover/tests/fixtures/skl2onnx_real_tree.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 ```
-
-The foundation importer will accept that file's operators and opset, then
-return `ExtractionNotImplemented` until issue #5 lands.
 
 ## Design note
 
