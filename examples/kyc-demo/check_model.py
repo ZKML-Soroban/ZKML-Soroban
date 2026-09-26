@@ -17,18 +17,42 @@ import onnx
 MIN_OPSET_CORE = 17
 MIN_OPSET_ML = 1
 
-CORE_DOMAINS = ("", "ai.onnx")
+# An empty domain string is the core domain, same as "ai.onnx".
+FLOORS = {"": MIN_OPSET_CORE, "ai.onnx": MIN_OPSET_CORE, "ai.onnx.ml": MIN_OPSET_ML}
 
 
-def core_opset(model):
-    """Return the lowest core domain opset import, or None if there is none.
+def check_opsets(model):
+    """Mirror `check_opset` in validate.rs and return the reason it would fail.
 
-    A model can declare the core domain more than once, as "" and as
-    "ai.onnx". The importer checks every entry, so the lowest one is what
-    decides whether the file is accepted.
+    The importer rejects a model when it declares no opset imports at all, when
+    a domain it knows sits below its floor, or when none of the declared
+    domains is one it knows.
     """
-    versions = [e.version for e in model.opset_import if e.domain in CORE_DOMAINS]
-    return min(versions) if versions else None
+    if not model.opset_import:
+        return "the model declares no opset_import entries"
+
+    saw_known = False
+
+    for entry in model.opset_import:
+        floor = FLOORS.get(entry.domain)
+
+        if floor is None:
+            continue
+
+        saw_known = True
+
+        if entry.version < floor:
+            domain = entry.domain or "the core domain"
+            return (
+                f"{domain} is at opset {entry.version}, the importer requires "
+                f"{floor} or higher. Re-export with target_opset=17 in "
+                f"train_model.py"
+            )
+
+    if not saw_known:
+        return "the model has no opset_import for ai.onnx or ai.onnx.ml"
+
+    return None
 
 
 def main():
@@ -55,20 +79,13 @@ def main():
         domain = node.domain or "(core)"
         print(f"  {node.op_type} [{domain}]")
 
-    version = core_opset(model)
+    problem = check_opsets(model)
 
-    if version is None:
-        print("\nNo core opset import found. The importer treats that as malformed.")
+    if problem is not None:
+        print(f"\nThis model would be rejected: {problem}.")
         return 1
 
-    if version < MIN_OPSET_CORE:
-        print(
-            f"\nCore opset is {version}, the importer requires {MIN_OPSET_CORE} or higher."
-        )
-        print("Re-export with target_opset=17 in train_model.py.")
-        return 1
-
-    print(f"\nCore opset {version} meets the minimum of {MIN_OPSET_CORE}.")
+    print("\nEvery declared opset meets the floor the importer enforces.")
     return 0
 
 
