@@ -186,7 +186,11 @@ Length errors:
 1. Fail with `ContractNotInitialized` if not initialized.
 2. Fail with `VerificationFailed` if paused.
 3. Deserialize `proof_a`, `proof_b`, `proof_c` (length-checked).
-4. Parse the 80-byte public inputs.
+4. Parse the 80-byte public inputs. Fail with `NonCanonicalPublicInput` if
+   `model_hash` or `input_hash`, read as a little-endian integer, is not below
+   the BN254 scalar modulus `r`. The pairing reduces each field modulo `r`
+   while the nullifier hashes the raw bytes, so only the canonical encoding may
+   be accepted, or one proof could be recorded once per multiple of `r`.
 5. Fail with `VerificationFailed` if `model_hash` differs from the stored value.
 6. Deserialize the verification key.
 7. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
