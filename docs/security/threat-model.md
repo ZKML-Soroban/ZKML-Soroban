@@ -33,7 +33,8 @@ icon: "user-shield"
 | Replay of an accepted proof | SHA-256 nullifier over the public inputs in persistent storage | Implemented |
 | Malformed or oversized public inputs | Exact 80-byte layout, per-field length checks | Implemented |
 | Verification key / input count mismatch | `ic.len()` must equal public inputs + 1 | Implemented |
-| Unauthorized re-initialization or key change | `initialize` once with admin auth; admin-gated setters | Implemented |
+| A third party initializes the contract first, seizing admin and the key | Initialization is a `__constructor`, run atomically with deploy, so no window exists between deploy and init | Implemented |
+| Unauthorized re-initialization or key change | The constructor runs once by protocol; every later change is admin-gated | Implemented |
 | Compromised model or key in production | `set_pause` emergency stop, key rotation | Implemented |
 | Contract archival from inactivity | Instance TTL bumps on init and successful verification | Implemented |
 | Non-determinism between prover and guest | Fixed-point integer math, shared inference engine, journal cross-check | Implemented |

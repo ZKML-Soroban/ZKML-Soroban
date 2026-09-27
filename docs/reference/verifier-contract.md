@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `6`                                     |
+| Interface `VERSION`       | `7`                                     |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -18,7 +18,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Function | Auth | Returns | Description |
 | -------- | ---- | ------- | ----------- |
-| `initialize(admin: Address, model_hash: Bytes, vk: VerificationKey)` | `admin` | `()` | Stores admin, model commitment, and verification key; sets counter to 0 and pause to false; bumps instance TTL. Panics with `contract is already initialized` on a second call. |
+| `__constructor(admin: Address, model_hash: Bytes, vk: VerificationKey)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and verification key; sets counter to 0 and pause to false; bumps instance TTL. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
 | `verify_inference(proof_a: Bytes, proof_b: Bytes, proof_c: Bytes, public_inputs: Bytes)` | none | `Result<(), VerificationError>` | Verifies the proof, enforces the nullifier, records the result, emits `verified`. |
 | `get_result()` | none | `InferenceRecord` | Last verified record. Panics if none has been recorded. |
 | `get_model_hash()` | none | `Bytes` | Registered model commitment. Panics before initialization. |
@@ -62,11 +62,11 @@ Those values are pinned to a RISC Zero version **and** to a guest build. Any
 change to the guest or to `zkml-common` changes the image id, so re-export
 after either, or every proof fails.
 
-Two keys are registered, not one. `initialize` takes the key for the
+Two keys are registered, not one. The constructor takes the key for the
 native-circuit path, which has five `ic` points for four public inputs;
 `set_risc0_vk` takes RISC Zero's universal key, which has six for five. They are
 not interchangeable. That is also why the RISC Zero values are set by their own
-calls instead of by `initialize`: a contract serves both routes, and each needs
+calls instead of by the constructor: a contract serves both routes, and each needs
 its own key.
 
 Checks run cheapest first, and everything that can fail without cryptography
@@ -262,7 +262,7 @@ record that survives.
 ## TTL policy
 
 Instance storage shares the contract instance lifetime. The contract calls
-`extend_ttl(threshold, extend_to)` at the end of `initialize` and after every
+`extend_ttl(threshold, extend_to)` at the end of the constructor and after every
 successful `verify_inference`:
 
 | Constant                 | Value                               |
