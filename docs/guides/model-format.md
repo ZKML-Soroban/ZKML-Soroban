@@ -47,6 +47,12 @@ Node `0` is the root. A split goes `left` when `feature <= threshold`.
 python tools/sklearn_to_json.py model.pkl -o model.json
 ```
 
+<Warning>
+Loading a pickle runs code. `joblib.load` and `pickle.load` execute whatever the
+file carries, and this tool uses them. Only convert a model you trained yourself
+or otherwise trust, never one you were sent.
+</Warning>
+
 It handles `LogisticRegression` with a single output and
 `DecisionTreeClassifier`. Anything else stops with a message naming what it
 found, rather than writing a file that looks right and is not.
@@ -65,7 +71,14 @@ Two things carry over unchanged, so the conversion is a relabelling rather than
 a translation: scikit-learn sends a sample left when `feature <= threshold`,
 which is the rule here, and its tree arrays already put the root at index `0`
 with children referenced by index. A leaf keeps the class with the largest
-count at that node, mapped back through `classes_`.
+share at that node, mapped back through `classes_`.
+
+Class labels have to be numbers for a tree, because the format stores a leaf as
+a number. A tree trained on text labels such as `"low"` and `"high"` is refused;
+encode them as integers first, for example with
+`sklearn.preprocessing.LabelEncoder`. A logistic regression has no such limit,
+but keep in mind that its `class_label` of `1` means `model.classes_[1]`:
+scikit-learn sorts the labels, so for `["no", "yes"]` a `1` means `"yes"`.
 
 Expect the scores to differ from scikit-learn in the fifth decimal or so. The
 weights and the inputs are quantized to Q16.16, whose step is `1/65536`.
