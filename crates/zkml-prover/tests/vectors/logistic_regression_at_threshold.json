@@ -1,0 +1,43 @@
+{
+  "description": "Logistic regression whose score lands exactly on the decision threshold",
+  "model": {
+    "type": "LogisticRegression",
+    "weights": [
+      {
+        "value": 65536,
+        "scale": 16
+      },
+      {
+        "value": 131072,
+        "scale": 16
+      }
+    ],
+    "bias": {
+      "value": 32768,
+      "scale": 16
+    },
+    "decision_threshold": {
+      "value": 360448,
+      "scale": 16
+    }
+  },
+  "test_cases": [
+    {
+      "description": "1.0*1.0 + 2.0*2.0 + 0.5 = 5.5, the same value as the threshold, so the rule score >= threshold decides class 1",
+      "inputs": [
+        {
+          "value": 65536,
+          "scale": 16
+        },
+        {
+          "value": 131072,
+          "scale": 16
+        }
+      ],
+      "expected_output": {
+        "value": 360448,
+        "scale": 16
+      }
+    }
+  ]
+}
