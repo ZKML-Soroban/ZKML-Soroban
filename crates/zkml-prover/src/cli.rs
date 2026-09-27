@@ -57,10 +57,13 @@ pub struct Cli {
 /// The prover's subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Print the model commitment (the value registered on-chain at `initialize`).
+    /// Print the model commitment (the value registered on-chain at deploy).
     Commit {
         /// Path to a JSON model.
         model: PathBuf,
+        /// Commit even if the model fails the range and overflow-bounds checks.
+        #[arg(long)]
+        skip_safety_check: bool,
     },
 
     /// Run inference and print the commitment, dequantized output, and raw Q16.16 value.
@@ -93,6 +96,9 @@ pub enum Command {
         /// Where to run the Groth16 compression.
         #[arg(long, default_value = "local", value_parser = ["local", "boundless"])]
         backend: String,
+        /// Prove even if the model fails the range and overflow-bounds checks.
+        #[arg(long)]
+        skip_safety_check: bool,
     },
 
     /// Print what the verifier contract needs to verify RISC Zero receipts.
@@ -510,7 +516,10 @@ fn kind_of(model: &Model) -> &'static str {
 /// Execute a parsed command line, writing normal output to `out`.
 pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
     match &cli.command {
-        Command::Commit { model } => cmd_commit(model, out),
+        Command::Commit {
+            model,
+            skip_safety_check,
+        } => cmd_commit(model, *skip_safety_check, out),
         Command::Infer { model, input } => cmd_infer(model, input, out),
         Command::Prove {
             model,
@@ -518,7 +527,16 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
             out: dest,
             groth16,
             backend,
-        } => cmd_prove(model, input, dest.as_deref(), *groth16, backend, out),
+            skip_safety_check,
+        } => cmd_prove(
+            model,
+            input,
+            dest.as_deref(),
+            *groth16,
+            backend,
+            *skip_safety_check,
+            out,
+        ),
         Command::ExportVk { format, out: dest } => cmd_export_vk(format, dest.as_deref(), out),
         Command::VerifyBundle { bundle } => cmd_verify_bundle(bundle, out),
         Command::Validate {
@@ -540,9 +558,26 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
 }
 
 /// `commit <MODEL>`: print the model commitment as 64-char hex.
-pub fn cmd_commit(model_path: &Path, out: &mut impl Write) -> Result<(), CliError> {
+pub fn cmd_commit(
+    model_path: &Path,
+    skip_safety_check: bool,
+    out: &mut impl Write,
+) -> Result<(), CliError> {
     let model = load_model(model_path)?;
+    ensure_safe(&model, skip_safety_check)?;
     writeln!(out, "{}", to_hex(&model_commitment(&model))).map_err(|e| io_err("<stdout>", e))
+}
+
+/// Refuse to commit to or prove a model the range and overflow-bounds passes
+/// reject, unless the caller opts out. A committed model is registered on
+/// chain, so this stops the tool from vouching for one it already knows can
+/// overflow. `--skip-safety-check` bypasses it.
+fn ensure_safe(model: &Model, skip: bool) -> Result<(), CliError> {
+    if skip {
+        return Ok(());
+    }
+    crate::quantization::check_safety(model, &QuantizationConfig::default())
+        .map_err(CliError::Validation)
 }
 
 /// `infer <MODEL> -i <CSV>`: commitment, dequantized output, raw Q16.16 value.
@@ -568,9 +603,11 @@ pub fn cmd_prove(
     dest: Option<&Path>,
     groth16: bool,
     backend: &str,
+    skip_safety_check: bool,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let model = load_model(model_path)?;
+    ensure_safe(&model, skip_safety_check)?;
     let inputs = inputs_for(&model, model_path, raw)?;
 
     if groth16 {
@@ -903,10 +940,41 @@ mod tests_commands {
 
     #[test]
     fn commit_prints_64_hex_chars() {
-        let out = capture(|w| cmd_commit(Path::new(CREDIT), w)).unwrap();
+        let out = capture(|w| cmd_commit(Path::new(CREDIT), false, w)).unwrap();
         let hex = out.trim();
         assert_eq!(hex.len(), 64);
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    /// `commit` refuses a model the overflow-bounds pass rejects, so the tool
+    /// does not print a commitment for a model it knows can overflow on chain.
+    /// `--skip-safety-check` overrides it.
+    #[test]
+    fn commit_refuses_a_model_that_validate_rejects() {
+        // A huge logistic weight: the shifted-product analysis shows inference
+        // can exceed i64, which `validate` rejects.
+        let model = r#"{
+            "kind": "logistic_regression",
+            "weights": [1e30, 0.5],
+            "bias": 0.0,
+            "decision_threshold": 0.0
+        }"#;
+        let dir = std::env::temp_dir().join("zkml_e2_commit_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("overflow_model.json");
+        std::fs::write(&path, model).unwrap();
+
+        // Default: refused with a validation error, no commitment printed.
+        match cmd_commit(&path, false, &mut Vec::new()) {
+            Err(CliError::Validation(_)) => {}
+            other => panic!("commit must refuse an overflowing model, got {other:?}"),
+        }
+
+        // With the opt-out, it commits anyway.
+        let out = capture(|w| cmd_commit(&path, true, w)).unwrap();
+        assert_eq!(out.trim().len(), 64, "--skip-safety-check commits anyway");
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -936,6 +1004,7 @@ mod tests_commands {
                 None,
                 false,
                 "local",
+                false,
                 w,
             )
         })
@@ -954,6 +1023,7 @@ mod tests_commands {
                 None,
                 false,
                 "local",
+                false,
                 w,
             )
         })
@@ -974,6 +1044,7 @@ mod tests_commands {
                 Some(&path),
                 false,
                 "local",
+                false,
                 w,
             )
         })
@@ -1010,7 +1081,8 @@ mod tests_commands {
 
     #[test]
     fn missing_model_file_is_an_io_error() {
-        let err = cmd_commit(Path::new("/nonexistent/model.json"), &mut Vec::new()).unwrap_err();
+        let err =
+            cmd_commit(Path::new("/nonexistent/model.json"), false, &mut Vec::new()).unwrap_err();
         assert!(matches!(err, CliError::Io { .. }));
         assert_eq!(err.exit_code(), 1);
     }

@@ -42,6 +42,7 @@ fn prove_output_round_trips_and_binds_the_model() {
         None,
         false,
         "local",
+        false,
         &mut buf,
     )
     .expect("prove succeeds");
@@ -71,6 +72,7 @@ fn prove_to_file_round_trips() {
         Some(&path),
         false,
         "local",
+        false,
         &mut buf,
     )
     .expect("prove succeeds");
