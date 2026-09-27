@@ -1,0 +1,22 @@
+{
+  "description": "Positive weights and inputs, with a bias negative enough to flip the decision",
+  "model": {
+    "type": "LogisticRegression",
+    "weights": [
+      {"value": 65536, "scale": 16},
+      {"value": 131072, "scale": 16}
+    ],
+    "bias": {"value": -278528, "scale": 16},
+    "decision_threshold": {"value": 0, "scale": 16}
+  },
+  "test_cases": [
+    {
+      "description": "1.0*1.0 + 2.0*1.0 = 3.0, and a bias of -4.25 pulls the score to -1.25, below the threshold of 0",
+      "inputs": [
+        {"value": 65536, "scale": 16},
+        {"value": 65536, "scale": 16}
+      ],
+      "expected_output": {"value": -81920, "scale": 16}
+    }
+  ]
+}

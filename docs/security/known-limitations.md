@@ -69,6 +69,12 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 - `examples/kyc-demo/deploy.sh` still uses the deprecated `soroban` CLI, omits
   `--admin`, and uses placeholder values. Use the
   [deployment guide](/guides/deployment).
+- **Windows needs a larger main thread stack.** Windows gives the main thread
+  1 MB where Linux and macOS give 8 MB, and the Poseidon commitment path
+  overflows it in an unoptimized build, so `zkml-prover commit` exits with
+  `0xC00000FD`. Inside this workspace `.cargo/config.toml` raises it to 8 MB for
+  the MSVC targets. Anything building these crates outside the workspace has to
+  carry the same linker flag or build with `--release`.
 
 ## Cryptographic horizon
 
