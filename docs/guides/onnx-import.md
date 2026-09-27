@@ -62,7 +62,6 @@ Unsupported operators fail with an error naming the `op_type`.
 | `MalformedModel(String)`                 | Protobuf decode failure, missing graph, empty nodes, missing opsets, extraction or structure failure |
 | `UnsupportedOpset { found, required }`   | A known domain is below its floor                              |
 | `UnsupportedOperator { op_type }`        | A node uses an operator outside the allowlist                  |
-| `ExtractionNotImplemented { .. }`        | Validated graph with no extractor for its shape                |
 
 ## Fixtures
 

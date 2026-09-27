@@ -24,6 +24,7 @@ Returned by `verify_inference` and `verify_receipt` as a Soroban contract error.
 | 12   | `MalformedSeal`                 | The seal is not 260 bytes                                    |
 | 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout, or its magic or version do not match |
 | 14   | `Risc0NotConfigured`            | `set_risc0_config` or `set_risc0_vk` has not been called     |
+| 15   | `NonCanonicalPublicInput`       | `model_hash` or `input_hash` is not below the BN254 scalar modulus `r`, so it is not the canonical encoding of its scalar |
 
 There is no `ImageIdMismatch`. The image id is carried by neither the seal nor
 the journal; it only enters the claim digest, so a receipt from another guest

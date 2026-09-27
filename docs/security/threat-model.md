@@ -33,7 +33,8 @@ icon: "user-shield"
 | Replay of an accepted proof | SHA-256 nullifier over the public inputs in persistent storage | Implemented |
 | Malformed or oversized public inputs | Exact 80-byte layout, per-field length checks | Implemented |
 | Verification key / input count mismatch | `ic.len()` must equal public inputs + 1 | Implemented |
-| Unauthorized re-initialization or key change | `initialize` once with admin auth; admin-gated setters | Implemented |
+| A third party initializes the contract first, seizing admin and the key | Initialization is a `__constructor`, run atomically with deploy, so no window exists between deploy and init | Implemented |
+| Unauthorized re-initialization or key change | The constructor runs once by protocol; every later change is admin-gated | Implemented |
 | Compromised model or key in production | `set_pause` emergency stop, key rotation | Implemented |
 | Contract archival from inactivity | Instance TTL bumps on init and successful verification | Implemented |
 | Non-determinism between prover and guest | Fixed-point integer math, shared inference engine, journal cross-check | Implemented |
@@ -42,7 +43,7 @@ icon: "user-shield"
 | Accepting RISC Zero proofs with mismatched public inputs | `verify_receipt` recomputes the claim digest from the journal, so a journal, image id or control root that does not match the proof fails the pairing | Implemented (tested against a real proof; not on a live network) |
 | Receipt from a different RISC Zero version | Seal selector checked against the registered one before the pairing | Implemented |
 | Degenerate RISC Zero verifying key | `set_risc0_vk` refuses points off the curve and the point at infinity, which would unbind the journal from the proof | Implemented |
-| Admin registers a guest, key or config that accepts false results | The admin is trusted with what verifies; every change to the RISC Zero configuration emits a public `cfg_upd` event | Accepted: detectable, not prevented |
+| Admin registers a guest, key or config that accepts false results | The admin is trusted with what verifies; every admin setter emits a public `cfg_upd` event, so the change is visible on chain even though it is allowed | Accepted: detectable, not prevented |
 | Proof forgery by a quantum computer (Shor on BN254) | Crypto-agile verifier, hybrid and hash-based proofs, see [post-quantum readiness](/security/post-quantum) | Planned |
 
 ## Out of scope (current phase)

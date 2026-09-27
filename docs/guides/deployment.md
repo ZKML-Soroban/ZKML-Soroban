@@ -34,39 +34,38 @@ cargo build -p zkml-verifier --target wasm32v1-none --profile contract
 ls -l target/wasm32v1-none/contract/zkml_verifier.wasm
 ```
 
-## 3. Deploy
+## 3. Compute the model commitment
 
-```bash
-CONTRACT_ID=$(stellar contract deploy \
-  --wasm target/wasm32v1-none/contract/zkml_verifier.wasm \
-  --source-account deployer \
-  --network testnet)
-echo "$CONTRACT_ID"
-```
-
-## 4. Compute the model commitment
+The commitment is a constructor argument, so compute it before deploying.
 
 ```bash
 MODEL_HASH=$(cargo run -q -p zkml-prover -- commit examples/models/kyc_tree.json)
 echo "$MODEL_HASH"
 ```
 
-## 5. Initialize
+## 4. Deploy and initialize in one transaction
 
-`initialize(admin, model_hash, vk)` requires the admin signature. `vk` is a
-`VerificationKey` struct whose fields are hex-encoded bytes: `alpha` (G1, 64
-bytes), `beta`, `gamma`, `delta` (G2, 128 bytes each), and `ic` (a list of
-exactly 5 G1 points, 64 bytes each).
+The contract has a constructor, so the admin, the model commitment and the
+verification key are passed to `deploy` and set atomically as the contract is
+created. There is deliberately no separate `initialize` call: a public one left
+a window between deploy and init in which anyone could initialize the contract
+first, seize the admin role and register a verification key of their own. The
+constructor closes that window.
+
+`vk` is a `VerificationKey` struct whose fields are hex-encoded bytes: `alpha`
+(G1, 64 bytes), `beta`, `gamma`, `delta` (G2, 128 bytes each), and `ic` (a list
+of exactly 5 G1 points, 64 bytes each). The admin must sign the deploy.
 
 ```bash
-stellar contract invoke \
-  --id "$CONTRACT_ID" \
+CONTRACT_ID=$(stellar contract deploy \
+  --wasm target/wasm32v1-none/contract/zkml_verifier.wasm \
   --source-account deployer \
   --network testnet \
-  -- initialize \
+  -- \
   --admin "$(stellar keys address deployer)" \
   --model_hash "$MODEL_HASH" \
-  --vk "$(cat vk.json)"
+  --vk "$(cat vk.json)")
+echo "$CONTRACT_ID"
 ```
 
 `vk.json` shape:
@@ -82,9 +81,9 @@ stellar contract invoke \
 ```
 
 **Pending:** there is no tool yet that exports `vk.json` from the prover. Until
-then, initialization can only use test keys.
+then, deployment can only use test keys.
 
-## 6. Verify an inference
+## 5. Verify an inference
 
 **Pending:** requires a Groth16 proof from the prover.
 
@@ -114,7 +113,7 @@ stellar contract invoke --id "$CONTRACT_ID" --network testnet --source-account d
 | ---------------------- | -------------------------------------- |
 | Rotate the key         | `set_verification_key --vk ...`        |
 | Register a new model   | `set_model_hash --model_hash ...`      |
-| Transfer admin         | `set_admin --new_admin G...`           |
+| Transfer admin         | `propose_admin` then `accept_admin`    |
 | Emergency stop         | `set_pause --paused true`              |
 
 All four require the current admin signature (`--source-account` must be the

@@ -8,6 +8,7 @@
 //! This implementation uses Poseidon with circomlib-compatible parameters over
 //! the BN254 scalar field, matching the Soroban host function configuration.
 
+use crate::journal::ModelKind;
 use crate::models::{Model, TreeNode};
 use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField};
@@ -120,16 +121,27 @@ pub fn commitment_hash(elements: &[i64]) -> Commitment {
 ///
 /// Shared by the host prover and the zkVM guest so journal `model_hash`
 /// cannot drift from native `model_commitment`.
+///
+/// The stream is injective: it starts with the model kind and length-prefixes
+/// every variable-length part, so two models of different shape cannot flatten
+/// to the same sequence. Without this a logistic regression and a decision tree
+/// whose fields happened to line up shared a commitment, which is what binds a
+/// proof to the model that was registered. Tree nodes also carry a per-node tag
+/// (`0` split, `1` leaf) so a leaf value cannot be read as a split's fields.
 pub fn model_elements(model: &Model) -> Vec<i64> {
     let mut out = Vec::new();
+    // Element 0 is the model kind, so the three variants never share a prefix.
+    out.push(ModelKind::of(model) as i64);
     match model {
         Model::LogisticRegression(lr) => {
+            out.push(lr.weights.len() as i64);
             out.extend(lr.weights.iter().map(|w| w.value));
             out.push(lr.bias.value);
             out.push(lr.decision_threshold.value);
         }
         Model::DecisionTree(tree) => {
             out.push(tree.num_features as i64);
+            out.push(tree.nodes.len() as i64);
             for node in &tree.nodes {
                 match node {
                     TreeNode::Split {
@@ -138,18 +150,25 @@ pub fn model_elements(model: &Model) -> Vec<i64> {
                         left,
                         right,
                     } => {
+                        out.push(0); // split tag
                         out.push(*feature_index as i64);
                         out.push(threshold.value);
                         out.push(*left as i64);
                         out.push(*right as i64);
                     }
-                    TreeNode::Leaf { value } => out.push(value.value),
+                    TreeNode::Leaf { value } => {
+                        out.push(1); // leaf tag
+                        out.push(value.value);
+                    }
                 }
             }
         }
         Model::TinyMLP(mlp) => {
+            out.push(mlp.layers.len() as i64);
             for layer in &mlp.layers {
+                out.push(layer.weights.len() as i64);
                 out.extend(layer.weights.iter().map(|w| w.value));
+                out.push(layer.biases.len() as i64);
                 out.extend(layer.biases.iter().map(|b| b.value));
                 out.push(layer.input_size as i64);
                 out.push(layer.output_size as i64);
@@ -292,7 +311,8 @@ mod tests_model_elements {
             bias: FixedPoint::from_raw(3, 16),
             decision_threshold: FixedPoint::from_raw(0, 16),
         });
-        assert_eq!(model_elements(&model), vec![1, 2, 3, 0]);
+        // kind=1 (LR), weights.len()=2, w0=1, w1=2, bias=3, threshold=0
+        assert_eq!(model_elements(&model), vec![1, 2, 1, 2, 3, 0]);
     }
 
     #[test]
@@ -314,7 +334,13 @@ mod tests_model_elements {
                 },
             ],
         });
-        assert_eq!(model_elements(&model), vec![1, 0, 10, 1, 2, 0, 1]);
+        // kind=0 (tree), num_features=1, nodes.len()=3,
+        // split(tag 0): feature 0, threshold 10, left 1, right 2,
+        // leaf(tag 1): 0, leaf(tag 1): 1
+        assert_eq!(
+            model_elements(&model),
+            vec![0, 1, 3, 0, 0, 10, 1, 2, 1, 0, 1, 1]
+        );
     }
 
     #[test]
@@ -327,6 +353,46 @@ mod tests_model_elements {
         let hash1 = commit_model(&model);
         let hash2 = commit_model(&model);
         assert_eq!(hash1, hash2);
+    }
+
+    /// Two models of different shape must not share a commitment.
+    ///
+    /// A logistic regression with weights `[10, 20]`, bias `30`, threshold `40`
+    /// and a decision tree with `num_features = 10` and three leaves `20, 30,
+    /// 40` used to flatten to the same `[10, 20, 30, 40]` and hash to the same
+    /// commitment. The model kind and the length prefixes keep them apart.
+    #[test]
+    fn different_shapes_do_not_share_a_commitment() {
+        let lr = Model::LogisticRegression(LogisticRegression {
+            weights: vec![FixedPoint::from_raw(10, 16), FixedPoint::from_raw(20, 16)],
+            bias: FixedPoint::from_raw(30, 16),
+            decision_threshold: FixedPoint::from_raw(40, 16),
+        });
+        let tree = Model::DecisionTree(DecisionTree {
+            num_features: 10,
+            nodes: vec![
+                TreeNode::Leaf {
+                    value: FixedPoint::from_raw(20, 16),
+                },
+                TreeNode::Leaf {
+                    value: FixedPoint::from_raw(30, 16),
+                },
+                TreeNode::Leaf {
+                    value: FixedPoint::from_raw(40, 16),
+                },
+            ],
+        });
+
+        assert_ne!(
+            model_elements(&lr),
+            model_elements(&tree),
+            "different model shapes must not flatten to the same stream"
+        );
+        assert_ne!(
+            commit_model(&lr),
+            commit_model(&tree),
+            "different model shapes must not share a commitment"
+        );
     }
 
     #[test]

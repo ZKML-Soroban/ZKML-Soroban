@@ -168,6 +168,15 @@ pub fn validate_model(
     Ok(report)
 }
 
+/// Run the model-only safety passes: parameter range and static overflow
+/// bounds. These need no dataset, so `commit` and `prove` can refuse a model
+/// that the tool already knows may overflow on chain before committing to it.
+pub fn check_safety(model: &Model, cfg: &QuantizationConfig) -> Result<(), ZkmlError> {
+    check_parameter_range(model)?;
+    check_overflow_bounds(model, cfg)?;
+    Ok(())
+}
+
 /// Check that all model parameters are within the Q16.16 representable range.
 fn check_parameter_range(model: &Model) -> Result<(), ZkmlError> {
     match model {

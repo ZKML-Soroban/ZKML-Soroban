@@ -24,9 +24,11 @@ the optimization for smaller proofs and faster proving.
 
 ## Can I verify a real proof on testnet today?
 
-Not yet. The contract's Groth16 verification is implemented and tested with a
-valid pairing fixture, but the prover does not yet produce Groth16 proofs (the
-STARK-to-Groth16 wrap and verification key export are pending). See
+Not on a live network yet. The full path is implemented and tested off-line:
+the prover produces a Groth16 bundle (STARK-to-Groth16 wrap on x86_64 Linux with
+Docker, plus verification key export), and the contract verifies a real receipt
+in the Soroban test environment. What is missing is a testnet deployment, so no
+real transaction has carried a proof. See
 [Known limitations](/security/known-limitations).
 
 ## What model sizes are supported?

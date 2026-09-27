@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `6`                                     |
+| Interface `VERSION`       | `7`                                     |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -18,7 +18,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Function | Auth | Returns | Description |
 | -------- | ---- | ------- | ----------- |
-| `initialize(admin: Address, model_hash: Bytes, vk: VerificationKey)` | `admin` | `()` | Stores admin, model commitment, and verification key; sets counter to 0 and pause to false; bumps instance TTL. Panics with `contract is already initialized` on a second call. |
+| `__constructor(admin: Address, model_hash: Bytes, vk: VerificationKey)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and verification key; sets counter to 0 and pause to false; bumps instance TTL. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
 | `verify_inference(proof_a: Bytes, proof_b: Bytes, proof_c: Bytes, public_inputs: Bytes)` | none | `Result<(), VerificationError>` | Verifies the proof, enforces the nullifier, records the result, emits `verified`. |
 | `get_result()` | none | `InferenceRecord` | Last verified record. Panics if none has been recorded. |
 | `get_model_hash()` | none | `Bytes` | Registered model commitment. Panics before initialization. |
@@ -28,7 +28,8 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `version()` | none | `u32` | Interface version. |
 | `set_verification_key(vk: VerificationKey)` | admin | `()` | Rotates the verification key. |
 | `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. |
-| `set_admin(new_admin: Address)` | admin | `()` | Transfers admin rights. |
+| `propose_admin(new_admin: Address)` | admin | `()` | Records a pending admin. The transfer is not effective until the pending admin accepts. |
+| `accept_admin()` | pending admin | `()` | Completes the transfer started by `propose_admin`. Two-step, so a mistyped address cannot orphan the contract. |
 | `set_pause(paused: bool)` | admin | `()` | Pauses or resumes verification. |
 | `verify_receipt(seal: Bytes, journal: Bytes)` | none | `Result<InferenceRecord, VerificationError>` | Verifies a RISC Zero Groth16 receipt, enforces the nullifier, records the result, emits `verified`, and returns the record. |
 | `set_risc0_config(config: Risc0Config)` | admin | `()` | Registers the guest image id, control root, BN254 control id and seal selector. Refuses a control id that is not a valid BN254 scalar. Emits `cfg_upd`. |
@@ -62,11 +63,11 @@ Those values are pinned to a RISC Zero version **and** to a guest build. Any
 change to the guest or to `zkml-common` changes the image id, so re-export
 after either, or every proof fails.
 
-Two keys are registered, not one. `initialize` takes the key for the
+Two keys are registered, not one. The constructor takes the key for the
 native-circuit path, which has five `ic` points for four public inputs;
 `set_risc0_vk` takes RISC Zero's universal key, which has six for five. They are
 not interchangeable. That is also why the RISC Zero values are set by their own
-calls instead of by `initialize`: a contract serves both routes, and each needs
+calls instead of by the constructor: a contract serves both routes, and each needs
 its own key.
 
 Checks run cheapest first, and everything that can fail without cryptography
@@ -186,7 +187,11 @@ Length errors:
 1. Fail with `ContractNotInitialized` if not initialized.
 2. Fail with `VerificationFailed` if paused.
 3. Deserialize `proof_a`, `proof_b`, `proof_c` (length-checked).
-4. Parse the 80-byte public inputs.
+4. Parse the 80-byte public inputs. Fail with `NonCanonicalPublicInput` if
+   `model_hash` or `input_hash`, read as a little-endian integer, is not below
+   the BN254 scalar modulus `r`. The pairing reduces each field modulo `r`
+   while the nullifier hashes the raw bytes, so only the canonical encoding may
+   be accepted, or one proof could be recorded once per multiple of `r`.
 5. Fail with `VerificationFailed` if `model_hash` differs from the stored value.
 6. Deserialize the verification key.
 7. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
@@ -222,8 +227,17 @@ when the admin changes what verifies:
 | ---- | ------ | ---- |
 | `set_risc0_config` | `("cfg_upd", "risc0")` | the new `image_id` |
 | `set_risc0_vk` | `("cfg_upd", "risc0_vk")` | `()` |
+| `set_verification_key` | `("cfg_upd", "vk")` | `()` |
+| `set_model_hash` | `("cfg_upd", "mdl_hash")` | the new `model_hash` |
+| `propose_admin` | `("cfg_upd", "adm_prop")` | the proposed admin `Address` |
+| `accept_admin` | `("cfg_upd", "admin")` | the new admin `Address` |
+| `set_pause` | `("cfg_upd", "pause")` | the new flag, a `bool` |
 
-The other admin setters emit logs only, not events.
+Every admin setter emits one, so each of them is observable on chain. The setters
+also write a `log!` line, which is useful when running against a local network
+with the `contract-with-logs` profile, but the deployed contract is built with
+`debug-assertions = false` and `log!` is compiled out, so the event is the only
+record that survives.
 
 ## Storage
 
@@ -250,7 +264,7 @@ The other admin setters emit logs only, not events.
 ## TTL policy
 
 Instance storage shares the contract instance lifetime. The contract calls
-`extend_ttl(threshold, extend_to)` at the end of `initialize` and after every
+`extend_ttl(threshold, extend_to)` at the end of the constructor and after every
 successful `verify_inference`:
 
 | Constant                 | Value                               |

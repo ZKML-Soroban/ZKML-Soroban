@@ -54,6 +54,10 @@ const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
 const NULLIFIER_PREFIX: Symbol = symbol_short!("nullifier");
 const ADMIN: Symbol = symbol_short!("admin");
+/// The address that has been proposed as the next admin but has not yet
+/// accepted. Admin transfer is two-step so a mistyped address cannot orphan
+/// the contract.
+const PENDING_ADMIN: Symbol = symbol_short!("pend_adm");
 const PAUSED: Symbol = symbol_short!("paused");
 
 /// Ledgers per day on Stellar (~5s per ledger).
@@ -68,7 +72,10 @@ const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 
 /// Contract interface version, bumped on breaking interface changes.
-pub const VERSION: u32 = 6;
+///
+/// 6 -> 7: `initialize` was removed and replaced by a `__constructor`, and a
+/// `NonCanonicalPublicInput` error was added. Both change the interface.
+pub const VERSION: u32 = 7;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -102,6 +109,15 @@ pub enum VerificationError {
     /// neither the seal nor the journal; it only enters the claim digest, so a
     /// receipt from another guest can only surface as a failed pairing.
     Risc0NotConfigured = 14,
+    /// A 32-byte public input is not below the BN254 scalar modulus `r`.
+    ///
+    /// The pairing reads each field as a scalar, and the host reduces modulo `r`
+    /// without complaint, so `x` and `x + r` are the same scalar. The nullifier,
+    /// though, is `sha256` of the raw bytes. Without this check the same proof
+    /// could be submitted again under `x + r`, hashing to a different nullifier
+    /// and passing the replay guard. Only a canonical encoding is accepted, the
+    /// same rule `set_risc0_config` applies to `bn254_control_id`.
+    NonCanonicalPublicInput = 15,
 }
 
 /// On-chain representation of BN254 Groth16 verification key.
@@ -407,13 +423,19 @@ impl ZkmlVerifierContract {
         )
     }
 
-    /// Initialize the contract with a model commitment and Groth16 verification key. Call exactly once.
-    /// Initialize the contract with a model commitment and verification key. Call exactly once.
-    pub fn initialize(env: Env, admin: Address, model_hash: Bytes, vk: VerificationKey) {
+    /// Set the admin, the model commitment and the Groth16 verification key, at
+    /// deploy time.
+    ///
+    /// This is a constructor (CAP-0058), so the protocol runs it once, atomically
+    /// with the deployment, and no separate initialize transaction exists. That
+    /// is deliberate: a public `initialize` left a window between deploy and init
+    /// in which anyone could call it first, seize the admin role and register a
+    /// verification key of their choosing. A constructor closes the window, since
+    /// its arguments are supplied by whoever deploys, in the same transaction.
+    ///
+    /// `admin.require_auth()` keeps the admin address one the deployer controls.
+    pub fn __constructor(env: Env, admin: Address, model_hash: Bytes, vk: VerificationKey) {
         admin.require_auth();
-        if env.storage().instance().has(&INITIALIZED) {
-            panic!("contract is already initialized");
-        }
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
@@ -473,6 +495,17 @@ impl ZkmlVerifierContract {
             return Err(VerificationError::VerificationFailed);
         }
 
+        // Refuse a replay before paying for the pairing. The nullifier depends
+        // only on the public inputs, so it can be checked now; a used one costs
+        // ~30M instructions less this way. No state is written until success, so
+        // moving the check earlier changes nothing but the cost of a replay.
+        // verify_receipt already checks its nullifier before the pairing.
+        let nullifier = Self::derive_nullifier(&env, &public_inputs);
+        let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
+        if env.storage().persistent().has(&nullifier_key) {
+            return Err(VerificationError::ProofAlreadyUsed);
+        }
+
         // Convert public inputs to field elements for L computation
         let bn254 = env.crypto().bn254();
 
@@ -497,15 +530,8 @@ impl ZkmlVerifierContract {
             return Err(VerificationError::VerificationFailed);
         }
 
-        // Derive nullifier from public inputs to prevent replay attacks
-        let nullifier = Self::derive_nullifier(&env, &public_inputs);
-
-        // Check if this proof has already been used
-        let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
-        if env.storage().persistent().has(&nullifier_key) {
-            return Err(VerificationError::ProofAlreadyUsed);
-        }
-
+        // Spend the nullifier now that the proof verified. It was checked for
+        // replay before the pairing; this is the first state write.
         // Store nullifier in persistent storage with TTL bump
         // Use the network maximum persistent TTL (env.storage().max_ttl())
         // This ensures nullifiers persist for the maximum allowed duration
@@ -791,6 +817,27 @@ impl ZkmlVerifierContract {
     /// - class_label: 8 bytes (canonical i64 in little-endian)
     ///
     /// Returns an error if any field has non-canonical length.
+    /// Refuse a 32-byte field that is not already reduced modulo `r`.
+    ///
+    /// `bytes_to_fr` reads these little-endian and the host reduces silently, so
+    /// `x` and `x + r` reach the pairing as the same scalar. The nullifier is
+    /// `sha256` over the raw bytes, so accepting both would let one proof be
+    /// recorded once per multiple of `r` that still fits in 32 bytes. Rejecting
+    /// the non-canonical encoding keeps one inference to one nullifier.
+    fn require_canonical_scalar(field: &Bytes) -> Result<(), VerificationError> {
+        let mut le = [0u8; 32];
+        field.copy_into_slice(&mut le);
+        // BN254_SCALAR_MODULUS is big-endian, so compare in that order.
+        let mut be = [0u8; 32];
+        for i in 0..32 {
+            be[i] = le[31 - i];
+        }
+        if be >= BN254_SCALAR_MODULUS {
+            return Err(VerificationError::NonCanonicalPublicInput);
+        }
+        Ok(())
+    }
+
     fn parse_public_inputs(
         env: &Env,
         public_inputs: &Bytes,
@@ -806,6 +853,7 @@ impl ZkmlVerifierContract {
         if model_hash.len() != 32 {
             return Err(VerificationError::InvalidPublicInputLength);
         }
+        Self::require_canonical_scalar(&model_hash)?;
         parsed.push_back(model_hash);
         offset += 32;
 
@@ -817,6 +865,7 @@ impl ZkmlVerifierContract {
         if input_hash.len() != 32 {
             return Err(VerificationError::InvalidPublicInputLength);
         }
+        Self::require_canonical_scalar(&input_hash)?;
         parsed.push_back(input_hash);
         offset += 32;
 
@@ -937,6 +986,13 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
         log!(&env, "Verification key updated by admin");
+        // An event, not just a log: `log!` is compiled out of the contract
+        // profile, so in the deployed WASM a log leaves no trace at all. This is
+        // the key `verify_inference` checks against, so the change has to be
+        // observable on chain.
+        #[allow(deprecated)]
+        env.events()
+            .publish((symbol_short!("cfg_upd"), symbol_short!("vk")), ());
     }
 
     /// Set a new model hash. Only callable by admin.
@@ -949,18 +1005,60 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         log!(&env, "Model hash updated by admin");
+        // The commitment every proof is checked against, so publish the new one.
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("cfg_upd"), symbol_short!("mdl_hash")),
+            model_hash.clone(),
+        );
     }
 
-    /// Set a new admin address. Only callable by current admin.
-    pub fn set_admin(env: Env, new_admin: Address) {
+    /// Propose a new admin. Only callable by the current admin.
+    ///
+    /// Admin transfer is two-step: this records a pending admin, and the
+    /// transfer only takes effect when that address calls [`accept_admin`]. A
+    /// single-step `set_admin` could hand the contract to a mistyped address
+    /// that no one controls, leaving it with no admin forever: no one could
+    /// pause it, rotate the key or change the model. Requiring the new admin to
+    /// accept makes a wrong address a no-op instead of a loss.
+    pub fn propose_admin(env: Env, new_admin: Address) {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN)
             .expect("contract is not initialized");
         admin.require_auth();
-        env.storage().instance().set(&ADMIN, &new_admin);
-        log!(&env, "Admin updated");
+        env.storage().instance().set(&PENDING_ADMIN, &new_admin);
+        Self::bump_instance_ttl(&env);
+        log!(&env, "Admin transfer proposed");
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("cfg_upd"), symbol_short!("adm_prop")),
+            new_admin.clone(),
+        );
+    }
+
+    /// Accept a pending admin transfer. Only callable by the proposed admin.
+    ///
+    /// Completes the two-step transfer started by [`propose_admin`]. Requiring
+    /// the proposed admin's own authorization proves the address is controlled
+    /// before it becomes the admin.
+    pub fn accept_admin(env: Env) {
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .expect("no pending admin transfer");
+        pending.require_auth();
+        env.storage().instance().set(&ADMIN, &pending);
+        env.storage().instance().remove(&PENDING_ADMIN);
+        Self::bump_instance_ttl(&env);
+        log!(&env, "Admin transfer accepted");
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("cfg_upd"), symbol_short!("admin")),
+            pending.clone(),
+        );
     }
 
     /// Set the pause flag. Only callable by admin.
@@ -973,6 +1071,10 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&PAUSED, &paused);
         log!(&env, "Pause flag set to {}", paused);
+        // Pausing stops every verification, so callers need to see it happen.
+        #[allow(deprecated)]
+        env.events()
+            .publish((symbol_short!("cfg_upd"), symbol_short!("pause")), paused);
     }
 
     /// Get the current admin address.
@@ -1040,28 +1142,25 @@ mod test {
     #[test]
     fn test_initialize() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
         let vk = create_dummy_vk(&env, 4); // 4 IC points for model_hash, input_hash, output
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        // The constructor ran at deploy, so the state it sets is already in place.
+        assert_eq!(client.get_admin(), admin);
+        assert_eq!(client.get_model_hash(), model_hash);
+        assert_eq!(client.get_verification_count(), 0);
+        assert!(!client.is_paused());
     }
 
-    #[test]
-    #[should_panic(expected = "contract is already initialized")]
-    fn test_double_initialize() {
-        let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
-        let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
-        env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
-        client.initialize(&admin, &model_hash, &vk);
-    }
+    // The double-initialize test is gone: initialization is now a constructor,
+    // which the protocol runs exactly once at deploy, so a second call cannot
+    // be expressed.
 }
 
 #[cfg(test)]
@@ -1072,13 +1171,15 @@ mod test_guards {
     use test_utils::create_dummy_vk;
 
     fn setup(env: &Env) -> ZkmlVerifierContractClient<'_> {
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
         let vk = create_dummy_vk(env, 5);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         client
     }
 
@@ -1169,15 +1270,17 @@ mod test_guards {
     #[test]
     fn verify_vk_length_mismatch() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with VK that has 6 IC points
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 6);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Provide public inputs for single output + class_label (4 scalars: model_hash, input_hash, output, class_label)
         // This requires 5 IC points, but VK has 6
@@ -1196,15 +1299,17 @@ mod test_guards {
     #[test]
     fn verify_multi_scalar_output() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with VK that has 5 IC points for single output + class_label (4 scalars)
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5); // ic[0], ic[1], ic[2], ic[3], ic[4]
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Provide public inputs for single output + class_label: 32+32+8+8 = 80 bytes
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
@@ -1225,15 +1330,17 @@ mod test_guards {
     #[test]
     fn verify_wrong_model_hash() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Try to verify with different model hash [5u8; 32]
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
@@ -1248,15 +1355,17 @@ mod test_guards {
     #[test]
     fn verify_replay_attack_prevented() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // First verification should succeed (or fail with verification error, but not ProofAlreadyUsed)
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
@@ -1280,15 +1389,17 @@ mod test_guards {
     #[test]
     fn verify_distinct_inputs_independent() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 4);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
@@ -1318,15 +1429,17 @@ mod test_guards {
     #[test]
     fn verify_distinct_outputs_independent() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 4);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
         let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
@@ -1359,19 +1472,11 @@ mod test_poseidon_cross_check {
     use super::*;
     use soroban_sdk::Env;
 
-    #[test]
-    fn verify_before_initialize_returns_error() {
-        let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
-        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
-        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
-        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[7u8; 80]); // 32+32+8+8 = 80 bytes
-
-        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(result, Err(Ok(VerificationError::ContractNotInitialized)));
-    }
+    // `verify_before_initialize_returns_error` is gone: with a constructor a
+    // deployed contract is always initialized, so the uninitialized state it
+    // exercised cannot be reached. The `ContractNotInitialized` guard stays in
+    // `verify_inference` as defense in depth against any future non-constructor
+    // path.
 
     #[test]
     fn model_commitment_is_reproducible() {
@@ -1390,46 +1495,52 @@ mod test_admin_auth {
     use test_utils::{create_dummy_vk, dummy_proof};
 
     fn setup_with_admin(env: &Env) -> (ZkmlVerifierContractClient<'_>, Address) {
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[3u8; 32]);
         let vk = create_dummy_vk(env, 5);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         (client, admin)
     }
 
     #[test]
-    fn initialize_without_admin_auth_fails() {
+    fn constructor_requires_admin_auth() {
+        // The constructor calls `admin.require_auth()`, so deploying demands the
+        // admin's authorization, recorded in `env.auths()` against the admin
+        // address. That requirement is what stops a third party from deploying
+        // under an admin they do not control, which is the front-running the
+        // old public `initialize` allowed.
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        env.mock_all_auths();
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
         let vk = create_dummy_vk(&env, 4);
 
-        // Try to initialize without mocking auth - should fail
-        let result = client.try_initialize(&admin, &model_hash, &vk);
-        assert!(result.is_err());
+        let _ = env.register(ZkmlVerifierContract, (admin.clone(), model_hash, vk));
+
+        assert!(
+            env.auths().iter().any(|(addr, _)| addr == &admin),
+            "the constructor must require the admin's authorization"
+        );
     }
 
     #[test]
-    fn initialize_with_admin_auth_succeeds() {
+    fn constructor_with_admin_auth_succeeds() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
         let vk = create_dummy_vk(&env, 4);
 
-        // Mock auth for admin
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(ZkmlVerifierContract, (admin.clone(), model_hash, vk));
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
-        // Verify admin was stored
-        let stored_admin = client.get_admin();
-        assert_eq!(stored_admin, admin);
+        // The admin passed at deploy time is the one stored.
+        assert_eq!(client.get_admin(), admin);
     }
 
     #[test]
@@ -1450,15 +1561,17 @@ mod test_admin_auth {
     #[test]
     fn set_model_hash_authorized_succeeds() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5);
 
         // Initialize with auth
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         let new_model_hash = Bytes::from_slice(&env, &[5u8; 32]);
 
@@ -1474,15 +1587,17 @@ mod test_admin_auth {
     #[test]
     fn set_model_hash_unauthorized_fails() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
         let vk = create_dummy_vk(&env, 5);
 
         // Initialize with auth
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         let (proof_a, proof_b, proof_c) = dummy_proof(&env);
         let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
@@ -1492,16 +1607,34 @@ mod test_admin_auth {
     }
 
     #[test]
-    fn set_admin_authorized_succeeds() {
+    fn admin_transfer_is_two_step() {
+        let env = Env::default();
+        let (client, old_admin) = setup_with_admin(&env);
+        let new_admin = Address::generate(&env);
+
+        // Proposing does not change the admin yet.
+        client.propose_admin(&new_admin);
+        assert_eq!(
+            client.get_admin(),
+            old_admin,
+            "proposal alone must not transfer"
+        );
+
+        // Accepting completes the transfer.
+        client.accept_admin();
+        assert_eq!(
+            client.get_admin(),
+            new_admin,
+            "acceptance completes the transfer"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "no pending admin transfer")]
+    fn accept_admin_without_a_proposal_fails() {
         let env = Env::default();
         let (client, _admin) = setup_with_admin(&env);
-        let _new_admin = Address::generate(&env);
-
-        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
-
-        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        client.accept_admin();
     }
 
     #[test]
@@ -1550,13 +1683,23 @@ mod test_admin_auth {
 #[cfg(test)]
 mod test_verified_event {
     use super::*;
-    use soroban_sdk::testutils::Events;
+    use soroban_sdk::testutils::{Address as _, Events};
     use soroban_sdk::IntoVal;
 
     #[test]
     fn verify_emits_verified_event_with_model_hash_and_output() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
+        // This test calls the internal emitter directly through `as_contract`,
+        // so the constructor arguments are placeholders; it never verifies.
+        env.mock_all_auths();
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (
+                Address::generate(&env),
+                Bytes::from_slice(&env, &[0u8; 32]),
+                test_utils::create_dummy_vk(&env, 4),
+            ),
+        );
 
         let model_hash = Bytes::from_slice(&env, &[0xabu8; 32]);
         let output = Bytes::from_slice(&env, &[1, 2, 3, 4, 5, 6, 7, 8]);
@@ -1722,8 +1865,6 @@ mod test_budget {
     #[test]
     fn test_verifier_accept_path_and_resource_budget() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // --- Public-input scalars: model=3, input=5, output=42, class_label=7. ---
         // bytes_to_fr interprets input as little-endian, so we encode
@@ -1757,7 +1898,11 @@ mod test_budget {
         let vk = create_accept_fixture_vk(&env);
         let admin = Address::generate(&env);
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // --- Proof that genuinely satisfies the pairing ---
         let (proof_a, proof_b, proof_c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
@@ -1840,13 +1985,15 @@ mod test_pause_and_counter {
     #[test]
     fn paused_contract_rejects_and_records_nothing() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let vk = create_accept_fixture_vk(&env);
 
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash(&env, 3), &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash(&env, 3), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         client.set_pause(&true);
 
         // A proof that would be accepted if the contract were running.
@@ -1874,13 +2021,15 @@ mod test_pause_and_counter {
     #[test]
     fn counter_counts_only_successful_verifications() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let vk = create_accept_fixture_vk(&env);
 
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash(&env, 3), &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash(&env, 3), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         let (a1, b1, c1) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
         assert_eq!(
@@ -1912,13 +2061,15 @@ mod test_pause_and_counter {
     #[test]
     fn a_replay_is_refused_and_leaves_the_counter_alone() {
         let env = Env::default();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let vk = create_accept_fixture_vk(&env);
 
         env.mock_all_auths();
-        client.initialize(&admin, &model_hash(&env, 3), &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash(&env, 3), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
         let inputs = public_inputs(&env, 3, 5, 42, 7);
@@ -1937,6 +2088,327 @@ mod test_pause_and_counter {
             client.get_verification_count(),
             1,
             "a refused replay must not move the counter"
+        );
+    }
+}
+
+/// Every admin setter has to leave a trace on chain.
+///
+/// `log!` is not that trace: the `contract` profile sets
+/// `debug-assertions = false`, so in the deployed WASM the log lines do not
+/// exist. The threat model accepts a malicious admin on the grounds that the
+/// change is *detectable*, and that only holds if each setter emits an event.
+/// These tests are what keeps that argument true.
+#[cfg(test)]
+mod test_admin_events {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Events};
+    use soroban_sdk::{Env, IntoVal};
+
+    fn setup(env: &Env) -> ZkmlVerifierContractClient<'_> {
+        env.mock_all_auths();
+        let admin = Address::generate(env);
+        let model_hash = Bytes::from_slice(env, &[7u8; 32]);
+        let vk = crate::test_utils::create_dummy_vk(env, 5);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        client
+    }
+
+    #[test]
+    fn set_verification_key_emits_an_event() {
+        let env = Env::default();
+        let client = setup(&env);
+        let vk = crate::test_utils::create_dummy_vk(&env, 4);
+
+        client.set_verification_key(&vk);
+
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("vk")).into_val(&env),
+                    ().into_val(&env),
+                ),
+            ],
+            "changing the key verify_inference checks against must be observable"
+        );
+    }
+
+    #[test]
+    fn set_model_hash_emits_the_new_commitment() {
+        let env = Env::default();
+        let client = setup(&env);
+        let new_hash = Bytes::from_slice(&env, &[9u8; 32]);
+
+        client.set_model_hash(&new_hash);
+
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("mdl_hash")).into_val(&env),
+                    new_hash.into_val(&env),
+                ),
+            ],
+            "the event carries the commitment now in force"
+        );
+    }
+
+    #[test]
+    fn admin_transfer_emits_propose_then_accept() {
+        let env = Env::default();
+        let client = setup(&env);
+        let new_admin = Address::generate(&env);
+
+        // Proposing emits adm_prop with the proposed address.
+        client.propose_admin(&new_admin);
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("adm_prop")).into_val(&env),
+                    new_admin.clone().into_val(&env),
+                ),
+            ],
+            "a proposed transfer must be visible"
+        );
+
+        // Accepting emits admin with the address that now controls the contract.
+        client.accept_admin();
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("admin")).into_val(&env),
+                    new_admin.into_val(&env),
+                ),
+            ],
+            "the completed handover is the change that most needs a record"
+        );
+    }
+
+    /// Both directions, asserted one call at a time.
+    ///
+    /// `env.events().all()` holds only what the last invocation published, not a
+    /// running log, so the two calls have to be checked separately.
+    #[test]
+    fn set_pause_emits_the_flag_both_ways() {
+        let env = Env::default();
+        let client = setup(&env);
+
+        for paused in [true, false] {
+            client.set_pause(&paused);
+            assert_eq!(
+                env.events().all().filter_by_contract(&client.address),
+                vec![
+                    &env,
+                    (
+                        client.address.clone(),
+                        (symbol_short!("cfg_upd"), symbol_short!("pause")).into_val(&env),
+                        paused.into_val(&env),
+                    ),
+                ],
+                "set_pause({paused}) must leave a record"
+            );
+        }
+    }
+}
+
+/// One inference, one nullifier, whatever the encoding.
+///
+/// Each 32-byte public input reaches the pairing as a BN254 scalar, and the host
+/// reduces modulo `r` silently, so `x` and `x + r` are the same scalar. The
+/// nullifier is `sha256` over the raw bytes, so before `require_canonical_scalar`
+/// a single valid proof could be recorded once per multiple of `r` that still fit
+/// in 32 bytes: the counter reached 6 from one proof. These tests pin the rule
+/// that keeps the two views in agreement.
+#[cfg(test)]
+mod test_canonical_public_inputs {
+    use super::*;
+    use crate::test_budget::{compute_valid_proof, create_accept_fixture_vk};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::Env;
+
+    /// `r`, the BN254 scalar field modulus, big-endian. Same value as
+    /// `BN254_SCALAR_MODULUS`, repeated here so the test would catch that
+    /// constant being changed as well.
+    const R_BE: [u8; 32] = [
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58,
+        0x5d, 0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00,
+        0x00, 0x01,
+    ];
+
+    /// Little-endian 32 bytes holding `value + k * r`, which the contract reads
+    /// as the scalar `value`.
+    fn field_bytes(value: u64, k: u64) -> [u8; 32] {
+        let mut acc = [0u8; 32];
+        acc[24..32].copy_from_slice(&value.to_be_bytes());
+        for _ in 0..k {
+            let mut carry = 0u16;
+            for i in (0..32).rev() {
+                let sum = acc[i] as u16 + R_BE[i] as u16 + carry;
+                acc[i] = (sum & 0xff) as u8;
+                carry = sum >> 8;
+            }
+        }
+        let mut le = [0u8; 32];
+        for i in 0..32 {
+            le[i] = acc[31 - i];
+        }
+        le
+    }
+
+    fn public_inputs(
+        env: &Env,
+        model_le: [u8; 32],
+        input_le: [u8; 32],
+        output: u64,
+        label: u64,
+    ) -> Bytes {
+        let mut buf = [0u8; 80];
+        buf[0..32].copy_from_slice(&model_le);
+        buf[32..64].copy_from_slice(&input_le);
+        buf[64..72].copy_from_slice(&output.to_le_bytes());
+        buf[72..80].copy_from_slice(&label.to_le_bytes());
+        Bytes::from_slice(env, &buf)
+    }
+
+    fn setup(env: &Env) -> (ZkmlVerifierContractClient<'_>, VerificationKey) {
+        env.mock_all_auths();
+        let admin = Address::generate(env);
+        let vk = create_accept_fixture_vk(env);
+        let model_hash = Bytes::from_slice(env, &field_bytes(3, 0));
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        (client, vk)
+    }
+
+    /// The whole point: one proof cannot be re-encoded into a second record.
+    #[test]
+    fn re_encoding_the_input_hash_cannot_replay_a_proof() {
+        let env = Env::default();
+        let (client, vk) = setup(&env);
+        let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+
+        // The canonical encoding is accepted once.
+        assert_eq!(
+            client.try_verify_inference(
+                &a,
+                &b,
+                &c,
+                &public_inputs(&env, field_bytes(3, 0), field_bytes(5, 0), 42, 7)
+            ),
+            Ok(Ok(()))
+        );
+        assert_eq!(client.get_verification_count(), 1);
+
+        // Every non-canonical encoding of the same scalar is refused outright,
+        // so it never reaches the nullifier check.
+        for k in 1..=5u64 {
+            assert_eq!(
+                client.try_verify_inference(
+                    &a,
+                    &b,
+                    &c,
+                    &public_inputs(&env, field_bytes(3, 0), field_bytes(5, k), 42, 7)
+                ),
+                Err(Ok(VerificationError::NonCanonicalPublicInput)),
+                "input_hash of 5 + {k}r is the same scalar and must not be a second record"
+            );
+        }
+
+        // And the byte-identical resubmission is still a replay.
+        assert_eq!(
+            client.try_verify_inference(
+                &a,
+                &b,
+                &c,
+                &public_inputs(&env, field_bytes(3, 0), field_bytes(5, 0), 42, 7)
+            ),
+            Err(Ok(VerificationError::ProofAlreadyUsed))
+        );
+
+        assert_eq!(
+            client.get_verification_count(),
+            1,
+            "one proof, one record, whatever the encoding"
+        );
+    }
+
+    /// `model_hash` gets the same treatment, before it is compared to storage.
+    #[test]
+    fn a_non_canonical_model_hash_is_refused() {
+        let env = Env::default();
+        let (client, vk) = setup(&env);
+        let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+
+        assert_eq!(
+            client.try_verify_inference(
+                &a,
+                &b,
+                &c,
+                &public_inputs(&env, field_bytes(3, 1), field_bytes(5, 0), 42, 7)
+            ),
+            Err(Ok(VerificationError::NonCanonicalPublicInput))
+        );
+        assert_eq!(client.get_verification_count(), 0);
+    }
+
+    /// Exactly `r` is the first rejected value, and `r - 1` the last accepted
+    /// one, so the comparison is `>=` and not `>`.
+    ///
+    /// Both cases use the valid proof, because `verify_inference` deserializes
+    /// the proof before it parses the public inputs: a dummy proof would fail as
+    /// `MalformedProofA` and never reach this check.
+    #[test]
+    fn the_boundary_is_r_itself() {
+        let env = Env::default();
+        let (client, vk) = setup(&env);
+        let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+
+        let mut r_le = [0u8; 32];
+        for i in 0..32 {
+            r_le[i] = R_BE[31 - i];
+        }
+        assert_eq!(
+            client.try_verify_inference(
+                &a,
+                &b,
+                &c,
+                &public_inputs(&env, field_bytes(3, 0), r_le, 42, 7)
+            ),
+            Err(Ok(VerificationError::NonCanonicalPublicInput)),
+            "r is not a canonical scalar"
+        );
+
+        // r - 1 is the largest canonical value, so it gets past this check and
+        // fails the pairing instead, the proof having been built for 5.
+        let mut minus_one = r_le;
+        minus_one[0] -= 1;
+        assert_eq!(
+            client.try_verify_inference(
+                &a,
+                &b,
+                &c,
+                &public_inputs(&env, field_bytes(3, 0), minus_one, 42, 7)
+            ),
+            Err(Ok(VerificationError::VerificationFailed)),
+            "r - 1 is canonical and must reach the pairing"
         );
     }
 }
@@ -1969,12 +2441,14 @@ mod test_risc0_receipts {
 
     fn setup(env: &Env) -> (ZkmlVerifierContractClient<'_>, Address) {
         env.mock_all_auths();
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
         let model_hash = Bytes::from_slice(env, &[0x11; 32]);
         let vk = crate::test_utils::create_dummy_vk(env, 5);
-        client.initialize(&admin, &model_hash, &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         (client, admin)
     }
 
@@ -2230,11 +2704,13 @@ mod test_golden_receipt {
         let decoded = zkml_common::journal::JournalV1::decode(&journal_raw).expect("journal");
         let model_hash = Bytes::from_slice(env, &decoded.model_hash);
 
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
         let route_b_vk = crate::test_utils::create_dummy_vk(env, 5);
-        client.initialize(&admin, &model_hash, &route_b_vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), route_b_vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
 
         // The image id comes from the bundle, which is self-describing. Any
         // change to the guest or to zkml-common changes the guest's image id,
@@ -2695,11 +3171,17 @@ mod test_golden_receipt {
         let seal = bytes(&env, bundle["seal"].as_str().unwrap());
         let journal = bytes(&env, bundle["journal"].as_str().unwrap());
 
-        let contract_id = env.register(ZkmlVerifierContract, ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let vk = crate::test_utils::create_dummy_vk(&env, 5);
-        client.initialize(&admin, &Bytes::from_slice(&env, &[0x11; 32]), &vk);
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (
+                admin.clone(),
+                Bytes::from_slice(&env, &[0x11; 32]),
+                vk.clone(),
+            ),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         assert_eq!(
             client.try_verify_receipt(&seal, &journal),
@@ -2762,9 +3244,6 @@ mod test_wasm_budget {
         env.mock_all_auths();
         env.cost_estimate().budget().reset_unlimited();
 
-        let contract_id = env.register(wasm.as_slice(), ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
-
         let bundle = read("groth16_bundle.json");
         let vk_json = read("risc0_vk.json");
         let b = |hex: &str| Bytes::from_slice(&env, &hex_to_vec(hex));
@@ -2774,11 +3253,15 @@ mod test_wasm_budget {
 
         let admin = Address::generate(&env);
         let route_b_vk = crate::test_utils::create_dummy_vk(&env, 5);
-        client.initialize(
-            &admin,
-            &Bytes::from_slice(&env, &decoded.model_hash),
-            &route_b_vk,
+        let contract_id = env.register(
+            wasm.as_slice(),
+            (
+                admin,
+                Bytes::from_slice(&env, &decoded.model_hash),
+                route_b_vk,
+            ),
         );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let b32 = |hex: &str| -> BytesN<32> {
             BytesN::from_array(&env, &hex_to_vec(hex).try_into().expect("32 bytes"))
         };
@@ -2841,9 +3324,6 @@ mod test_wasm_budget {
         let env = Env::default();
         env.mock_all_auths();
         env.cost_estimate().budget().reset_unlimited();
-        let contract_id = env.register(wasm.as_slice(), ());
-        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
-
         // Same scalars and layout as test_budget: model=3, input=5, output=42,
         // class_label=7, each little-endian in the 80-byte layout.
         let mut inputs = [0u8; 80];
@@ -2853,7 +3333,11 @@ mod test_wasm_budget {
         inputs[72] = 7;
         let model_hash = Bytes::from_slice(&env, &inputs[0..32]);
         let vk = crate::test_budget::create_accept_fixture_vk(&env);
-        client.initialize(&Address::generate(&env), &model_hash, &vk);
+        let contract_id = env.register(
+            wasm.as_slice(),
+            (Address::generate(&env), model_hash, vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let (a, b, c) = crate::test_budget::compute_valid_proof(&env, &vk, 3, 5, 42, 7);
         let public_inputs = Bytes::from_slice(&env, &inputs);
 
