@@ -48,7 +48,7 @@
       }
     },
     {
-      "description": "Same weights against 0.1, -0.3 and 0.7: none of the three products lands on a whole Q16.16 step, and the shift floors each one, including the negative operands",
+      "description": "Same weights against 0.1, -0.3 and -0.7. 2.25 * -0.7 is negative and not a whole Q16.16 step, so the shift floors it to -103219 where truncating toward zero would give -103218. The other two products are positive, and 1.5 * 0.1 is exact",
       "inputs": [
         {
           "value": 6554,
@@ -59,12 +59,12 @@
           "scale": 16
         },
         {
-          "value": 45875,
+          "value": -45875,
           "scale": 16
         }
       ],
       "expected_output": {
-        "value": 144178,
+        "value": -62259,
         "scale": 16
       }
     }

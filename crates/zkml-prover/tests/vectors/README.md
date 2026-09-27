@@ -91,7 +91,7 @@ The current vector suite covers:
 - `logistic_regression_zero.json` - Zero score (cancellation)
 - `logistic_regression_at_threshold.json` - Score exactly equal to the decision threshold
 - `logistic_regression_negative_bias.json` - Positive products pulled below the threshold by the bias
-- `logistic_regression_mixed_signs.json` - Mixed signs in weights and inputs, with an inexact case that pins the floor of the shift
+- `logistic_regression_mixed_signs.json` - Mixed signs in weights and inputs, with a negative inexact product that pins the floor of the shift
 
 ### Error Paths
 - `error_feature_mismatch.json` - Feature vector length mismatch

@@ -132,17 +132,23 @@ def main():
     print(f"  raw: {result}")
     print()
 
-    # Mixed signs, inexact case: the shift floors, and it floors downwards on
-    # negative products too, which is where a naive truncation would disagree.
+    # Mixed signs, inexact case. The shift floors toward negative infinity, and
+    # that only differs from truncating toward zero on a product that is both
+    # negative and inexact. 2.25 * -0.7 is that product; the other two are
+    # positive, and 1.5 * 0.1 happens to land exactly on a Q16.16 step.
     print("Mixed signs, inexact (logistic_regression_mixed_signs.json):")
     weights = [quantize(1.5), quantize(-0.75), quantize(2.25)]
-    inputs = [quantize(0.1), quantize(-0.3), quantize(0.7)]
+    inputs = [quantize(0.1), quantize(-0.3), quantize(-0.7)]
     bias = quantize(0.25)
     for w, x in zip(weights, inputs):
-        product = (w * x) >> SCALE
+        wide = w * x
+        product = wide >> SCALE
+        truncated = -((-wide) // SCALE_FACTOR) if wide < 0 else wide // SCALE_FACTOR
         exact = dequantize(w) * dequantize(x)
+        note = "exact" if wide % SCALE_FACTOR == 0 else (
+            "floor differs from truncation" if product != truncated else "floor equals truncation")
         print(f"  {dequantize(w)} * {dequantize(x)}: raw {product} "
-              f"({dequantize(product)}), exact {exact}")
+              f"({dequantize(product)}), exact {exact}, {note}")
     result = logistic_regression_output(weights, inputs, bias)
     print(f"  total raw: {result}  ({dequantize(result)})")
     print()
