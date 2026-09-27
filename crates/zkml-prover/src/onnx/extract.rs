@@ -76,12 +76,16 @@ pub fn extract_linear_classifier(node: &NodeProto) -> Result<LogisticRegression,
     let weights_f64: Vec<f64> = coefficients.to_vec();
     let bias_f64 = intercepts[0];
 
-    // Quantize using existing helpers
-    let quantized_weights = weights_f64
-        .iter()
-        .map(|&w| FixedPoint::quantize(w))
-        .collect();
-    let quantized_bias = FixedPoint::quantize(bias_f64);
+    // Quantize with the checked path so a NaN or out-of-range coefficient is
+    // refused, not silently turned into 0 and committed to.
+    let mut quantized_weights = Vec::with_capacity(weights_f64.len());
+    for (i, &w) in weights_f64.iter().enumerate() {
+        quantized_weights.push(FixedPoint::try_quantize(w).map_err(|reason| {
+            OnnxImportError::MalformedModel(format!("coefficient {i}: {reason}"))
+        })?);
+    }
+    let quantized_bias = FixedPoint::try_quantize(bias_f64)
+        .map_err(|reason| OnnxImportError::MalformedModel(format!("intercept: {reason}")))?;
 
     Ok(LogisticRegression {
         weights: quantized_weights,
@@ -251,6 +255,32 @@ mod tests {
         assert!(result.is_ok());
         let lr = result.unwrap();
         assert_eq!(lr.weights.len(), 3);
+    }
+
+    /// A NaN coefficient is refused, not quantized to 0.
+    ///
+    /// `as i64` from `f64` maps NaN to 0, so before `try_quantize` a diverged
+    /// weight imported as 0 and the commitment bound to a model the user never
+    /// trained. The error names the coefficient so it can be found.
+    #[test]
+    fn a_non_finite_coefficient_is_refused() {
+        let node = make_node_with_coefficients(vec![0.5, f32::NAN, 0.25], vec![0.1]);
+        match extract_linear_classifier(&node) {
+            Err(OnnxImportError::MalformedModel(msg)) => {
+                assert!(
+                    msg.contains("coefficient 1") && msg.contains("not finite"),
+                    "expected the NaN coefficient to be named, got: {msg}"
+                );
+            }
+            other => panic!("a NaN coefficient must be refused, got {other:?}"),
+        }
+
+        // An infinite intercept is refused the same way.
+        let node = make_node_with_coefficients(vec![0.5, 0.25], vec![f32::INFINITY]);
+        assert!(matches!(
+            extract_linear_classifier(&node),
+            Err(OnnxImportError::MalformedModel(msg)) if msg.contains("intercept")
+        ));
     }
 
     #[test]

@@ -35,6 +35,11 @@ impl FixedPoint {
 
     /// Quantize a floating-point value into its fixed-point representation
     /// using the default scale.
+    ///
+    /// Saturates and turns `NaN` into `0`, because `as i64` from `f64` does.
+    /// Callers importing model parameters must use [`FixedPoint::try_quantize`]
+    /// instead, so a `NaN` or out-of-range weight is refused rather than
+    /// silently committing a model different from the one that was trained.
     #[cfg(feature = "std")]
     pub fn quantize(real: f64) -> Self {
         let factor = (1i64 << DEFAULT_SCALE) as f64;
@@ -42,6 +47,32 @@ impl FixedPoint {
             value: (real * factor).round() as i64,
             scale: DEFAULT_SCALE,
         }
+    }
+
+    /// Quantize, refusing a value that cannot be represented exactly enough to
+    /// commit to: `NaN`, an infinity, or a magnitude whose scaled, rounded form
+    /// does not fit in `i64`.
+    ///
+    /// `quantize` casts with `as i64`, which saturates and maps `NaN` to `0`, so
+    /// a diverged training run's `NaN` weight would import as `0` and the
+    /// Poseidon commitment would bind to a model the user never trained. This is
+    /// the checked path for the ONNX importer.
+    #[cfg(feature = "std")]
+    pub fn try_quantize(real: f64) -> Result<Self, &'static str> {
+        if !real.is_finite() {
+            return Err("value is not finite (NaN or infinity)");
+        }
+        let factor = (1i64 << DEFAULT_SCALE) as f64;
+        let scaled = (real * factor).round();
+        // i64::MAX is not exactly representable in f64; this bound is the first
+        // f64 at or above 2^63, so `<` keeps everything that casts faithfully.
+        if scaled >= 9_223_372_036_854_775_808.0 || scaled < -9_223_372_036_854_775_808.0 {
+            return Err("value is too large for the fixed-point range");
+        }
+        Ok(Self {
+            value: scaled as i64,
+            scale: DEFAULT_SCALE,
+        })
     }
 
     /// Reconstruct the approximate floating-point value.
@@ -62,6 +93,25 @@ mod tests {
         let fp = FixedPoint::quantize(original);
         let recovered = fp.dequantize();
         assert!((original - recovered).abs() < 1e-4);
+    }
+
+    #[test]
+    fn try_quantize_accepts_a_normal_value() {
+        let fp = FixedPoint::try_quantize(1.2345).expect("finite, in range");
+        assert!((fp.dequantize() - 1.2345).abs() < 1e-4);
+    }
+
+    #[test]
+    fn try_quantize_refuses_non_finite_and_out_of_range() {
+        assert!(FixedPoint::try_quantize(f64::NAN).is_err());
+        assert!(FixedPoint::try_quantize(f64::INFINITY).is_err());
+        assert!(FixedPoint::try_quantize(f64::NEG_INFINITY).is_err());
+        // 1e30 * 2^16 is far past i64, where the plain cast would saturate.
+        assert!(FixedPoint::try_quantize(1e30).is_err());
+        // A large but comfortably in-range magnitude (1e12 * 2^16 is ~6.6e16,
+        // well under i64::MAX ~9.2e18) is accepted.
+        assert!(FixedPoint::try_quantize(1e12).is_ok());
+        assert!(FixedPoint::try_quantize(-1e12).is_ok());
     }
 }
 

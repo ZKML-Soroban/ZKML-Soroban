@@ -104,7 +104,9 @@ pub fn extract_tree(
                         "node {i}: feature index {feature_index} out of range (num_features={num_features})"
                     )));
                 }
-                let threshold = FixedPoint::quantize(nodes_values[i]);
+                let threshold = FixedPoint::try_quantize(nodes_values[i]).map_err(|reason| {
+                    OnnxImportError::MalformedModel(format!("node {i} threshold: {reason}"))
+                })?;
 
                 // Map child node IDs to array indices
                 let true_child_id = nodes_truenodeids[i];
@@ -135,7 +137,9 @@ pub fn extract_tree(
                     ))
                 })?;
                 nodes.push(TreeNode::Leaf {
-                    value: FixedPoint::quantize(value),
+                    value: FixedPoint::try_quantize(value).map_err(|reason| {
+                        OnnxImportError::MalformedModel(format!("leaf node {i}: {reason}"))
+                    })?,
                 });
             }
             _ => {

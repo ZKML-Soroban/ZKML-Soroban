@@ -425,20 +425,29 @@ pub fn extract_mlp(graph: &GraphProto) -> Result<TinyMLP, OnnxImportError> {
         }
     }
 
-    // Quantize to FixedPoint
-    let layers: Vec<DenseLayer> = raw_layers
-        .into_iter()
-        .map(|rl| DenseLayer {
-            weights: rl
-                .weights
-                .iter()
-                .map(|&w| FixedPoint::quantize(w))
-                .collect(),
-            biases: rl.biases.iter().map(|&b| FixedPoint::quantize(b)).collect(),
+    // Quantize to FixedPoint with the checked path, so a NaN or out-of-range
+    // parameter is refused instead of silently committed to as 0 or a saturated
+    // bound.
+    let quantize_all = |values: &[f64], what: &str, layer: usize| {
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                FixedPoint::try_quantize(v).map_err(|reason| {
+                    OnnxImportError::MalformedModel(format!("layer {layer} {what} {i}: {reason}"))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()
+    };
+    let mut layers: Vec<DenseLayer> = Vec::with_capacity(raw_layers.len());
+    for (layer, rl) in raw_layers.into_iter().enumerate() {
+        layers.push(DenseLayer {
+            weights: quantize_all(&rl.weights, "weight", layer)?,
+            biases: quantize_all(&rl.biases, "bias", layer)?,
             input_size: rl.input_size,
             output_size: rl.output_size,
-        })
-        .collect();
+        });
+    }
 
     let mlp = TinyMLP { layers };
     mlp.validate()
