@@ -10,6 +10,15 @@ The on-chain public input is one 80-byte blob, laid out as
 two integers little-endian. That layout is documented in
 docs/reference/verifier-contract.md.
 
+Every field is printed on its own, including a malformed one, so the tool shows
+what is inside a broken bundle rather than only that it is broken. Problems are
+listed next to the field they belong to. Without `--check` the exit code is 0
+either way; with it, any problem makes the exit code 1.
+
+A file that cannot be read as a bundle at all, because it is not JSON, has no
+`public_inputs`, or is a v2 bundle, always exits with 1: there is nothing to
+show.
+
 This reads the bundle `zkml-prover prove` writes. A v2 bundle carries a RISC
 Zero journal instead and is checked with `zkml-prover verify-bundle`.
 """
@@ -24,71 +33,88 @@ HASH_LEN = 32
 INT_LEN = 8
 BLOB_LEN = 80
 SCALE_FACTOR = 1 << 16
+FIELDS = ("model_hash", "input_hash", "output", "class_label")
 
 
-class MalformedBundle(Exception):
-    """The bundle cannot be read as the contract would read it."""
+class UnreadableBundle(Exception):
+    """The file cannot be read as a v1 bundle, so there is nothing to show."""
 
 
 def read_public_inputs(bundle):
-    """Pull the four fields out of the bundle, or explain what is missing."""
+    """Return the `public_inputs` object, or explain why there is none."""
+    if not isinstance(bundle, dict):
+        raise UnreadableBundle("the file holds JSON, but not an object")
+
     if "version" in bundle and "journal" in bundle:
-        raise MalformedBundle(
+        raise UnreadableBundle(
             "this is a v2 bundle: its public inputs live in the RISC Zero "
             "journal. Use `zkml-prover verify-bundle` for those."
         )
 
     public_inputs = bundle.get("public_inputs")
 
-    if public_inputs is None:
-        raise MalformedBundle("no `public_inputs` field")
-
-    missing = [
-        key
-        for key in ("model_hash", "input_hash", "output", "class_label")
-        if key not in public_inputs
-    ]
-
-    if missing:
-        raise MalformedBundle(f"`public_inputs` is missing {', '.join(missing)}")
+    if not isinstance(public_inputs, dict):
+        raise UnreadableBundle("no `public_inputs` object")
 
     return public_inputs
 
 
-def validate(public_inputs):
-    """Return the problems with the field sizes, empty when there are none."""
-    problems = []
+def read_bytes(value, expected):
+    """Return (hex or None, problem or None) for a byte array field."""
+    if not isinstance(value, list):
+        return None, f"should be a byte array, found {type(value).__name__}"
 
-    for name, expected in (
-        ("model_hash", HASH_LEN),
-        ("input_hash", HASH_LEN),
-        ("output", INT_LEN),
-    ):
-        value = public_inputs[name]
+    if any(not isinstance(b, int) or not 0 <= b <= 255 for b in value):
+        return None, "holds something that is not a byte"
 
-        if not isinstance(value, list):
-            problems.append(
-                f"{name} should be a byte array, found {type(value).__name__}"
+    shown = bytes(value).hex()
+
+    if len(value) != expected:
+        return shown, f"should be {expected} bytes, found {len(value)}"
+
+    return shown, None
+
+
+def describe(public_inputs):
+    """Return one (name, text, problem) row per field, in layout order."""
+    rows = []
+
+    for name in ("model_hash", "input_hash"):
+        if name not in public_inputs:
+            rows.append((name, "missing", f"{name} is missing"))
+            continue
+        shown, problem = read_bytes(public_inputs[name], HASH_LEN)
+        rows.append((name, shown or "unreadable", problem and f"{name} {problem}"))
+
+    if "output" not in public_inputs:
+        rows.append(("output", "missing", "output is missing"))
+    else:
+        shown, problem = read_bytes(public_inputs["output"], INT_LEN)
+        if problem is None:
+            raw = struct.unpack("<q", bytes(public_inputs["output"]))[0]
+            shown = f"{raw} raw Q16.16, {raw / SCALE_FACTOR}"
+        rows.append(("output", shown or "unreadable", problem and f"output {problem}"))
+
+    if "class_label" not in public_inputs:
+        rows.append(("class_label", "missing", "class_label is missing"))
+    else:
+        label = public_inputs["class_label"]
+        if isinstance(label, bool) or not isinstance(label, int):
+            rows.append(
+                (
+                    "class_label",
+                    repr(label),
+                    f"class_label should be an integer, found {type(label).__name__}",
+                )
             )
-            continue
+        elif not -(2**63) <= label < 2**63:
+            rows.append(
+                ("class_label", str(label), f"class_label does not fit in an i64: {label}")
+            )
+        else:
+            rows.append(("class_label", str(label), None))
 
-        if len(value) != expected:
-            problems.append(f"{name} should be {expected} bytes, found {len(value)}")
-            continue
-
-        if any(not isinstance(b, int) or not 0 <= b <= 255 for b in value):
-            problems.append(f"{name} holds something that is not a byte")
-
-    label = public_inputs["class_label"]
-
-    if not isinstance(label, int):
-        problems.append(
-            f"class_label should be an integer, found {type(label).__name__}"
-        )
-    elif not -(2**63) <= label < 2**63:
-        problems.append(f"class_label does not fit in an i64: {label}")
-
-    return problems
+    return rows
 
 
 def build_blob(public_inputs):
@@ -111,7 +137,8 @@ def main():
     parser.add_argument(
         "--check",
         action="store_true",
-        help="validate the field sizes and exit non-zero when something is off",
+        help="exit with 1 when any field is malformed; without it, problems are "
+        "reported and the exit code is 0",
     )
     args = parser.parse_args()
 
@@ -127,37 +154,32 @@ def main():
 
     try:
         public_inputs = read_public_inputs(bundle)
-    except MalformedBundle as error:
+    except UnreadableBundle as error:
         print(f"Cannot read this bundle: {error}", file=sys.stderr)
         return 1
 
-    problems = validate(public_inputs)
-
-    if problems:
-        print(f"Bundle: {args.bundle}")
-        for problem in problems:
-            print(f"  problem: {problem}", file=sys.stderr)
-        return 1
-
-    blob = build_blob(public_inputs)
-    output_raw = struct.unpack("<q", bytes(public_inputs["output"]))[0]
+    rows = describe(public_inputs)
+    problems = [problem for _, _, problem in rows if problem]
 
     print(f"Bundle: {args.bundle}")
-    print(f"  model_hash  : {bytes(public_inputs['model_hash']).hex()}")
-    print(f"  input_hash  : {bytes(public_inputs['input_hash']).hex()}")
-    print(f"  output      : {output_raw} raw Q16.16, {output_raw / SCALE_FACTOR}")
-    print(f"  class_label : {public_inputs['class_label']}")
+    for name, text, problem in rows:
+        print(f"  {name:<12}: {text}")
+        if problem:
+            print(f"    problem: {problem}")
+
+    if problems:
+        count = len(problems)
+        print(f"  public input: not built, {count} problem{'s' if count > 1 else ''} above")
+        if args.check:
+            print("  check: failed", file=sys.stderr)
+            return 1
+        return 0
+
+    blob = build_blob(public_inputs)
     print(f"  public input ({len(blob)} bytes):")
     print(f"    {blob.hex()}")
 
     if args.check:
-        if len(blob) != BLOB_LEN:
-            print(
-                f"  problem: the public input is {len(blob)} bytes, "
-                f"the contract reads {BLOB_LEN}",
-                file=sys.stderr,
-            )
-            return 1
         print(f"  check: {BLOB_LEN} bytes, every field the right size")
 
     return 0
