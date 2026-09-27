@@ -495,6 +495,17 @@ impl ZkmlVerifierContract {
             return Err(VerificationError::VerificationFailed);
         }
 
+        // Refuse a replay before paying for the pairing. The nullifier depends
+        // only on the public inputs, so it can be checked now; a used one costs
+        // ~30M instructions less this way. No state is written until success, so
+        // moving the check earlier changes nothing but the cost of a replay.
+        // verify_receipt already checks its nullifier before the pairing.
+        let nullifier = Self::derive_nullifier(&env, &public_inputs);
+        let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
+        if env.storage().persistent().has(&nullifier_key) {
+            return Err(VerificationError::ProofAlreadyUsed);
+        }
+
         // Convert public inputs to field elements for L computation
         let bn254 = env.crypto().bn254();
 
@@ -519,15 +530,8 @@ impl ZkmlVerifierContract {
             return Err(VerificationError::VerificationFailed);
         }
 
-        // Derive nullifier from public inputs to prevent replay attacks
-        let nullifier = Self::derive_nullifier(&env, &public_inputs);
-
-        // Check if this proof has already been used
-        let nullifier_key = (NULLIFIER_PREFIX, nullifier.clone());
-        if env.storage().persistent().has(&nullifier_key) {
-            return Err(VerificationError::ProofAlreadyUsed);
-        }
-
+        // Spend the nullifier now that the proof verified. It was checked for
+        // replay before the pairing; this is the first state write.
         // Store nullifier in persistent storage with TTL bump
         // Use the network maximum persistent TTL (env.storage().max_ttl())
         // This ensures nullifiers persist for the maximum allowed duration

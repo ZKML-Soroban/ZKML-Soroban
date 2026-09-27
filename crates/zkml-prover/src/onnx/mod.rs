@@ -127,7 +127,6 @@ pub const SUPPORTED_OPERATORS: &[&str] = &[
 /// - [`OnnxImportError::UnsupportedOpset`] if a known domain is below its floor.
 /// - [`OnnxImportError::UnsupportedOperator`] if a graph node uses an op
 ///   outside the allowlist.
-/// - [`OnnxImportError::ExtractionNotImplemented`] for operators not yet implemented.
 /// - [`OnnxImportError::MalformedModel`] if parameter extraction fails.
 pub fn import_onnx(bytes: &[u8]) -> Result<Model, OnnxImportError> {
     let model = parse_model_proto(bytes)?;

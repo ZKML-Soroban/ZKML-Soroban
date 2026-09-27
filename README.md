@@ -98,7 +98,7 @@ zkml-soroban is pre-1.0 and under active development.
 | zkVM guest execution (STARK receipt) | Done (dev mode in CI) |
 | On-chain Groth16 verification, admin, replay protection | Done |
 | STARK to Groth16 compression, verification key export | Done (x86_64 Linux with Docker) |
-| On-chain verification of RISC Zero bundles | In progress |
+| On-chain verification of RISC Zero bundles | Done (tested; not yet on a live network) |
 | Testnet end-to-end KYC demo | In progress |
 | Native BN254 circuits (Phase 2) | Planned |
 

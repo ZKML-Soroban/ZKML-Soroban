@@ -175,7 +175,7 @@ Runs the quantization validation passes from `zkml_prover::quantization`:
    `--min-agreement`.
 
 ```bash
-cargo run -p zkml-prover -- validate examples/models/credit_lr.json --dataset dataset.json
+cargo run -p zkml-prover -- validate examples/models/credit_lr.json --dataset examples/models/credit_lr_dataset.json
 ```
 
 ```text
@@ -184,8 +184,8 @@ range check: ok
 overflow bounds: ok (max input magnitude 1)
 accuracy: ok over 2 sample(s)
   agreement:      100.00% (threshold 99.00%)
-  max deviation:  0e0
-  mean deviation: 0e0
+  max deviation:  3.0517578125111022e-6
+  mean deviation: 2.685546875019762e-6
 ```
 
 Without `--dataset` the accuracy pass is skipped and reported explicitly:
@@ -201,10 +201,15 @@ of the **original floating-point model** for it (not the training label).
 
 ```json
 [
-  { "inputs": [0.5, 0.2, 0.9, 0.1], "expected": 0.31 },
+  { "inputs": [0.5, 0.2, 0.9, 0.1], "expected": 0.532 },
   { "inputs": [0.0, 0.0, 0.0, 0.0], "expected": -0.20 }
 ]
 ```
+
+This exact dataset is committed as `examples/models/credit_lr_dataset.json`, so
+the command above runs as shown. The first `expected` is `credit_lr`'s real
+output for that input, `0.532`; the earlier value of `0.31` did not match the
+model and made the example fail with a 50% agreement rate.
 
 > A dataset with ground-truth labels instead of float model outputs reports low
 > agreement that looks like a quantization failure. Check the dataset first.
