@@ -32,6 +32,7 @@ script change. Documentation pages reference them as `/diagrams/<name>.svg`.
 | 5 | `05-commitments.py` | How parameters and inputs become Poseidon commitments |
 | 6 | `06-roadmap.py` | Delivery phases and the post-quantum track |
 | 7 | `07-post-quantum.py` | Quantum exposure and the crypto-agile migration path |
+| 8 | `08-kyc-demo-flow.py` | The KYC demo end to end, from the synthetic dataset to the recorded result |
 
 ## Style rules
 

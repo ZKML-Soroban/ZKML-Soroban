@@ -8,6 +8,10 @@ The KYC demo in `examples/kyc-demo/` is the Phase 1 target scenario: train a
 decision tree on synthetic KYC data, register it on a testnet verifier, prove a
 risk score, and verify it on-chain.
 
+<Frame>
+  <img src="/diagrams/08-kyc-demo-flow.svg" alt="KYC demo data flow" />
+</Frame>
+
 ## Status
 
 | Step                                    | Status                                              |
