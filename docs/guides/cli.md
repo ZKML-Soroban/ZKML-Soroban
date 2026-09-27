@@ -251,8 +251,18 @@ Bundle: bundle.json
 The `model_hash` is the same value `commit` prints for that model, which is the
 quickest way to confirm a bundle belongs to the model you think it does.
 
-`--check` validates the field sizes and exits with `1` when something is off,
-so it works in a script.
+Every field is printed on its own, including a malformed one, so a broken
+bundle still shows what it carries, with each problem listed under its field.
+The exit code is `0` either way, the same as `inspect` reporting `structure`
+instead of failing. Add `--check` to make any problem exit with `1`, which is
+what a script wants:
+
+```bash
+python tools/inspect_bundle.py bundle.json --check || echo "malformed bundle"
+```
+
+A file that cannot be read as a bundle at all, because it is not JSON, has no
+`public_inputs`, or is a v2 bundle, exits with `1` with or without the flag.
 
 ## Input validation
 
