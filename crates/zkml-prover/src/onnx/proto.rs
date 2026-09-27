@@ -63,10 +63,10 @@ pub struct GraphProto {
     #[prost(string, tag = "2")]
     pub name: String,
     /// Input tensors.
-    #[prost(message, repeated, tag = "3")]
+    #[prost(message, repeated, tag = "11")]
     pub input: Vec<ValueInfoProto>,
     /// Output tensors.
-    #[prost(message, repeated, tag = "4")]
+    #[prost(message, repeated, tag = "12")]
     pub output: Vec<ValueInfoProto>,
     /// Pre-initialised tensors (constant weights / biases).
     #[prost(message, repeated, tag = "5")]
@@ -192,25 +192,20 @@ pub struct AttributeProto {
     #[prost(message, optional, tag = "6")]
     pub g: Option<GraphProto>,
     /// Float values (for thresholds, leaf values, class weights).
-    #[prost(double, repeated, tag = "7")]
-    pub floats: Vec<f64>,
+    ///
+    /// `repeated float` in the ONNX schema, so 32 bit on the wire.
+    #[prost(float, repeated, tag = "7")]
+    pub floats: Vec<f32>,
     /// Integer values (for feature indices, node IDs, class IDs).
     #[prost(int64, repeated, tag = "8")]
     pub ints: Vec<i64>,
     /// String values (for node modes like "BRANCH_LEQ").
-    #[prost(string, repeated, tag = "9")]
-    pub strings: Vec<String>,
-    /// List of float values (f32).
-    #[prost(float, repeated, tag = "11")]
-    pub floats_f32: Vec<f32>,
-    /// List of int64 values.
-    #[prost(int64, repeated, tag = "12")]
-    pub ints_extra: Vec<i64>,
-    /// List of string values (as bytes).
-    #[prost(bytes, repeated, tag = "13")]
-    pub strings_bytes: Vec<Vec<u8>>,
+    ///
+    /// `repeated bytes` in the ONNX schema, so the caller decodes the UTF-8.
+    #[prost(bytes, repeated, tag = "9")]
+    pub strings: Vec<Vec<u8>>,
     /// Sparse tensor value.
-    #[prost(message, optional, tag = "14")]
+    #[prost(message, optional, tag = "22")]
     pub sparse_tensor: Option<SparseTensorProto>,
     /// Type identifier (proto enum).
     #[prost(int32, tag = "20")]
@@ -222,30 +217,30 @@ pub struct AttributeProto {
 /// Used for storing multi-dimensional arrays like weight matrices.
 #[derive(Clone, PartialEq, Message)]
 pub struct TensorProto {
-    /// Data type enum (e.g. FLOAT=1, INT32=6).
-    #[prost(int32, tag = "1")]
-    pub data_type: i32,
     /// Shape dimensions.
-    #[prost(int64, repeated, tag = "2")]
+    #[prost(int64, repeated, tag = "1")]
     pub dims: Vec<i64>,
+    /// Data type enum (e.g. FLOAT=1, INT32=6).
+    #[prost(int32, tag = "2")]
+    pub data_type: i32,
+    /// Float data (if not using raw_data).
+    #[prost(float, repeated, tag = "4")]
+    pub float_data: Vec<f32>,
+    /// Int32 data (if not using raw_data).
+    #[prost(int32, repeated, tag = "5")]
+    pub int32_data: Vec<i32>,
+    /// String data. `repeated bytes` in the ONNX schema.
+    #[prost(bytes, repeated, tag = "6")]
+    pub string_data: Vec<Vec<u8>>,
+    /// Int64 data (if not using raw_data).
+    #[prost(int64, repeated, tag = "7")]
+    pub int64_data: Vec<i64>,
+    /// Tensor name, which is how initialisers are matched to graph inputs.
+    #[prost(string, tag = "8")]
+    pub name: String,
     /// Raw data buffer (for float32 data).
     #[prost(bytes, tag = "9")]
     pub raw_data: Vec<u8>,
-    /// Float data (if not using raw_data).
-    #[prost(float, repeated, tag = "5")]
-    pub float_data: Vec<f32>,
-    /// Int32 data (if not using raw_data).
-    #[prost(int32, repeated, tag = "6")]
-    pub int32_data: Vec<i32>,
-    /// String data.
-    #[prost(string, repeated, tag = "8")]
-    pub string_data: Vec<String>,
-    /// Int64 data.
-    #[prost(int64, repeated, tag = "7")]
-    pub int64_data: Vec<i64>,
-    /// Tensor name.
-    #[prost(string, tag = "3")]
-    pub name: String,
 }
 
 /// Sparse tensor representation (`SparseTensorProto`).

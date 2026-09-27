@@ -202,3 +202,75 @@ fn fixture_tinymlp_extracts_and_matches_json() {
         );
     }
 }
+
+/// A file produced by skl2onnx, not by the fixture generator in this crate.
+///
+/// The synthetic fixtures are encoded with the same `prost` definitions the
+/// importer decodes with, so a field declared with the wrong wire type stays
+/// invisible to them. This one is written by the reference exporter, so it
+/// fails if `proto.rs` drifts from the ONNX schema again.
+#[test]
+fn real_exporter_output_imports_into_a_decision_tree() {
+    let bytes = fixture("skl2onnx_real_tree.onnx");
+
+    let proto = parse_model_proto(&bytes).expect("a real exporter file decodes");
+    let graph = proto.graph.as_ref().expect("graph");
+    assert!(!graph.input.is_empty(), "graph inputs are read from tag 11");
+    assert!(
+        !graph.output.is_empty(),
+        "graph outputs are read from tag 12"
+    );
+
+    let model = import_onnx(&bytes).expect("a real decision tree imports");
+
+    match model {
+        zkml_common::models::Model::DecisionTree(tree) => {
+            assert_eq!(tree.num_features, 4, "iris has four features");
+            assert!(!tree.nodes.is_empty());
+        }
+        other => panic!("expected a decision tree, got {other:?}"),
+    }
+}
+
+/// A two layer MLP written by the official `onnx` Python library.
+///
+/// The tree fixture only exercises attributes. This one carries weights as
+/// initialisers, which is where `TensorProto` is read: its `dims`, `data_type`
+/// and `float_data` all sat on the wrong tags, so a real file decoded as
+/// garbage or not at all.
+#[test]
+fn real_initialisers_decode_with_the_right_shapes() {
+    let bytes = fixture("onnx_helper_mlp.onnx");
+
+    let proto = parse_model_proto(&bytes).expect("a real file with initialisers decodes");
+    let graph = proto.graph.as_ref().expect("graph");
+
+    let shapes: Vec<(String, Vec<i64>, i32)> = graph
+        .initializer
+        .iter()
+        .map(|t| (t.name.clone(), t.dims.clone(), t.data_type))
+        .collect();
+
+    assert_eq!(
+        shapes,
+        vec![
+            ("W1".to_string(), vec![2, 2], 1),
+            ("B1".to_string(), vec![2], 1),
+            ("W2".to_string(), vec![2, 1], 1),
+            ("B2".to_string(), vec![1], 1),
+        ],
+        "names come from tag 8, dims from tag 1 and data_type from tag 2"
+    );
+
+    let model = import_onnx(&bytes).expect("a real MLP imports");
+
+    match model {
+        zkml_common::models::Model::TinyMLP(mlp) => {
+            assert_eq!(mlp.layers.len(), 2);
+            assert_eq!(mlp.layers[0].input_size, 2);
+            assert_eq!(mlp.layers[0].output_size, 2);
+            assert_eq!(mlp.layers[1].output_size, 1);
+        }
+        other => panic!("expected a TinyMLP, got {other:?}"),
+    }
+}

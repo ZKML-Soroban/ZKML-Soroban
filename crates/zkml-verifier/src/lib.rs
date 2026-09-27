@@ -1806,6 +1806,141 @@ mod test_budget {
     }
 }
 
+/// The pause switch and the verification counter, exercised with a proof that
+/// really passes the pairing check.
+///
+/// Both behaviours were implemented but only reachable through the accept
+/// path, so a test that stops at `ContractNotInitialized` or at a malformed
+/// proof never reaches them. These use the accept fixture from `test_budget`
+/// so the only thing standing between the call and a recorded result is the
+/// behaviour under test.
+#[cfg(test)]
+mod test_pause_and_counter {
+    use super::test_budget::{compute_valid_proof, create_accept_fixture_vk};
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::Env;
+
+    /// The 80-byte public input layout: model(32) + input(32) + output(8) + class_label(8).
+    fn public_inputs(env: &Env, model: u8, input: u8, output: u8, class_label: u8) -> Bytes {
+        let mut buf = [0u8; 80];
+        buf[0] = model;
+        buf[32] = input;
+        buf[64] = output;
+        buf[72] = class_label;
+        Bytes::from_slice(env, &buf)
+    }
+
+    fn model_hash(env: &Env, model: u8) -> Bytes {
+        let mut buf = [0u8; 32];
+        buf[0] = model;
+        Bytes::from_slice(env, &buf)
+    }
+
+    #[test]
+    fn paused_contract_rejects_and_records_nothing() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let vk = create_accept_fixture_vk(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash(&env, 3), &vk);
+        client.set_pause(&true);
+
+        // A proof that would be accepted if the contract were running.
+        let (proof_a, proof_b, proof_c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+        let inputs = public_inputs(&env, 3, 5, 42, 7);
+
+        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &inputs);
+
+        assert_eq!(
+            result,
+            Err(Ok(VerificationError::VerificationFailed)),
+            "a paused contract must refuse a proof it would otherwise accept"
+        );
+        assert_eq!(
+            client.get_verification_count(),
+            0,
+            "a refused verification must not move the counter"
+        );
+        assert!(
+            client.try_get_result().is_err(),
+            "a refused verification must not record a result"
+        );
+    }
+
+    #[test]
+    fn counter_counts_only_successful_verifications() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let vk = create_accept_fixture_vk(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash(&env, 3), &vk);
+
+        let (a1, b1, c1) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+        assert_eq!(
+            client.try_verify_inference(&a1, &b1, &c1, &public_inputs(&env, 3, 5, 42, 7)),
+            Ok(Ok(()))
+        );
+        assert_eq!(client.get_verification_count(), 1);
+
+        // While paused, an otherwise valid proof leaves the counter alone.
+        client.set_pause(&true);
+        let (a2, b2, c2) = compute_valid_proof(&env, &vk, 3, 5, 43, 7);
+        assert_eq!(
+            client.try_verify_inference(&a2, &b2, &c2, &public_inputs(&env, 3, 5, 43, 7)),
+            Err(Ok(VerificationError::VerificationFailed))
+        );
+        assert_eq!(client.get_verification_count(), 1);
+
+        // Unpaused, the same proof goes through. The output differs from the
+        // first run because identical public inputs hash to the same nullifier
+        // and would come back as ProofAlreadyUsed.
+        client.set_pause(&false);
+        assert_eq!(
+            client.try_verify_inference(&a2, &b2, &c2, &public_inputs(&env, 3, 5, 43, 7)),
+            Ok(Ok(()))
+        );
+        assert_eq!(client.get_verification_count(), 2);
+    }
+
+    #[test]
+    fn a_replay_is_refused_and_leaves_the_counter_alone() {
+        let env = Env::default();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let vk = create_accept_fixture_vk(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &model_hash(&env, 3), &vk);
+
+        let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+        let inputs = public_inputs(&env, 3, 5, 42, 7);
+
+        assert_eq!(client.try_verify_inference(&a, &b, &c, &inputs), Ok(Ok(())));
+        assert_eq!(client.get_verification_count(), 1);
+
+        // Same public inputs hash to the same nullifier, which is what step 9
+        // of the documented order refuses.
+        assert_eq!(
+            client.try_verify_inference(&a, &b, &c, &inputs),
+            Err(Ok(VerificationError::ProofAlreadyUsed)),
+            "the second submission of the same public inputs is a replay"
+        );
+        assert_eq!(
+            client.get_verification_count(),
+            1,
+            "a refused replay must not move the counter"
+        );
+    }
+}
+
 /// The contract side of RISC Zero receipt verification.
 ///
 /// The value these tests protect is agreement: the contract recomputes a claim
