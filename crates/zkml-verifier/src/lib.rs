@@ -937,6 +937,13 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
         log!(&env, "Verification key updated by admin");
+        // An event, not just a log: `log!` is compiled out of the contract
+        // profile, so in the deployed WASM a log leaves no trace at all. This is
+        // the key `verify_inference` checks against, so the change has to be
+        // observable on chain.
+        #[allow(deprecated)]
+        env.events()
+            .publish((symbol_short!("cfg_upd"), symbol_short!("vk")), ());
     }
 
     /// Set a new model hash. Only callable by admin.
@@ -949,6 +956,12 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         log!(&env, "Model hash updated by admin");
+        // The commitment every proof is checked against, so publish the new one.
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("cfg_upd"), symbol_short!("mdl_hash")),
+            model_hash.clone(),
+        );
     }
 
     /// Set a new admin address. Only callable by current admin.
@@ -961,6 +974,12 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&ADMIN, &new_admin);
         log!(&env, "Admin updated");
+        // Who controls the contract is the most consequential change of all.
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("cfg_upd"), symbol_short!("admin")),
+            new_admin.clone(),
+        );
     }
 
     /// Set the pause flag. Only callable by admin.
@@ -973,6 +992,10 @@ impl ZkmlVerifierContract {
         admin.require_auth();
         env.storage().instance().set(&PAUSED, &paused);
         log!(&env, "Pause flag set to {}", paused);
+        // Pausing stops every verification, so callers need to see it happen.
+        #[allow(deprecated)]
+        env.events()
+            .publish((symbol_short!("cfg_upd"), symbol_short!("pause")), paused);
     }
 
     /// Get the current admin address.
@@ -1938,6 +1961,123 @@ mod test_pause_and_counter {
             1,
             "a refused replay must not move the counter"
         );
+    }
+}
+
+/// Every admin setter has to leave a trace on chain.
+///
+/// `log!` is not that trace: the `contract` profile sets
+/// `debug-assertions = false`, so in the deployed WASM the log lines do not
+/// exist. The threat model accepts a malicious admin on the grounds that the
+/// change is *detectable*, and that only holds if each setter emits an event.
+/// These tests are what keeps that argument true.
+#[cfg(test)]
+mod test_admin_events {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Events};
+    use soroban_sdk::{Env, IntoVal};
+
+    fn setup(env: &Env) -> ZkmlVerifierContractClient<'_> {
+        env.mock_all_auths();
+        let contract_id = env.register(ZkmlVerifierContract, ());
+        let client = ZkmlVerifierContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        let model_hash = Bytes::from_slice(env, &[7u8; 32]);
+        let vk = crate::test_utils::create_dummy_vk(env, 5);
+        client.initialize(&admin, &model_hash, &vk);
+        client
+    }
+
+    #[test]
+    fn set_verification_key_emits_an_event() {
+        let env = Env::default();
+        let client = setup(&env);
+        let vk = crate::test_utils::create_dummy_vk(&env, 4);
+
+        client.set_verification_key(&vk);
+
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("vk")).into_val(&env),
+                    ().into_val(&env),
+                ),
+            ],
+            "changing the key verify_inference checks against must be observable"
+        );
+    }
+
+    #[test]
+    fn set_model_hash_emits_the_new_commitment() {
+        let env = Env::default();
+        let client = setup(&env);
+        let new_hash = Bytes::from_slice(&env, &[9u8; 32]);
+
+        client.set_model_hash(&new_hash);
+
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("mdl_hash")).into_val(&env),
+                    new_hash.into_val(&env),
+                ),
+            ],
+            "the event carries the commitment now in force"
+        );
+    }
+
+    #[test]
+    fn set_admin_emits_the_new_admin() {
+        let env = Env::default();
+        let client = setup(&env);
+        let new_admin = Address::generate(&env);
+
+        client.set_admin(&new_admin);
+
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("admin")).into_val(&env),
+                    new_admin.into_val(&env),
+                ),
+            ],
+            "handing the contract to another address is the change that most needs a record"
+        );
+    }
+
+    /// Both directions, asserted one call at a time.
+    ///
+    /// `env.events().all()` holds only what the last invocation published, not a
+    /// running log, so the two calls have to be checked separately.
+    #[test]
+    fn set_pause_emits_the_flag_both_ways() {
+        let env = Env::default();
+        let client = setup(&env);
+
+        for paused in [true, false] {
+            client.set_pause(&paused);
+            assert_eq!(
+                env.events().all().filter_by_contract(&client.address),
+                vec![
+                    &env,
+                    (
+                        client.address.clone(),
+                        (symbol_short!("cfg_upd"), symbol_short!("pause")).into_val(&env),
+                        paused.into_val(&env),
+                    ),
+                ],
+                "set_pause({paused}) must leave a record"
+            );
+        }
     }
 }
 

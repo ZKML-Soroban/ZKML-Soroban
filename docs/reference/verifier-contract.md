@@ -222,8 +222,16 @@ when the admin changes what verifies:
 | ---- | ------ | ---- |
 | `set_risc0_config` | `("cfg_upd", "risc0")` | the new `image_id` |
 | `set_risc0_vk` | `("cfg_upd", "risc0_vk")` | `()` |
+| `set_verification_key` | `("cfg_upd", "vk")` | `()` |
+| `set_model_hash` | `("cfg_upd", "mdl_hash")` | the new `model_hash` |
+| `set_admin` | `("cfg_upd", "admin")` | the new admin `Address` |
+| `set_pause` | `("cfg_upd", "pause")` | the new flag, a `bool` |
 
-The other admin setters emit logs only, not events.
+Every admin setter emits one, so each of them is observable on chain. The setters
+also write a `log!` line, which is useful when running against a local network
+with the `contract-with-logs` profile, but the deployed contract is built with
+`debug-assertions = false` and `log!` is compiled out, so the event is the only
+record that survives.
 
 ## Storage
 
