@@ -17,10 +17,13 @@ icon: "book"
 | **Journal** | Public output committed by a RISC Zero guest. |
 | **Nullifier** | `sha256(public_inputs)` stored on-chain to prevent recording the same result twice. |
 | **Poseidon** | ZK-friendly algebraic hash; exposed as host functions by CAP-0075. |
+| **Prover** | The off-chain side: runs inference, commits to the model and the inputs, and produces the proof the contract checks. |
 | **Public inputs** | Values revealed to the verifier with a proof: here the 80-byte `model_hash \|\| input_hash \|\| output \|\| class_label`. |
 | **Quantization** | Converting floating-point model parameters to fixed-point. |
 | **Receipt** | RISC Zero proof of guest execution (STARK), wrappable into Groth16. |
 | **Route A / Route B** | Proving via the RISC Zero zkVM (Phase 1) or native model-specific circuits (Phase 2). |
+| **Trace** | The record of every step a program took inside the zkVM, which is what the proof attests to. |
 | **TTL** | Time to live of Soroban storage entries, extended to keep state live. |
 | **Verification key (VK)** | Groth16 parameters (`alpha`, `beta`, `gamma`, `delta`, `ic`) registered in the contract. |
+| **Verifier** | The on-chain side: the Soroban contract that checks a proof and its public inputs, and stores the result. |
 | **zkVM** | Virtual machine that proves correct execution of a program (RISC Zero). |
