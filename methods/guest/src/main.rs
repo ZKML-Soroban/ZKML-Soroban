@@ -13,7 +13,7 @@
 use risc0_zkvm::guest::env;
 use zkml_common::commitment::{commitment_hash, model_elements};
 use zkml_common::fixed_point::FixedPoint;
-use zkml_common::inference::run_inference_with_decision;
+use zkml_common::inference::try_run_inference_with_decision;
 use zkml_common::journal::{JournalV1, ModelKind};
 use zkml_common::models::Model;
 
@@ -23,7 +23,16 @@ fn main() {
     let model: Model = env::read();
     let inputs: Vec<FixedPoint> = env::read();
 
-    let (output, class_label) = run_inference_with_decision(&model, &inputs);
+    // Use the fallible inference path. The infallible one calls `.expect(...)`
+    // on a malformed model, a tree that exceeds the iteration bound or an MLP
+    // that overflows, which panics inside the guest and aborts proving with no
+    // typed reason. `panic!` in the guest still produces no valid proof, but
+    // this fails cleanly at the boundary and keeps the guest on the same
+    // checked path the host tests exercise.
+    let (output, class_label) = match try_run_inference_with_decision(&model, &inputs) {
+        Ok(result) => result,
+        Err(e) => panic!("inference failed in guest: {e:?}"),
+    };
 
     let journal = JournalV1 {
         model_kind: ModelKind::of(&model),
