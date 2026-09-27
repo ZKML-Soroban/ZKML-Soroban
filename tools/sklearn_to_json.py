@@ -9,6 +9,9 @@ DecisionTreeClassifier. Anything else stops with a message that names what it
 found, because a silent wrong conversion is worse than a refusal.
 
 The format is documented in docs/guides/model-format.md.
+
+Loading a pickle runs code. joblib.load and pickle.load execute whatever the
+file carries, so only convert a model you trained yourself or otherwise trust.
 """
 
 import argparse
@@ -58,6 +61,21 @@ def convert_decision_tree(model):
             f"only single output trees are supported, this one has {model.n_outputs_}"
         )
 
+    # The format stores a leaf as a number, so every class label has to be one.
+    # Checked up front, so a model with text labels is refused with a message
+    # instead of failing partway through the tree.
+    leaf_values = []
+    for label in model.classes_:
+        try:
+            leaf_values.append(float(label))
+        except (TypeError, ValueError):
+            raise UnsupportedModel(
+                f"the tree's class labels are not numbers (found {str(label)!r} in "
+                f"classes_), and the format stores a leaf as a number. Encode the "
+                f"labels as integers before training, for example with "
+                f"sklearn.preprocessing.LabelEncoder"
+            ) from None
+
     nodes = []
 
     for i in range(tree.node_count):
@@ -69,8 +87,7 @@ def convert_decision_tree(model):
             # class proportions here, older releases stored raw counts, and
             # argmax picks the same class either way.
             proportions = tree.value[i][0]
-            predicted = model.classes_[int(proportions.argmax())]
-            nodes.append({"type": "leaf", "value": float(predicted)})
+            nodes.append({"type": "leaf", "value": leaf_values[int(proportions.argmax())]})
         else:
             nodes.append(
                 {
