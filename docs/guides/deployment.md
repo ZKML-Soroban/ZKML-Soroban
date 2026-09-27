@@ -113,7 +113,7 @@ stellar contract invoke --id "$CONTRACT_ID" --network testnet --source-account d
 | ---------------------- | -------------------------------------- |
 | Rotate the key         | `set_verification_key --vk ...`        |
 | Register a new model   | `set_model_hash --model_hash ...`      |
-| Transfer admin         | `set_admin --new_admin G...`           |
+| Transfer admin         | `propose_admin` then `accept_admin`    |
 | Emergency stop         | `set_pause --paused true`              |
 
 All four require the current admin signature (`--source-account` must be the

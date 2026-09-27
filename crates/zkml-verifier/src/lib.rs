@@ -54,6 +54,10 @@ const INITIALIZED: Symbol = symbol_short!("init");
 const VERIFY_CNT: Symbol = symbol_short!("vrf_cnt");
 const NULLIFIER_PREFIX: Symbol = symbol_short!("nullifier");
 const ADMIN: Symbol = symbol_short!("admin");
+/// The address that has been proposed as the next admin but has not yet
+/// accepted. Admin transfer is two-step so a mistyped address cannot orphan
+/// the contract.
+const PENDING_ADMIN: Symbol = symbol_short!("pend_adm");
 const PAUSED: Symbol = symbol_short!("paused");
 
 /// Ledgers per day on Stellar (~5s per ledger).
@@ -1005,21 +1009,51 @@ impl ZkmlVerifierContract {
         );
     }
 
-    /// Set a new admin address. Only callable by current admin.
-    pub fn set_admin(env: Env, new_admin: Address) {
+    /// Propose a new admin. Only callable by the current admin.
+    ///
+    /// Admin transfer is two-step: this records a pending admin, and the
+    /// transfer only takes effect when that address calls [`accept_admin`]. A
+    /// single-step `set_admin` could hand the contract to a mistyped address
+    /// that no one controls, leaving it with no admin forever: no one could
+    /// pause it, rotate the key or change the model. Requiring the new admin to
+    /// accept makes a wrong address a no-op instead of a loss.
+    pub fn propose_admin(env: Env, new_admin: Address) {
         let admin: Address = env
             .storage()
             .instance()
             .get(&ADMIN)
             .expect("contract is not initialized");
         admin.require_auth();
-        env.storage().instance().set(&ADMIN, &new_admin);
-        log!(&env, "Admin updated");
-        // Who controls the contract is the most consequential change of all.
+        env.storage().instance().set(&PENDING_ADMIN, &new_admin);
+        Self::bump_instance_ttl(&env);
+        log!(&env, "Admin transfer proposed");
+        #[allow(deprecated)]
+        env.events().publish(
+            (symbol_short!("cfg_upd"), symbol_short!("adm_prop")),
+            new_admin.clone(),
+        );
+    }
+
+    /// Accept a pending admin transfer. Only callable by the proposed admin.
+    ///
+    /// Completes the two-step transfer started by [`propose_admin`]. Requiring
+    /// the proposed admin's own authorization proves the address is controlled
+    /// before it becomes the admin.
+    pub fn accept_admin(env: Env) {
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&PENDING_ADMIN)
+            .expect("no pending admin transfer");
+        pending.require_auth();
+        env.storage().instance().set(&ADMIN, &pending);
+        env.storage().instance().remove(&PENDING_ADMIN);
+        Self::bump_instance_ttl(&env);
+        log!(&env, "Admin transfer accepted");
         #[allow(deprecated)]
         env.events().publish(
             (symbol_short!("cfg_upd"), symbol_short!("admin")),
-            new_admin.clone(),
+            pending.clone(),
         );
     }
 
@@ -1569,16 +1603,34 @@ mod test_admin_auth {
     }
 
     #[test]
-    fn set_admin_authorized_succeeds() {
+    fn admin_transfer_is_two_step() {
+        let env = Env::default();
+        let (client, old_admin) = setup_with_admin(&env);
+        let new_admin = Address::generate(&env);
+
+        // Proposing does not change the admin yet.
+        client.propose_admin(&new_admin);
+        assert_eq!(
+            client.get_admin(),
+            old_admin,
+            "proposal alone must not transfer"
+        );
+
+        // Accepting completes the transfer.
+        client.accept_admin();
+        assert_eq!(
+            client.get_admin(),
+            new_admin,
+            "acceptance completes the transfer"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "no pending admin transfer")]
+    fn accept_admin_without_a_proposal_fails() {
         let env = Env::default();
         let (client, _admin) = setup_with_admin(&env);
-        let _new_admin = Address::generate(&env);
-
-        let (proof_a, proof_b, proof_c) = dummy_proof(&env);
-        let public_inputs = Bytes::from_slice(&env, &[5u8; 80]);
-
-        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(result, Err(Ok(VerificationError::VerificationFailed)));
+        client.accept_admin();
     }
 
     #[test]
@@ -2107,13 +2159,28 @@ mod test_admin_events {
     }
 
     #[test]
-    fn set_admin_emits_the_new_admin() {
+    fn admin_transfer_emits_propose_then_accept() {
         let env = Env::default();
         let client = setup(&env);
         let new_admin = Address::generate(&env);
 
-        client.set_admin(&new_admin);
+        // Proposing emits adm_prop with the proposed address.
+        client.propose_admin(&new_admin);
+        assert_eq!(
+            env.events().all().filter_by_contract(&client.address),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (symbol_short!("cfg_upd"), symbol_short!("adm_prop")).into_val(&env),
+                    new_admin.clone().into_val(&env),
+                ),
+            ],
+            "a proposed transfer must be visible"
+        );
 
+        // Accepting emits admin with the address that now controls the contract.
+        client.accept_admin();
         assert_eq!(
             env.events().all().filter_by_contract(&client.address),
             vec![
@@ -2124,7 +2191,7 @@ mod test_admin_events {
                     new_admin.into_val(&env),
                 ),
             ],
-            "handing the contract to another address is the change that most needs a record"
+            "the completed handover is the change that most needs a record"
         );
     }
 

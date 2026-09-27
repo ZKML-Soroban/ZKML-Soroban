@@ -28,7 +28,8 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `version()` | none | `u32` | Interface version. |
 | `set_verification_key(vk: VerificationKey)` | admin | `()` | Rotates the verification key. |
 | `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. |
-| `set_admin(new_admin: Address)` | admin | `()` | Transfers admin rights. |
+| `propose_admin(new_admin: Address)` | admin | `()` | Records a pending admin. The transfer is not effective until the pending admin accepts. |
+| `accept_admin()` | pending admin | `()` | Completes the transfer started by `propose_admin`. Two-step, so a mistyped address cannot orphan the contract. |
 | `set_pause(paused: bool)` | admin | `()` | Pauses or resumes verification. |
 | `verify_receipt(seal: Bytes, journal: Bytes)` | none | `Result<InferenceRecord, VerificationError>` | Verifies a RISC Zero Groth16 receipt, enforces the nullifier, records the result, emits `verified`, and returns the record. |
 | `set_risc0_config(config: Risc0Config)` | admin | `()` | Registers the guest image id, control root, BN254 control id and seal selector. Refuses a control id that is not a valid BN254 scalar. Emits `cfg_upd`. |
@@ -228,7 +229,8 @@ when the admin changes what verifies:
 | `set_risc0_vk` | `("cfg_upd", "risc0_vk")` | `()` |
 | `set_verification_key` | `("cfg_upd", "vk")` | `()` |
 | `set_model_hash` | `("cfg_upd", "mdl_hash")` | the new `model_hash` |
-| `set_admin` | `("cfg_upd", "admin")` | the new admin `Address` |
+| `propose_admin` | `("cfg_upd", "adm_prop")` | the proposed admin `Address` |
+| `accept_admin` | `("cfg_upd", "admin")` | the new admin `Address` |
 | `set_pause` | `("cfg_upd", "pause")` | the new flag, a `bool` |
 
 Every admin setter emits one, so each of them is observable on chain. The setters

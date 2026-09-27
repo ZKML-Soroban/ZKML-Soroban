@@ -158,7 +158,7 @@ flowchart TD
 - **Input binding.** The input commitment is part of the public inputs and the
   nullifier.
 - **Access control.** `initialize` requires the admin signature and can run once;
-  `set_verification_key`, `set_model_hash`, `set_admin`, and `set_pause` require
+  `set_verification_key`, `set_model_hash`, `propose_admin`, `accept_admin`, and `set_pause` require
   the current admin.
 - **Overflow.** Fixed-point multiplication uses `i128` intermediates with checked
   results; the quantization validator runs static overflow bounds.
