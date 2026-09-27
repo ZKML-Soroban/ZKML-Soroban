@@ -18,7 +18,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "bytes": "73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710"
+                  "bytes": "c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521"
                 },
                 {
                   "map": [
@@ -119,7 +119,7 @@
                         "symbol": "image_id"
                       },
                       "val": {
-                        "bytes": "04de8993fd7f341c62fcab73aa007eb3d09e4c6882fd31db6a21d56b8612c5ca"
+                        "bytes": "90555fdec19f74f2df64a14d092b8284b8166d25ffd498dd667d98cab87e213c"
                       }
                     },
                     {
@@ -382,7 +382,7 @@
                     "symbol": "nullifier"
                   },
                   {
-                    "bytes": "a4ed3540bc47a1b6b1b15f1e5715eced064509b813d96e9f229e085bb8cddd08"
+                    "bytes": "c527fe68c7607a7362bfb8151634175415ed8ecea9c004b40068391336676403"
                   }
                 ]
               },
@@ -446,7 +446,7 @@
                               "symbol": "model_hash"
                             },
                             "val": {
-                              "bytes": "73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710"
+                              "bytes": "c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521"
                             }
                           },
                           {
@@ -473,7 +473,7 @@
                         "symbol": "mdl_hash"
                       },
                       "val": {
-                        "bytes": "73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710"
+                        "bytes": "c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521"
                       }
                     },
                     {
@@ -511,7 +511,7 @@
                               "symbol": "image_id"
                             },
                             "val": {
-                              "bytes": "04de8993fd7f341c62fcab73aa007eb3d09e4c6882fd31db6a21d56b8612c5ca"
+                              "bytes": "90555fdec19f74f2df64a14d092b8284b8166d25ffd498dd667d98cab87e213c"
                             }
                           },
                           {
@@ -704,7 +704,7 @@
                 "symbol": "verified"
               },
               {
-                "bytes": "73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710"
+                "bytes": "c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521"
               }
             ],
             "data": {
