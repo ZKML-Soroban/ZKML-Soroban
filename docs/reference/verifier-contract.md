@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `7`                                     |
+| Interface `VERSION`       | `8`                                     |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -20,8 +20,8 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | -------- | ---- | ------- | ----------- |
 | `__constructor(admin: Address, model_hash: Bytes, vk: VerificationKey)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and verification key; sets counter to 0 and pause to false; bumps instance TTL. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
 | `verify_inference(proof_a: Bytes, proof_b: Bytes, proof_c: Bytes, public_inputs: Bytes)` | none | `Result<(), VerificationError>` | Verifies the proof, enforces the nullifier, records the result, emits `verified`. |
-| `get_result()` | none | `InferenceRecord` | Last verified record. Panics if none has been recorded. |
-| `get_model_hash()` | none | `Bytes` | Registered model commitment. Panics before initialization. |
+| `get_result()` | none | `Option<InferenceRecord>` | Last verified record. Returns `None` if none has been recorded. |
+| `get_model_hash()` | none | `Option<Bytes>` | Registered model commitment. Returns `None` before initialization. |
 | `get_verification_count()` | none | `u32` | Number of successful verifications. |
 | `get_admin()` | none | `Address` | Current admin. Panics before initialization. |
 | `is_paused()` | none | `bool` | Pause flag. |

@@ -35,8 +35,7 @@ Panics (not error codes):
 | Function                          | Message                                   |
 | --------------------------------- | ----------------------------------------- |
 | `initialize` (second call)        | `contract is already initialized`         |
-| `get_result` (nothing recorded)   | `no inference result has been recorded yet` |
-| `get_model_hash`, `get_admin`, admin setters before init | `contract is not initialized` |
+| `get_admin`, admin setters before init | `contract is not initialized` |
 | Admin setters without admin auth  | Soroban auth failure                      |
 
 ## ZkmlError (zkml-common)

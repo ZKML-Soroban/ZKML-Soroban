@@ -57,8 +57,8 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   successful verification overwrites; there is no per-subject lookup.
 - **Pause error.** A paused contract returns the generic `VerificationFailed`.
 - **Admin changes are not events.** Setters only log.
-- **Some getters panic.** `get_result`, `get_model_hash` and `get_admin` panic before
-  initialization or before the first result; `get_verification_count` and `is_paused` do not.
+- **Some getters panic.** `get_admin` panics before initialization;
+  `get_verification_count` and `is_paused` do not.
 - **No point validation beyond the host.** Points at infinity are accepted if
   the host accepts them; test fixtures with zero G2 points make the pairing pass
   trivially.

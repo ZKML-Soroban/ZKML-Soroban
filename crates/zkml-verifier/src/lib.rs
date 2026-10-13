@@ -75,7 +75,9 @@ const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 ///
 /// 6 -> 7: `initialize` was removed and replaced by a `__constructor`, and a
 /// `NonCanonicalPublicInput` error was added. Both change the interface.
-pub const VERSION: u32 = 7;
+/// 7 -> 8: `get_result` and `get_model_hash` now return `Option` instead of
+/// panicking when empty.
+pub const VERSION: u32 = 8;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -950,20 +952,15 @@ impl ZkmlVerifierContract {
         env.crypto().sha256(public_inputs).into()
     }
 
-    /// Retrieve the last verified inference result.
-    pub fn get_result(env: Env) -> InferenceRecord {
-        env.storage()
-            .instance()
-            .get(&LAST_RESULT)
-            .expect("no inference result has been recorded yet")
+    /// Retrieve the last verified inference result, or `None` if no inference
+    /// result has been recorded yet.
+    pub fn get_result(env: Env) -> Option<InferenceRecord> {
+        env.storage().instance().get(&LAST_RESULT)
     }
 
-    /// Retrieve the registered model commitment.
-    pub fn get_model_hash(env: Env) -> Bytes {
-        env.storage()
-            .instance()
-            .get(&MODEL_HASH)
-            .expect("contract is not initialized")
+    /// Retrieve the registered model commitment, or `None` if not set.
+    pub fn get_model_hash(env: Env) -> Option<Bytes> {
+        env.storage().instance().get(&MODEL_HASH)
     }
 
     /// Retrieve the number of verified proofs so far.
@@ -1153,7 +1150,8 @@ mod test {
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         // The constructor ran at deploy, so the state it sets is already in place.
         assert_eq!(client.get_admin(), admin);
-        assert_eq!(client.get_model_hash(), model_hash);
+        assert_eq!(client.get_model_hash(), Some(model_hash));
+        assert_eq!(client.get_result(), None);
         assert_eq!(client.get_verification_count(), 0);
         assert!(!client.is_paused());
     }
@@ -1555,7 +1553,7 @@ mod test_admin_auth {
 
         // Verify contract state is still accessible
         let stored_model_hash = client.get_model_hash();
-        assert_eq!(stored_model_hash, Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(stored_model_hash, Some(Bytes::from_slice(&env, &[3u8; 32])));
     }
 
     #[test]
@@ -1581,7 +1579,7 @@ mod test_admin_auth {
 
         // Verify model hash was updated
         let stored_model_hash = client.get_model_hash();
-        assert_eq!(stored_model_hash, new_model_hash);
+        assert_eq!(stored_model_hash, Some(new_model_hash));
     }
 
     #[test]
@@ -1649,7 +1647,7 @@ mod test_admin_auth {
 
         // Verify that contract state is still accessible after rotation
         let stored_model_hash = client.get_model_hash();
-        assert_eq!(stored_model_hash, Bytes::from_slice(&env, &[3u8; 32]));
+        assert_eq!(stored_model_hash, Some(Bytes::from_slice(&env, &[3u8; 32])));
     }
 
     #[test]
@@ -1677,6 +1675,39 @@ mod test_admin_auth {
         // Unpause
         client.set_pause(&false);
         assert!(!client.is_paused());
+    }
+}
+
+#[cfg(test)]
+mod test_panic_free_getters {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    #[test]
+    fn getters_return_none_when_empty_and_some_when_populated() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let model_hash = Bytes::from_slice(&env, &[42u8; 32]);
+        let vk = test_utils::create_dummy_vk(&env, 4);
+
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash.clone(), vk.clone()),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+
+        // Before any verification: get_result returns None
+        assert_eq!(client.get_result(), None);
+        // get_model_hash returns Some(model_hash)
+        assert_eq!(client.get_model_hash(), Some(model_hash));
+        // version returns 8
+        assert_eq!(client.version(), 8);
+
+        // If storage is unpopulated, get_model_hash returns None without trapping
+        env.as_contract(&contract_id, || {
+            env.storage().instance().remove(&MODEL_HASH);
+        });
+        assert_eq!(client.get_model_hash(), None);
     }
 }
 
@@ -2012,8 +2043,9 @@ mod test_pause_and_counter {
             0,
             "a refused verification must not move the counter"
         );
-        assert!(
-            client.try_get_result().is_err(),
+        assert_eq!(
+            client.get_result(),
+            None,
             "a refused verification must not record a result"
         );
     }
@@ -2735,7 +2767,7 @@ mod test_golden_receipt {
 
         // It returns the result it recorded, and that is the one the journal
         // carries.
-        assert_eq!(record, client.get_result());
+        assert_eq!(Some(record.clone()), client.get_result());
         assert_eq!(record.class_label, 1);
         assert_eq!(client.get_verification_count(), 1);
     }
