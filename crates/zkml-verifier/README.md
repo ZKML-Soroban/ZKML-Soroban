@@ -38,8 +38,8 @@ Contract interface `VERSION` is `5`.
 | -------- | ---- | ----------- |
 | `initialize(admin, model_hash, vk)` | `admin` | Stores admin, model commitment and verification key. Callable once. |
 | `verify_inference(proof_a, proof_b, proof_c, public_inputs)` | none | Verifies the proof, rejects replays, records the result, emits `verified`. |
-| `get_result()` | none | Last `InferenceRecord`. |
-| `get_model_hash()` | none | Registered model commitment. |
+| `get_result()` | none | Last `Option<InferenceRecord>`. |
+| `get_model_hash()` | none | Registered model commitment (`Option<Bytes>`). |
 | `get_verification_count()` | none | Number of successful verifications. |
 | `get_admin()` / `is_paused()` / `version()` | none | Read-only state. |
 | `set_verification_key(vk)` | admin | Rotates the verification key. |
