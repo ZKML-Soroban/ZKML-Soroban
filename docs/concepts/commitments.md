@@ -159,7 +159,7 @@ consensus-critical change.
 
 ## References
 
-- [CAP-0075: Poseidon hash functions](https://stellar.org/protocol/cap-0075)
+- [CAP-0075: Poseidon hash functions](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md)
 - [rs-soroban-poseidon](https://github.com/stellar/rs-soroban-poseidon)
 - [circomlib Poseidon](https://github.com/iden3/circomlib/blob/master/circuits/poseidon.circom)
 - Grassi et al., "Poseidon: A New Hash Function for Zero-Knowledge Proof Systems", 2021
