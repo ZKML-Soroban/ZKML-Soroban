@@ -6,8 +6,8 @@ icon: "bookmark"
 
 ## Stellar
 
-- [CAP-0074: BN254 host functions](https://stellar.org/protocol/cap-0074) (Protocol 25)
-- [CAP-0075: Poseidon hash host functions](https://stellar.org/protocol/cap-0075) (Protocol 25)
+- [CAP-0074: BN254 host functions](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md) (Protocol 25)
+- [CAP-0075: Poseidon hash host functions](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md) (Protocol 25)
 - [Soroban smart contracts documentation](https://developers.stellar.org/docs/build/smart-contracts)
 - [Stellar CLI](https://developers.stellar.org/docs/tools/cli)
 - [rs-soroban-poseidon](https://github.com/stellar/rs-soroban-poseidon)

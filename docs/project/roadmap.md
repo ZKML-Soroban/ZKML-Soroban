@@ -122,6 +122,6 @@ Runs in parallel with Phases 2 and 3. Details in [post-quantum readiness](/secur
 
 ## Resources
 
-- [CAP-0074: BN254 host functions](https://stellar.org/protocol/cap-0074)
-- [CAP-0075: Poseidon host functions](https://stellar.org/protocol/cap-0075)
+- [CAP-0074: BN254 host functions](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md)
+- [CAP-0075: Poseidon host functions](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md)
 - [RISC Zero documentation](https://dev.risczero.com/)
