@@ -96,9 +96,10 @@ the `zkvm` feature of `zkml-prover`.
 
 ## Use the crates
 
-`zkml-common` and `zkml-verifier` are published to crates.io starting with the
-first release, `0.0.1`. Until that release is out, depend on the Git repository
-instead. `zkml-prover` is not published yet (`publish = false`).
+`zkml-common` and `zkml-verifier` are published to crates.io. The first
+release, `0.0.1`, came out on 2026-09-15. Changes merged to `main` after that
+reach crates.io with the next version bump, so depend on the Git repository if
+you need them sooner. `zkml-prover` is not published yet (`publish = false`).
 
 ```toml
 [dependencies]
