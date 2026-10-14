@@ -1,15 +1,15 @@
 # ONNX import fixtures
 
-Small `.onnx` files used by `tests/onnx_import.rs` to exercise the importer
-foundation (protobuf parse, opset check, operator allowlist).
+Small `.onnx` files used by `tests/onnx_import.rs` to exercise the importer:
+protobuf parse, opset check, operator allowlist and model extraction.
 
 ## Files
 
 | File | Purpose |
 | ---- | ------- |
-| `decision_tree_valid.onnx` | Core opset 17 + `ai.onnx.ml` 3 + `TreeEnsembleClassifier`. Validation passes; import returns `ExtractionNotImplemented` until issue #5. |
-| `skl2onnx_like_tree.onnx` | Same realistic opset pair with an skl2onnx-style producer/graph name. Guards against regressing to an ml=17 floor. |
-| `linear_classifier_valid.onnx` | Core 18 + `ai.onnx.ml` 1 + `LinearClassifier`. Extraction deferred (issue #6). |
+| `decision_tree_valid.onnx` | Core opset 17 + `ai.onnx.ml` 3 + `TreeEnsembleClassifier`. Parses and passes the opset and operator checks. Import fails with `MalformedModel` because the synthetic graph declares no input tensor shape. Real tree extraction is covered by `skl2onnx_real_tree.onnx`. |
+| `skl2onnx_like_tree.onnx` | Same realistic opset pair with an skl2onnx-style producer/graph name. Guards against regressing to an ml=17 floor. Import fails with `MalformedModel` for the same missing input shape. |
+| `linear_classifier_valid.onnx` | Core 18 + `ai.onnx.ml` 1 + `LinearClassifier`. Extracts into a `LogisticRegression` with 3 weights. |
 | `unsupported_conv.onnx` | Core 17 + `Conv`. Must fail with `UnsupportedOperator { op_type: "Conv" }`. |
 | `low_opset_tree.onnx` | Core 13 + ml 3 + tree op. Must fail with `UnsupportedOpset` on the core domain. |
 | `tinymlp_valid.onnx` | Core 17 + Gemm + Relu + Gemm. 2-layer MLP matching the golden network in `tinymlp_inference.rs`. Validation passes and imports into a TinyMLP. |
@@ -117,4 +117,5 @@ onnx.save(model, "crates/zkml-prover/tests/fixtures/onnx_helper_mlp.onnx")
 ## Design note
 
 Fixtures stay tiny (a few hundred bytes) so reviews stay readable and CI stays
-fast. Full weight tensors belong with the extraction issues (#5 / #6).
+fast. Tests that need realistic weights use the two real files above or the JSON
+vectors in `tests/vectors/`.

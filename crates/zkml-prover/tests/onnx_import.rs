@@ -10,7 +10,7 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 #[test]
-fn fixture_decision_tree_validates_then_defers_extraction() {
+fn fixture_decision_tree_validates_then_rejects_missing_shape() {
     let bytes = fixture("decision_tree_valid.onnx");
     let model = parse_model_proto(&bytes).expect("valid onnx decodes");
     assert!(model.graph.is_some());
@@ -51,7 +51,7 @@ fn fixture_skl2onnx_like_tree_is_accepted() {
 }
 
 #[test]
-fn fixture_linear_validates_then_defers_extraction() {
+fn fixture_linear_validates_and_extracts() {
     let bytes = fixture("linear_classifier_valid.onnx");
     let model = parse_model_proto(&bytes).expect("linear onnx decodes");
     let ml = model
