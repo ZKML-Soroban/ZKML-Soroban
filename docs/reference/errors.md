@@ -10,7 +10,7 @@ Returned by `verify_inference` and `verify_receipt` as a Soroban contract error.
 
 | Code | Variant                         | Cause                                                        |
 | ---- | ------------------------------- | ------------------------------------------------------------ |
-| 1    | `ContractNotInitialized`        | `initialize` has not been called                             |
+| 1    | `ContractNotInitialized`        | The contract has no stored state (the constructor did not run) |
 | 2    | `PublicInputsTooShort`          | Public inputs end before a required field                    |
 | 3    | `MalformedProofA`               | `proof_a` is not 64 bytes (also returned for a wrong-length `proof_c`), or, in `verify_receipt`, seal point A is not on the curve |
 | 4    | `MalformedProofB`               | `proof_b` is not 128 bytes, or, in `verify_receipt`, seal point B is not on the curve |

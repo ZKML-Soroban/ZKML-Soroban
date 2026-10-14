@@ -32,20 +32,28 @@ pull the verifier's exported functions into your contract.
 
 ## Interface
 
-Contract interface `VERSION` is `5`.
+Contract interface `VERSION` is `8`. The full reference, with argument types and the
+order of checks, is in [docs/reference/verifier-contract.md](https://github.com/ZKML-Soroban/ZKML-Soroban/blob/main/docs/reference/verifier-contract.md).
 
 | Function | Auth | Description |
 | -------- | ---- | ----------- |
-| `initialize(admin, model_hash, vk)` | `admin` | Stores admin, model commitment and verification key. Callable once. |
-| `verify_inference(proof_a, proof_b, proof_c, public_inputs)` | none | Verifies the proof, rejects replays, records the result, emits `verified`. |
+| `__constructor(admin, model_hash, vk)` | `admin` | Runs once, atomically with deploy. Stores admin, model commitment and verification key. There is no public `initialize`. |
+| `verify_inference(proof_a, proof_b, proof_c, public_inputs)` | none | Verifies a native Groth16 proof, rejects replays, records the result, emits `verified`. |
+| `verify_receipt(seal, journal)` | none | Verifies a RISC Zero Groth16 receipt, rejects replays, records and returns the result, emits `verified`. |
+| `claim_digest(image_id, journal)` | none | Recomputes the digest a receipt commits to, for off-chain checks. |
 | `get_result()` | none | Last `Option<InferenceRecord>`. |
 | `get_model_hash()` | none | Registered model commitment (`Option<Bytes>`). |
 | `get_verification_count()` | none | Number of successful verifications. |
 | `get_admin()` / `is_paused()` / `version()` | none | Read-only state. |
-| `set_verification_key(vk)` | admin | Rotates the verification key. |
+| `get_risc0_config()` / `get_risc0_vk()` | none | Registered RISC Zero configuration and verifying key. |
+| `set_verification_key(vk)` | admin | Rotates the verification key for `verify_inference`. |
 | `set_model_hash(model_hash)` | admin | Replaces the model commitment. |
-| `set_admin(new_admin)` | admin | Transfers admin rights. |
+| `set_risc0_config(config)` / `set_risc0_vk(vk)` | admin | Registers the guest image id, control root, selector and RISC Zero's verifying key. |
+| `propose_admin(new_admin)` | admin | Starts a two-step admin transfer. |
+| `accept_admin()` | pending admin | Completes the transfer. |
 | `set_pause(paused)` | admin | Pauses or resumes verification. |
+
+Every admin setter emits an event.
 
 ### Proof encoding
 
@@ -80,20 +88,27 @@ L = IC[0] + sum(x_i * IC[i + 1])
 | ---- | ------- |
 | 1 | `ContractNotInitialized` |
 | 2 | `PublicInputsTooShort` |
-| 3 | `MalformedProofA` (also returned for a malformed `proof_c`) |
+| 3 | `MalformedProofA` (in `verify_inference`, also returned for a wrong-length `proof_c`) |
 | 4 | `MalformedProofB` |
-| 5 | `MalformedProofC` (reserved, not returned by VERSION 5) |
+| 5 | `MalformedProofC` (returned by `verify_receipt`) |
 | 6 | `MalformedVerificationKey` |
 | 7 | `VerificationFailed` (also returned while paused) |
 | 8 | `InvalidPublicInputLength` |
 | 9 | `VerificationKeyLengthMismatch` |
 | 10 | `ProofAlreadyUsed` |
+| 11 | `UnknownSelector` |
+| 12 | `MalformedSeal` |
+| 13 | `MalformedJournal` |
+| 14 | `Risc0NotConfigured` |
+| 15 | `NonCanonicalPublicInput` |
+
+Causes for each code are in [docs/reference/errors.md](https://github.com/ZKML-Soroban/ZKML-Soroban/blob/main/docs/reference/errors.md).
 
 ## Storage
 
-- Instance storage: admin, model hash, verification key, last result, counter, pause flag.
-  TTL is extended on `initialize` and on each successful verification (30-day threshold,
-  120-day extension).
+- Instance storage: admin, pending admin, model hash, verification keys, RISC Zero
+  configuration, last result, counter, pause flag. TTL is extended in the constructor and on
+  each successful verification (30-day threshold, 120-day extension).
 - Persistent storage: one nullifier per verified public-input set (`sha256(public_inputs)`),
   extended to the network maximum TTL.
 
@@ -106,9 +121,11 @@ the native test environment meters only host calls. See the `wasm_budget` tests.
 
 ## Known limitations
 
-- Proofs produced by the RISC Zero Groth16 wrapper expose RISC Zero's own public inputs
-  (control root and claim digest), not this 80-byte layout. Verifying them requires
-  deriving the claim digest from the journal on-chain; this is tracked on the roadmap.
+- RISC Zero receipts go through `verify_receipt`, which derives the claim digest from the
+  journal on-chain. Neither entrypoint has been exercised by a deployed contract on a live
+  network yet.
+- `verify_inference` does not validate its proof points, so a corrupted one traps in the
+  host there. `verify_receipt` does.
 - A given `(model, input, output, class_label)` tuple can be verified only once.
 - `get_result` returns a single global slot that the next successful verification overwrites.
 
