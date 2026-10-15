@@ -14,7 +14,7 @@ test:
 # Format check and lints.
 check:
     cargo fmt --all --check
-    cargo clippy --workspace --all-targets
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Build the Soroban verifier WASM (target/wasm32v1-none/contract/zkml_verifier.wasm).
 contract:

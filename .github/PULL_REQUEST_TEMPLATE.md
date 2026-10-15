@@ -10,7 +10,7 @@
 
 - [ ] `cargo test --workspace` passes
 - [ ] `cargo fmt --all --check` passes
-- [ ] `cargo clippy --workspace --all-targets` adds no new warnings
+- [ ] `cargo clippy --workspace --all-targets -- -D warnings` passes
 - [ ] Contract builds: `cargo build -p zkml-verifier --target wasm32v1-none --profile contract`
 - [ ] Commits follow Conventional Commits
 - [ ] Documentation updated where relevant (`docs/` pages listed in `docs/docs.json`)
