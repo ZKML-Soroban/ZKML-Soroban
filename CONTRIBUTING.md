@@ -77,7 +77,8 @@ means adding it to the navigation in `docs/docs.json`.
 
 - Follow standard Rust formatting: run `cargo fmt` before committing.
 - All public items must have documentation comments (`///` or `//!`).
-- Run `cargo clippy --workspace --all-targets` and do not introduce new warnings.
+- Run `cargo clippy --workspace --all-targets -- -D warnings`. CI fails on any
+  warning, so the workspace has to stay at zero.
 - Unsafe code is not permitted without explicit justification in comments.
 - Maintain test coverage for all new inference logic and quantization
   utilities.
@@ -97,8 +98,9 @@ test(common): add round-trip tests for fixed-point edge cases
 
 1. Fork the repository and create a feature branch from `main`.
 2. Ensure all tests pass (`cargo test --workspace`).
-3. Ensure code is formatted (`cargo fmt -- --check`).
-4. Ensure you add no new lint warnings (`cargo clippy --workspace --all-targets`).
+3. Ensure code is formatted (`cargo fmt --all --check`).
+4. Ensure clippy reports no warnings (`cargo clippy --workspace --all-targets -- -D warnings`).
+   `just check` runs it together with the format check.
 5. Update documentation if your change affects the public API or
    architecture.
 6. Open a pull request with a clear description of the change and its

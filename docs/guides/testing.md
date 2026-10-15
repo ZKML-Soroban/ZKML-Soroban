@@ -51,7 +51,7 @@ to `main`:
 | Job                 | What it checks                                                |
 | ------------------- | ------------------------------------------------------------- |
 | Format              | `cargo fmt --all --check`                                     |
-| Clippy              | `cargo clippy --workspace --all-targets` (advisory for now)   |
+| Clippy              | `cargo clippy --workspace --all-targets -- -D warnings`; any warning fails the job |
 | Test                | `cargo test --workspace`                                      |
 | zkml-common without std feature | `cargo build -p zkml-common --no-default-features`            |
 | Verifier WASM       | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |

@@ -25,7 +25,7 @@ the `zkvm` feature.
 
 ```bash
 cargo fmt --all --check
-cargo clippy --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build -p zkml-verifier --target wasm32v1-none --profile contract
 ```
