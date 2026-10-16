@@ -11,7 +11,8 @@ zkml-soroban maps weights, activations, and inputs to fixed-point
 ## Representation
 
 A real value `x` is stored as `round(x * 2^scale)` in an `i64`, with
-`scale = 16`. That gives about 4 to 5 decimal digits of fractional precision and
+`scale = 16`. `round` is `f64::round`, which rounds halfway cases away from
+zero. That gives about 4 to 5 decimal digits of fractional precision and
 an integer range of roughly +/- 1.4e14.
 
 ```rust
@@ -36,6 +37,23 @@ assert!((y.dequantize() - 0.41).abs() < 1e-4);
 | `PartialOrd`/`Ord`  | Compare raw scaled integers; operands must share a scale.             |
 | `abs`, `signum`, `is_zero`, `clamp` | Sign and range helpers.                                |
 | `dot`               | Dot product with the same per-product rescaling as dense layers.      |
+
+## Rounding
+
+Quantization and arithmetic do not round the same way:
+
+| Step                     | Rule                                   | Example (raw values)                    |
+| ------------------------ | -------------------------------------- | --------------------------------------- |
+| `quantize`, `try_quantize` | Nearest, halfway cases away from zero | `quantize(-1.5 / 65536)` is `-2`        |
+| `checked_mul`, `dot`     | Floor: arithmetic right shift, toward negative infinity | `-1 * 32768 >> 16` is `-1`, not `0` |
+| `checked_div`            | Truncation toward zero (`i128` division) | `(-1 << 16) / 131072` is `0`, not `-1` |
+
+A product can land one unit (`2^-16`) below the correctly rounded result, and
+since floor always moves toward negative infinity, the errors across a dot
+product add up in one direction instead of averaging out. Every rule here is
+deterministic, which is what the proof needs, but an implementation outside
+this crate that rounds products to nearest will disagree in the last bit.
+Reproduce these rules exactly when computing expected outputs elsewhere.
 
 Reductions (`sum`, `mean`, `max`, `min`, `argmax`) and ZK-friendly activations
 (`relu`, `leaky_relu` with power-of-two slope, `relu6`, `hard_sigmoid`,
