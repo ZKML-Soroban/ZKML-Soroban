@@ -264,8 +264,18 @@ record that survives.
 ## TTL policy
 
 Instance storage shares the contract instance lifetime. The contract calls
-`extend_ttl(threshold, extend_to)` at the end of the constructor and after every
-successful `verify_inference`:
+`env.storage().instance().extend_ttl(threshold, extend_to)`, which also extends
+the contract code, from these entrypoints:
+
+| Entrypoint                           | When                                   |
+| ------------------------------------ | -------------------------------------- |
+| `__constructor`                      | At the end of deploy                   |
+| `verify_inference`, `verify_receipt` | After a successful verification        |
+| `set_risc0_config`, `set_risc0_vk`   | After the new value is stored          |
+| `propose_admin`, `accept_admin`      | After each step of the admin transfer  |
+
+`set_verification_key`, `set_model_hash` and `set_pause` do not bump TTL, and
+neither do the read-only getters. With these constants:
 
 | Constant                 | Value                               |
 | ------------------------ | ----------------------------------- |

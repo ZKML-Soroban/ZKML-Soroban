@@ -131,8 +131,9 @@ MLP ReLU is a comparison gadget plus conditional selection.
 - **Canonical inputs:** exactly 80 bytes of public inputs, strict lengths.
 - **Replay protection:** SHA-256 nullifier over the public inputs, persistent
   storage.
-- **Admin controls:** key rotation, model hash update, admin transfer, pause.
-- **Liveness:** instance TTL bump on `initialize` and successful verification.
+- **Admin controls:** key rotation, model hash update, two-step admin transfer, pause.
+- **Liveness:** instance TTL bump in the constructor, on successful verification,
+  and on the RISC Zero setup and admin transfer calls.
 - **Observability:** `verified` event with `model_hash` topic.
 
 Future work: multi-model registry, per-subject records, batch verification.
