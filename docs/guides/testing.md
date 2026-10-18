@@ -58,6 +58,7 @@ to `main`:
 | zkVM guest (dev mode) | zkVM tests in dev mode, the RISC Zero digest cross-checks, and the `groth16` surface |
 | Groth16 compression (manual) | Real proving and verification; run from the Actions tab |
 | Docs (Mintlify)     | `mint broken-links` over `docs/`                              |
+| Dependency audit    | `cargo audit` on `Cargo.lock` and `methods/guest/Cargo.lock`; each ignored advisory is justified in `ci.yml` |
 
 ## What a pull request must include
 

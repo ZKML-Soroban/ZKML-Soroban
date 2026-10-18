@@ -167,6 +167,49 @@ jobs:
           cargo test -p zkml-prover --features groth16 --test groth16_bundle \
             real_groth16 -- --ignored --nocapture
 
+  audit:
+    name: Dependency audit
+    # Fails on any RustSec vulnerability in either lockfile. Unmaintained and
+    # other informational advisories are reported but do not fail the job.
+    #
+    # Every ignore below arrives through RISC Zero 3.0.6 (pinned with `=` in
+    # Cargo.toml) and has no semver-compatible fix, so it cannot be cleared
+    # with `cargo update`. None of them reaches the published crates
+    # (zkml-common, zkml-verifier). Drop an ignore as soon as a RISC Zero bump
+    # clears it, so the list never hides a new advisory in the same crate.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Audit the workspace lockfile
+        # RUSTSEC-2023-0071  rsa: Marvin timing attack, no fixed release.
+        #                    Via risc0-zkvm and risc0-build.
+        # RUSTSEC-2026-0344  ruzstd 0.7: fixed in 0.9. Via object 0.36 in risc0-zkvm.
+        # RUSTSEC-2026-0367  zip 2.3: fixed in 9.0. Via risc0-circuit-recursion
+        # RUSTSEC-2026-0368  and risc0-circuit-keccak.
+        # RUSTSEC-2026-0369
+        # RUSTSEC-2025-0055  tracing-subscriber 0.2: fixed in 0.3.20. Via
+        #                    ark-relations in the Groth16 stack.
+        run: >
+          cargo audit
+          --ignore RUSTSEC-2023-0071
+          --ignore RUSTSEC-2026-0344
+          --ignore RUSTSEC-2026-0367
+          --ignore RUSTSEC-2026-0368
+          --ignore RUSTSEC-2026-0369
+          --ignore RUSTSEC-2025-0055
+      - name: Audit the zkVM guest lockfile
+        # RUSTSEC-2026-0220  ruint 1.19: updating the guest lockfile changes the
+        #                    image id, so it waits for a golden receipt
+        #                    regeneration. Fixed in the workspace lockfile.
+        # RUSTSEC-2025-0055  tracing-subscriber 0.2, as above.
+        run: >
+          cargo audit --file methods/guest/Cargo.lock
+          --ignore RUSTSEC-2026-0220
+          --ignore RUSTSEC-2025-0055
+
   docs:
     name: Docs (Mintlify)
     runs-on: ubuntu-latest
