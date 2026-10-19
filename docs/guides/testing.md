@@ -55,7 +55,7 @@ to `main`:
 | Test                | `cargo test --workspace`                                      |
 | MSRV (Rust 1.91)    | `cargo +1.91 check --workspace --all-targets`, and the verifier for `wasm32v1-none` |
 | zkml-common without std feature | `cargo build -p zkml-common --no-default-features`            |
-| Verifier WASM       | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
+| Verifier WASM       | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract`, then the `wasm_budget` tests on that build |
 | zkVM guest (dev mode) | zkVM tests in dev mode, the RISC Zero digest cross-checks, and the `groth16` surface |
 | Groth16 compression (manual) | Real proving and verification; run from the Actions tab |
 | Docs (Mintlify)     | `mint broken-links` over `docs/`                              |

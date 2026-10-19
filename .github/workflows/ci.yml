@@ -104,6 +104,10 @@ jobs:
         run: cargo build -p zkml-verifier --target wasm32v1-none --profile contract
       - name: Report size
         run: ls -l target/wasm32v1-none/contract/zkml_verifier.wasm
+      - name: Measure on-chain cost on the compiled WASM
+        # The docs quote these figures, so the test fails if either entry point
+        # moves above the documented ceiling. See `test_wasm_budget` in lib.rs.
+        run: cargo test -p zkml-verifier wasm_budget -- --ignored --nocapture
       - uses: actions/upload-artifact@v4
         with:
           name: zkml_verifier.wasm
