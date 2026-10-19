@@ -53,6 +53,7 @@ to `main`:
 | Format              | `cargo fmt --all --check`                                     |
 | Clippy              | `cargo clippy --workspace --all-targets -- -D warnings`; any warning fails the job |
 | Test                | `cargo test --workspace`                                      |
+| MSRV (Rust 1.91)    | `cargo +1.91 check --workspace --all-targets`, and the verifier for `wasm32v1-none` |
 | zkml-common without std feature | `cargo build -p zkml-common --no-default-features`            |
 | Verifier WASM       | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | zkVM guest (dev mode) | zkVM tests in dev mode, the RISC Zero digest cross-checks, and the `groth16` surface |
