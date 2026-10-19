@@ -3230,7 +3230,8 @@ mod test_golden_receipt {
 /// is free there and not free on chain. This loads the real `.wasm` so the
 /// budget counts WASM instructions too.
 ///
-/// Ignored by default because it needs the artifact built first:
+/// Ignored by default because it needs the artifact built first. CI runs it
+/// in the `Verifier WASM` job, right after building the contract:
 ///
 /// ```text
 /// cargo build -p zkml-verifier --target wasm32v1-none --profile contract
@@ -3253,6 +3254,16 @@ mod test_wasm_budget {
             .collect()
     }
 
+    /// Ceiling for each entry point, measured on the compiled WASM.
+    ///
+    /// The docs quote 30.2M for `verify_inference` and 29.6M for
+    /// `verify_receipt` (README, `docs/reference/benchmarks.md` and the pages
+    /// that link to it). This sits about 6% above the larger of the two, so a
+    /// change that moves the cost noticeably fails here and the figures get
+    /// re-measured, instead of drifting away from what the docs say. The
+    /// network limit is 100M.
+    const DOCUMENTED_CPU_CEILING: u64 = 32_000_000;
+
     fn read(name: &str) -> serde_json::Value {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("testdata")
@@ -3273,7 +3284,7 @@ mod test_wasm_budget {
             .unwrap_or_else(|e| panic!("reading {wasm_path}: {e}; build the contract first"));
 
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         env.cost_estimate().budget().reset_unlimited();
 
         let bundle = read("groth16_bundle.json");
@@ -3333,8 +3344,8 @@ mod test_wasm_budget {
         println!("Memory bytes     : {mem}");
 
         assert!(
-            cpu < 100_000_000,
-            "{cpu} instructions exceeds the network limit"
+            cpu < DOCUMENTED_CPU_CEILING,
+            "{cpu} instructions is above the documented ceiling of              {DOCUMENTED_CPU_CEILING}; re-measure and update the docs"
         );
     }
 
@@ -3354,7 +3365,7 @@ mod test_wasm_budget {
             .unwrap_or_else(|e| panic!("reading {wasm_path}: {e}; build the contract first"));
 
         let env = Env::default();
-        env.mock_all_auths();
+        env.mock_all_auths_allowing_non_root_auth();
         env.cost_estimate().budget().reset_unlimited();
         // Same scalars and layout as test_budget: model=3, input=5, output=42,
         // class_label=7, each little-endian in the 80-byte layout.
@@ -3383,8 +3394,8 @@ mod test_wasm_budget {
         println!("Memory bytes     : {mem}");
 
         assert!(
-            cpu < 100_000_000,
-            "{cpu} instructions exceeds the network limit"
+            cpu < DOCUMENTED_CPU_CEILING,
+            "{cpu} instructions is above the documented ceiling of              {DOCUMENTED_CPU_CEILING}; re-measure and update the docs"
         );
     }
 }

@@ -31,6 +31,10 @@ cargo build -p zkml-verifier --target wasm32v1-none --profile contract
 cargo test -p zkml-verifier wasm_budget -- --ignored --nocapture
 ```
 
+CI runs the same two commands in the `Verifier WASM` job. Each test fails above
+32M instructions, about 6% over the figures here, so a change that moves the
+cost noticeably has to come with re-measured numbers.
+
 <Note>
 Measure on the WASM, not natively. The ordinary contract tests run it as native
 Rust, and the native test environment meters only host function calls: code
