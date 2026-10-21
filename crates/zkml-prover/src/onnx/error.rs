@@ -22,18 +22,6 @@ pub enum OnnxImportError {
         /// The ONNX `op_type` string of the offending node.
         op_type: String,
     },
-    /// Validation succeeded but parameter extraction is not implemented yet.
-    ///
-    /// Dead since tree (issue #5) and linear (issue #6) extraction landed:
-    /// nothing constructs this any more. Kept and deprecated for one release
-    /// because the enum is public API; it will be removed after that.
-    #[deprecated(
-        note = "tree and linear extraction are implemented; this variant is never produced"
-    )]
-    ExtractionNotImplemented {
-        /// Best-effort architecture label derived from the operator set.
-        architecture_hint: String,
-    },
 }
 
 impl fmt::Display for OnnxImportError {
@@ -49,13 +37,6 @@ impl fmt::Display for OnnxImportError {
                 write!(
                     f,
                     "unsupported ONNX operator '{op_type}' (supported: TreeEnsembleClassifier LinearClassifier Gemm MatMul Add Relu)"
-                )
-            }
-            #[allow(deprecated)]
-            OnnxImportError::ExtractionNotImplemented { architecture_hint } => {
-                write!(
-                    f,
-                    "ONNX validation succeeded for {architecture_hint} but parameter extraction is not implemented yet (see issues #5 and #6)"
                 )
             }
         }
