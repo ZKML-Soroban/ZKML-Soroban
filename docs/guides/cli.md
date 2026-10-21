@@ -41,10 +41,13 @@ does not accept `.onnx` files; convert them with the library importer first
 (see [ONNX import](/guides/onnx-import)).
 
 `-i/--input` is one comma-separated string, for example `"0.5,0.2,0.9,0.1"`.
+It may start with a negative value: `-i -0.5,0.2` is read as the input, not
+as a flag.
 
 ### commit
 
-Prints the model commitment, the value registered on-chain at `initialize`.
+Prints the model commitment, the value passed to the contract constructor at
+deploy.
 
 ```bash
 cargo run -p zkml-prover -- commit examples/models/credit_lr.json
