@@ -70,8 +70,9 @@ pub enum Command {
     Infer {
         /// Path to a JSON model.
         model: PathBuf,
-        /// Comma-separated feature vector, e.g. `"0.5,0.2,0.9,0.1"`.
-        #[arg(short, long)]
+        /// Comma-separated feature vector, e.g. `"0.5,0.2,0.9,0.1"`. A leading
+        /// minus sign is fine: `-i -0.5,0.2` is read as a value, not a flag.
+        #[arg(short, long, allow_hyphen_values = true)]
         input: String,
     },
 
@@ -83,8 +84,8 @@ pub enum Command {
     Prove {
         /// Path to a JSON model.
         model: PathBuf,
-        /// Comma-separated feature vector.
-        #[arg(short, long)]
+        /// Comma-separated feature vector. May start with a negative number.
+        #[arg(short, long, allow_hyphen_values = true)]
         input: String,
         /// Write the bundle here instead of stdout.
         #[arg(short, long)]
@@ -1125,5 +1126,50 @@ mod tests_args {
     #[test]
     fn infer_requires_input() {
         assert!(Cli::try_parse_from(["zkml-prover", "infer", "model.json"]).is_err());
+    }
+
+    /// A feature vector whose first value is negative starts with `-`, which
+    /// clap would otherwise read as an unknown short flag.
+    #[test]
+    fn negative_first_feature_is_a_value() {
+        for args in [
+            ["zkml-prover", "infer", "model.json", "-i", "-0.5,0.2"],
+            ["zkml-prover", "infer", "model.json", "--input", "-0.5,0.2"],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            match cli.command {
+                Command::Infer { input, .. } => assert_eq!(input, "-0.5,0.2"),
+                other => panic!("expected Infer, got {other:?}"),
+            }
+        }
+
+        let cli =
+            Cli::try_parse_from(["zkml-prover", "prove", "model.json", "-i", "-1,-2"]).unwrap();
+        match cli.command {
+            Command::Prove { input, .. } => assert_eq!(input, "-1,-2"),
+            other => panic!("expected Prove, got {other:?}"),
+        }
+    }
+
+    /// Accepting a leading hyphen must not swallow the next real flag.
+    #[test]
+    fn flags_after_a_negative_input_still_parse() {
+        let cli = Cli::try_parse_from([
+            "zkml-prover",
+            "prove",
+            "model.json",
+            "-i",
+            "-0.5,0.2",
+            "-o",
+            "bundle.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Prove { input, out, .. } => {
+                assert_eq!(input, "-0.5,0.2");
+                assert_eq!(out.as_deref(), Some(std::path::Path::new("bundle.json")));
+            }
+            other => panic!("expected Prove, got {other:?}"),
+        }
     }
 }
