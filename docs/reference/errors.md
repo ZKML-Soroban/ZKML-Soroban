@@ -55,7 +55,6 @@ Panics (not error codes):
 | `MalformedModel(String)`                 | Decode failure, missing graph, empty nodes, missing opsets, extraction failure |
 | `UnsupportedOpset { found, required }`   | A known domain is below its opset floor                        |
 | `UnsupportedOperator { op_type }`        | Operator outside the allowlist                                 |
-| `ExtractionNotImplemented { .. }`        | Validated graph without an extractor                           |
 
 ## ProveError (zkml-prover)
 
