@@ -14,7 +14,8 @@
       "inputs": [
         {"value": 6554, "scale": 16}
       ],
-      "expected_output": {"value": -656, "scale": 16}
+      "expected_output": {"value": -656, "scale": 16},
+      "expected_class_label": 0
     }
   ]
 }

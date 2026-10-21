@@ -16,7 +16,8 @@
         {"value": 65536, "scale": 16},
         {"value": 65536, "scale": 16}
       ],
-      "expected_output": {"value": -81920, "scale": 16}
+      "expected_output": {"value": -81920, "scale": 16},
+      "expected_class_label": 0
     }
   ]
 }

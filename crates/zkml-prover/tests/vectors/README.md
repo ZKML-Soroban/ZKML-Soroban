@@ -24,11 +24,18 @@ Each vector is a JSON file with the following structure:
         {"value": <i64>, "scale": <u32>}
       ],
       "expected_output": {"value": <i64>, "scale": <u32>},
+      "expected_class_label": <i64>,
       "expected_error": "<optional error type string>"
     }
   ]
 }
 ```
+
+Every case without `expected_error` must carry both `expected_output` and
+`expected_class_label`. The label is what the contract records next to the
+score: `1` if the score is at or above a logistic regression's
+`decision_threshold` and `0` otherwise, and always `0` for a decision tree. A
+case without it fails, so a wrong decision layer cannot pass on a correct score.
 
 ### Fixed-Point Representation
 
