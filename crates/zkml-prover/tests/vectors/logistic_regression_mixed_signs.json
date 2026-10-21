@@ -45,7 +45,8 @@
       "expected_output": {
         "value": -303104,
         "scale": 16
-      }
+      },
+      "expected_class_label": 0
     },
     {
       "description": "Same weights against 0.1, -0.3 and -0.7. 2.25 * -0.7 is negative and not a whole Q16.16 step, so the shift floors it to -103219 where truncating toward zero would give -103218. The other two products are positive, and 1.5 * 0.1 is exact",
@@ -66,7 +67,8 @@
       "expected_output": {
         "value": -62259,
         "scale": 16
-      }
+      },
+      "expected_class_label": 0
     }
   ]
 }

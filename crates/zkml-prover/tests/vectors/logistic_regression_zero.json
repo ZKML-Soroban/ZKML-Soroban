@@ -16,7 +16,8 @@
         {"value": 65536, "scale": 16},
         {"value": 65536, "scale": 16}
       ],
-      "expected_output": {"value": 0, "scale": 16}
+      "expected_output": {"value": 0, "scale": 16},
+      "expected_class_label": 1
     },
     {
       "description": "Zero inputs: 1.0*0 + -1.0*0 + 0 = 0.0",
@@ -24,7 +25,8 @@
         {"value": 0, "scale": 16},
         {"value": 0, "scale": 16}
       ],
-      "expected_output": {"value": 0, "scale": 16}
+      "expected_output": {"value": 0, "scale": 16},
+      "expected_class_label": 1
     }
   ]
 }

@@ -15,6 +15,7 @@
 //!       "description": "Description of this specific test case",
 //!       "inputs": [ ... ],
 //!       "expected_output": { ... },
+//!       "expected_class_label": 0,
 //!       "expected_error": "Optional: error type if this should fail"
 //!     }
 //!   ]
@@ -25,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use zkml_common::fixed_point::FixedPoint;
 use zkml_common::models::{DecisionTree, LogisticRegression, Model, TreeNode};
-use zkml_prover::inference::{run_inference, try_run_inference};
+use zkml_prover::inference::{run_inference, run_inference_with_decision, try_run_inference};
 
 /// Fixed-point representation matching the Rust struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +167,10 @@ struct TestCaseJson {
     inputs: Vec<FixedPointJson>,
     #[serde(default)]
     expected_output: Option<FixedPointJson>,
+    /// The `class_label` the contract records, which a wrong decision layer
+    /// changes even when the score is right. Required on every success case.
+    #[serde(default)]
+    expected_class_label: Option<i64>,
     #[serde(default)]
     expected_error: Option<String>,
 }
@@ -260,6 +265,24 @@ fn run_test_case(model: &Model, test_case: &TestCaseJson) {
             output.scale, expected_fp.scale,
             "Scale mismatch for: {}",
             test_case.description
+        );
+
+        let expected_label = test_case.expected_class_label.unwrap_or_else(|| {
+            panic!(
+                "Missing expected_class_label for: {}",
+                test_case.description
+            )
+        });
+        let (score, class_label) = run_inference_with_decision(model, &inputs);
+        assert_eq!(
+            score.value, output.value,
+            "Score from the decision path differs from run_inference for: {}",
+            test_case.description
+        );
+        assert_eq!(
+            class_label, expected_label,
+            "class_label mismatch for: {} (got {}, expected {})",
+            test_case.description, class_label, expected_label
         );
     }
 }
