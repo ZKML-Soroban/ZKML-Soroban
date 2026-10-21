@@ -21,16 +21,26 @@ const MIN_REPRESENTABLE: f64 = (i64::MIN as f64) / ((1i64 << DEFAULT_SCALE) as f
 
 /// Strategy for generating f64 values within the Q16.16 representable range.
 ///
-/// Excludes NaN, infinities, and subnormal values that would quantize to zero.
+/// Excludes NaN, infinities, and values too small to quantize to non-zero.
 /// The minimum non-zero representable value is 1.0 / 2^16 ≈ 1.5e-5.
+///
+/// The magnitude is `2^e` with `e` drawn uniformly from `[-16, 46.9]`, so every
+/// binade from the smallest step up to just below `MAX_REPRESENTABLE` (about
+/// 2^47) is equally likely, and the sign is drawn separately. Values are built
+/// in range rather than filtered. `f64::NORMAL` spreads over about 2,046
+/// binades and only 63 of them are in range, so filtering it rejected about 32
+/// draws for every one kept. The pair tests need 2,000 values for 1,000 cases,
+/// which lands right at proptest's 65,536 local-reject limit, so they aborted
+/// on some runs and passed on others.
 fn representable_f64() -> impl Strategy<Value = f64> {
-    prop::num::f64::NORMAL
-        .prop_filter("Value must be within representable range", |&x| {
-            (MIN_REPRESENTABLE..=MAX_REPRESENTABLE).contains(&x)
-        })
-        .prop_filter("Value must be large enough to quantize non-zero", |&x| {
-            x.abs() >= (1.0 / ((1i64 << DEFAULT_SCALE) as f64))
-        })
+    let min_exp = -(DEFAULT_SCALE as f64);
+    let max_exp = MAX_REPRESENTABLE.log2() - 0.1;
+    (any::<bool>(), min_exp..=max_exp).prop_map(|(negative, exp)| {
+        let magnitude = exp.exp2();
+        let x = if negative { -magnitude } else { magnitude };
+        debug_assert!((MIN_REPRESENTABLE..=MAX_REPRESENTABLE).contains(&x));
+        x
+    })
 }
 
 /// Strategy for generating pairs of f64 values within representable range.
