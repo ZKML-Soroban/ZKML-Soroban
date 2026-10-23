@@ -2651,9 +2651,15 @@ mod test_risc0_receipts {
 /// ```text
 /// RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
 ///     --test groth16_bundle real_groth16 -- --ignored
+/// cp target/groth16_bundle.json crates/zkml-verifier/testdata/
 /// cargo run -p zkml-prover --features zkvm -- export-vk --format json \
 ///     -o crates/zkml-verifier/testdata/risc0_vk.json
 /// ```
+///
+/// These tests read the image id from the bundle, so they cannot tell when it
+/// is stale. `crates/zkml-prover/tests/verifier_fixtures.rs` can: it compares
+/// the fixtures with the guest the tree builds. See CONTRIBUTING.md,
+/// "Changing the zkVM guest".
 #[cfg(test)]
 mod test_golden_receipt {
     use super::*;

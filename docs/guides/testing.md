@@ -33,6 +33,7 @@ cargo build -p zkml-common --no-default-features
 | ONNX import           | `tests/onnx_import.rs`, `tests/onnx_tree_extraction.rs`, `tests/tinymlp_inference.rs` | Extraction and rejection paths |
 | CLI                   | `crates/zkml-prover/tests/cli.rs`                | Subcommands, input parsing, exit codes              |
 | zkVM                  | `tests/zkvm_receipt.rs`, `tests/zkvm_differential.rs` (feature `zkvm`) | Receipt journals vs native inference |
+| Verifier fixtures     | `tests/verifier_fixtures.rs` (feature `zkvm`)    | The golden receipt and RISC Zero parameters in `crates/zkml-verifier/testdata/` match the guest this tree builds |
 | Contract              | `crates/zkml-verifier/src/lib.rs` test modules   | Initialize, guards, admin auth, events, accept path and resource budget (the TTL tests were lost in a merge; their snapshots remain in `test_snapshots/test_ttl/`) |
 
 Contract tests write snapshots to `crates/zkml-verifier/test_snapshots/`; commit

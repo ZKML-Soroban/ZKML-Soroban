@@ -10,6 +10,7 @@ provides guidelines and instructions for contributing.
 - [Project Structure](#project-structure)
 - [Coding Standards](#coding-standards)
 - [Pull Request Process](#pull-request-process)
+- [Changing the zkVM guest](#changing-the-zkvm-guest)
 - [Reporting Issues](#reporting-issues)
 
 ## Code of Conduct
@@ -108,6 +109,43 @@ test(common): add round-trip tests for fixed-point edge cases
 7. At least one maintainer review is required before merging. Changes to
    `crates/zkml-verifier` or `crates/zkml-common/src/commitment.rs` are
    consensus-critical and get an extra review.
+
+## Changing the zkVM guest
+
+The guest's **image id** is the hash of the guest binary. The contract only
+accepts receipts from the image id its admin registered, so changing it is
+never a local change. It changes when any of these change:
+
+- anything under `methods/guest/`, including `Cargo.toml` and `Cargo.lock`
+  (a dependency bump there counts);
+- any code in `zkml-common` that the guest compiles in;
+- the RISC Zero version, pinned with `=` in the root `Cargo.toml`,
+  `methods/Cargo.toml` and `methods/guest/Cargo.toml`.
+
+Such a change costs three things, so keep it in its own pull request:
+
+1. **The golden fixtures go stale.** `crates/zkml-verifier/testdata/` holds a
+   real receipt and the RISC Zero parameters it verifies against. The
+   `verifier_fixtures` tests in `zkml-prover` (run by the zkVM CI jobs) fail
+   until they match the new build. Regenerating takes about 22 minutes of CPU
+   and needs x86_64 Linux with Docker:
+
+   ```bash
+   RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16        --test groth16_bundle real_groth16 -- --ignored --nocapture
+   cp target/groth16_bundle.json crates/zkml-verifier/testdata/groth16_bundle.json
+   cargo run -p zkml-prover --features zkvm -- export-vk --format json        -o crates/zkml-verifier/testdata/risc0_vk.json
+   ```
+
+   Then run `cargo test -p zkml-verifier` and commit the fixtures and any
+   updated snapshots with the change.
+2. **Deployed verifiers stop accepting new proofs.** A contract keeps the image
+   id it was configured with, so every receipt from the new guest fails with
+   `VerificationFailed` until its admin calls `set_risc0_config` with the
+   values `export-vk --format soroban-args` prints.
+3. **The model commitment may change too.** If the change touches
+   `zkml-common/src/commitment.rs`, the model hash changes as well, and
+   `set_model_hash` has to be called with the new value. That file is
+   consensus-critical and gets an extra review.
 
 ## Releases
 
