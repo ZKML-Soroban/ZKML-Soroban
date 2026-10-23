@@ -6,16 +6,50 @@ This script helps verify the hand-computed Q16.16 fixed-point values
 in the test vector JSON files. It uses the same arithmetic as the
 Rust inference engine.
 
-Q16.16 format: value = round(real_value * 2^16)
+Q16.16 format: value = round(real_value * 2^16), halfway cases away from zero
 """
+
+from fractions import Fraction
 
 SCALE = 16
 SCALE_FACTOR = 1 << SCALE  # 65536
 
 
+def round_half_away_from_zero(value: float) -> int:
+    """Round like Rust's `f64::round`: halfway cases go away from zero.
+
+    Python's built-in `round` sends halfway cases to the nearest even
+    integer instead, so `round(2.5)` is 2 where Rust gives 3. The
+    arithmetic is done on the exact value of the float, so no addition of
+    0.5 can itself round (0.49999999999999994 + 0.5 is 1.0 in floats).
+    """
+    exact = Fraction(value)
+    magnitude = int(abs(exact) + Fraction(1, 2))  # int() floors a positive Fraction
+    return magnitude if exact >= 0 else -magnitude
+
+
 def quantize(real: float) -> int:
-    """Convert a floating-point value to Q16.16 fixed-point."""
-    return int(round(real * SCALE_FACTOR))
+    """Convert a floating-point value to Q16.16 fixed-point.
+
+    Matches `FixedPoint::quantize` in zkml-common, which uses `f64::round`.
+    """
+    return round_half_away_from_zero(real * SCALE_FACTOR)
+
+
+def _check_rounding() -> None:
+    """Halfway cases where Python's `round` and Rust's `f64::round` disagree."""
+    step = 1 / SCALE_FACTOR
+    cases = [
+        (0.5 * step, 1),    # round() gives 0
+        (-0.5 * step, -1),  # round() gives 0
+        (2.5 * step, 3),    # round() gives 2
+        (-2.5 * step, -3),  # round() gives -2
+        (1.5 * step, 2),    # both agree
+        (0.49999999999999994, 32768),  # not a halfway case once scaled
+    ]
+    for real, expected in cases:
+        got = quantize(real)
+        assert got == expected, f"quantize({real!r}) = {got}, expected {expected}"
 
 
 def dequantize(fixed: int) -> float:
@@ -42,6 +76,7 @@ def logistic_regression_output(weights, inputs, bias):
 
 def main():
     """Verify the hand-computed values in the test vectors."""
+    _check_rounding()
     
     print("=== Logistic Regression Examples ===\n")
     
