@@ -122,22 +122,35 @@ never a local change. It changes when any of these change:
 - the RISC Zero version, pinned with `=` in the root `Cargo.toml`,
   `methods/Cargo.toml` and `methods/guest/Cargo.toml`.
 
-Such a change costs three things, so keep it in its own pull request:
+It also depends on the machine that builds it. `methods/build.rs` calls
+`risc0_build::embed_methods()`, which compiles the guest with the host's
+toolchain, so the same commit can produce different binaries: the CI runners
+and a local Linux machine get different image ids. RISC Zero's Docker build
+(`GuestOptions::use_docker` in `risc0-build`) is what makes the id
+reproducible; the project does not use it yet. Until it does, register the
+image id that `export-vk` prints on the machine that produces the proofs.
+
+A change to the guest, to `zkml-common` or to RISC Zero costs three things,
+so keep it in its own pull request:
 
 1. **The golden fixtures go stale.** `crates/zkml-verifier/testdata/` holds a
-   real receipt and the RISC Zero parameters it verifies against. The
-   `verifier_fixtures` tests in `zkml-prover` (run by the zkVM CI jobs) fail
-   until they match the new build. Regenerating takes about 22 minutes of CPU
-   and needs x86_64 Linux with Docker:
+   real receipt and the RISC Zero parameters it verifies against. The contract
+   tests read the image id from the receipt itself, so they do not notice. The
+   `verifier_fixtures` test in `zkml-prover` (run by the zkVM CI jobs) does
+   catch a RISC Zero bump, because it compares the parameters with what the
+   pinned version derives. Regenerating takes about 22 minutes of CPU and
+   needs x86_64 Linux with Docker:
 
    ```bash
-   RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16        --test groth16_bundle real_groth16 -- --ignored --nocapture
+   RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
+       --test groth16_bundle real_groth16 -- --ignored --nocapture
    cp target/groth16_bundle.json crates/zkml-verifier/testdata/groth16_bundle.json
-   cargo run -p zkml-prover --features zkvm -- export-vk --format json        -o crates/zkml-verifier/testdata/risc0_vk.json
+   cargo run -p zkml-prover --features zkvm -- export-vk --format json \
+       -o crates/zkml-verifier/testdata/risc0_vk.json
    ```
 
-   Then run `cargo test -p zkml-verifier` and commit the fixtures and any
-   updated snapshots with the change.
+   Run both commands on the same machine, then `cargo test -p zkml-verifier`,
+   and commit the fixtures and any updated snapshots with the change.
 2. **Deployed verifiers stop accepting new proofs.** A contract keeps the image
    id it was configured with, so every receipt from the new guest fails with
    `VerificationFailed` until its admin calls `set_risc0_config` with the

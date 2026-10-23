@@ -2656,10 +2656,14 @@ mod test_risc0_receipts {
 ///     -o crates/zkml-verifier/testdata/risc0_vk.json
 /// ```
 ///
-/// These tests read the image id from the bundle, so they cannot tell when it
-/// is stale. `crates/zkml-prover/tests/verifier_fixtures.rs` can: it compares
-/// the fixtures with the guest the tree builds. See CONTRIBUTING.md,
-/// "Changing the zkVM guest".
+/// Run both on the same machine: the guest build is not reproducible across
+/// machines, so the image id depends on where it was built.
+///
+/// These tests read the image id and the RISC Zero parameters from the
+/// fixtures, so they cannot tell when either is stale.
+/// `crates/zkml-prover/tests/verifier_fixtures.rs` checks the parameters
+/// against the pinned RISC Zero version. See CONTRIBUTING.md, "Changing the
+/// zkVM guest".
 #[cfg(test)]
 mod test_golden_receipt {
     use super::*;
