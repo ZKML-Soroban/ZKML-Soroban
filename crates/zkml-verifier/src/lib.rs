@@ -77,7 +77,9 @@ const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// `NonCanonicalPublicInput` error was added. Both change the interface.
 /// 7 -> 8: `get_result` and `get_model_hash` now return `Option` instead of
 /// panicking when empty.
-pub const VERSION: u32 = 8;
+/// 8 -> 9: `claim_digest` returns `MalformedJournal` for a journal that is not
+/// 96 bytes instead of panicking.
+pub const VERSION: u32 = 9;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -413,16 +415,23 @@ impl ZkmlVerifierContract {
     /// Hashing goes through `env.crypto().sha256()`, a host function, rather
     /// than a SHA-256 compiled into this WASM. The arithmetic itself is shared
     /// with the prover so the two cannot drift.
-    pub fn claim_digest(env: Env, image_id: BytesN<32>, journal: Bytes) -> BytesN<32> {
+    ///
+    /// Returns `MalformedJournal` for a journal that is not the 96-byte
+    /// `JournalV1` layout, the same error `verify_receipt` gives, so a caller
+    /// gets a typed error instead of a trap.
+    pub fn claim_digest(
+        env: Env,
+        image_id: BytesN<32>,
+        journal: Bytes,
+    ) -> Result<BytesN<32>, VerificationError> {
         // Only a JournalV1 is meaningful here. Padding or truncating anything
         // else would return a confident digest that matches neither RISC Zero
         // nor the prover, which is worse than refusing.
-        let raw =
-            Self::journal_array(&journal).unwrap_or_else(|_| panic!("journal must be 96 bytes"));
-        BytesN::from_array(
+        let raw = Self::journal_array(&journal)?;
+        Ok(BytesN::from_array(
             &env,
             &Self::claim_digest_inner(&env, &image_id.to_array(), &raw),
-        )
+        ))
     }
 
     /// Set the admin, the model commitment and the Groth16 verification key, at
@@ -1701,7 +1710,7 @@ mod test_panic_free_getters {
         // get_model_hash returns Some(model_hash)
         assert_eq!(client.get_model_hash(), Some(model_hash));
         // version returns 8
-        assert_eq!(client.version(), 8);
+        assert_eq!(client.version(), 9);
 
         // If storage is unpopulated, get_model_hash returns None without trapping
         env.as_contract(&contract_id, || {
@@ -2591,16 +2600,21 @@ mod test_risc0_receipts {
     }
 
     #[test]
-    #[should_panic(expected = "journal must be 96 bytes")]
     fn the_claim_digest_view_refuses_a_journal_of_the_wrong_length() {
         // Padding or truncating would return a digest that matches neither
-        // RISC Zero nor the prover.
+        // RISC Zero nor the prover, so a short or long journal is a typed
+        // error, not a trap.
         let env = Env::default();
         let (client, _admin) = setup(&env);
-        client.claim_digest(
-            &BytesN::from_array(&env, &[0xaa; 32]),
-            &Bytes::from_slice(&env, &[0u8; 95]),
-        );
+        let image_id = BytesN::from_array(&env, &[0xaa; 32]);
+        for len in [0usize, 95, 97] {
+            let journal = Bytes::from_slice(&env, &std::vec![0u8; len]);
+            assert_eq!(
+                client.try_claim_digest(&image_id, &journal),
+                Err(Ok(VerificationError::MalformedJournal)),
+                "a {len}-byte journal must be refused"
+            );
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ icon: "triangle-exclamation"
 
 ## VerificationError (contract)
 
-Returned by `verify_inference` and `verify_receipt` as a Soroban contract error.
+Returned by `verify_inference`, `verify_receipt` and `claim_digest` as a Soroban contract error.
 
 | Code | Variant                         | Cause                                                        |
 | ---- | ------------------------------- | ------------------------------------------------------------ |
@@ -22,7 +22,7 @@ Returned by `verify_inference` and `verify_receipt` as a Soroban contract error.
 | 10   | `ProofAlreadyUsed`              | The nullifier for these public inputs already exists         |
 | 11   | `UnknownSelector`               | The seal was made for a different RISC Zero version          |
 | 12   | `MalformedSeal`                 | The seal is not 260 bytes                                    |
-| 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout, or its magic or version do not match |
+| 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout, or its magic or version do not match. Also returned by `claim_digest` for a journal that is not 96 bytes |
 | 14   | `Risc0NotConfigured`            | `set_risc0_config` or `set_risc0_vk` has not been called     |
 | 15   | `NonCanonicalPublicInput`       | `model_hash` or `input_hash` is not below the BN254 scalar modulus `r`, so it is not the canonical encoding of its scalar |
 

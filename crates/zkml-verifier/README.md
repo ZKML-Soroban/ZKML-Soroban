@@ -32,7 +32,7 @@ pull the verifier's exported functions into your contract.
 
 ## Interface
 
-Contract interface `VERSION` is `8`. The full reference, with argument types and the
+Contract interface `VERSION` is `9`. The full reference, with argument types and the
 order of checks, is in [docs/reference/verifier-contract.md](https://github.com/ZKML-Soroban/ZKML-Soroban/blob/main/docs/reference/verifier-contract.md).
 
 | Function | Auth | Description |
@@ -40,7 +40,7 @@ order of checks, is in [docs/reference/verifier-contract.md](https://github.com/
 | `__constructor(admin, model_hash, vk)` | `admin` | Runs once, atomically with deploy. Stores admin, model commitment and verification key. There is no public `initialize`. |
 | `verify_inference(proof_a, proof_b, proof_c, public_inputs)` | none | Verifies a native Groth16 proof, rejects replays, records the result, emits `verified`. |
 | `verify_receipt(seal, journal)` | none | Verifies a RISC Zero Groth16 receipt, rejects replays, records and returns the result, emits `verified`. |
-| `claim_digest(image_id, journal)` | none | Recomputes the digest a receipt commits to, for off-chain checks. |
+| `claim_digest(image_id, journal)` | none | Recomputes the digest a receipt commits to, for off-chain checks. Returns `MalformedJournal` for a journal that is not 96 bytes. |
 | `get_result()` | none | Last `Option<InferenceRecord>`. |
 | `get_model_hash()` | none | Registered model commitment (`Option<Bytes>`). |
 | `get_verification_count()` | none | Number of successful verifications. |
