@@ -33,6 +33,7 @@ cargo build -p zkml-common --no-default-features
 | ONNX import           | `tests/onnx_import.rs`, `tests/onnx_tree_extraction.rs`, `tests/tinymlp_inference.rs` | Extraction and rejection paths |
 | CLI                   | `crates/zkml-prover/tests/cli.rs`                | Subcommands, input parsing, exit codes              |
 | zkVM                  | `tests/zkvm_receipt.rs`, `tests/zkvm_differential.rs` (feature `zkvm`) | Receipt journals vs native inference |
+| Verifier fixtures     | `tests/verifier_fixtures.rs` (feature `zkvm`)    | The RISC Zero parameters in `crates/zkml-verifier/testdata/risc0_vk.json` match the pinned RISC Zero version |
 | Contract              | `crates/zkml-verifier/src/lib.rs` test modules   | Initialize, guards, admin auth, events, accept path and resource budget (the TTL tests were lost in a merge; their snapshots remain in `test_snapshots/test_ttl/`) |
 
 Contract tests write snapshots to `crates/zkml-verifier/test_snapshots/`; commit
@@ -56,7 +57,7 @@ to `main`:
 | MSRV (Rust 1.91)    | `cargo +1.91 check --workspace --all-targets`, and the verifier for `wasm32v1-none` |
 | zkml-common without std feature | `cargo build -p zkml-common --no-default-features`            |
 | Verifier WASM       | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract`, then the `wasm_budget` tests on that build |
-| zkVM guest (dev mode) | zkVM tests in dev mode, the RISC Zero digest cross-checks, and the `groth16` surface |
+| zkVM guest (dev mode) | zkVM tests in dev mode, the RISC Zero digest cross-checks, the `groth16` surface, and on Linux clippy with `--features groth16` |
 | Groth16 compression (manual) | Real proving and verification; run from the Actions tab |
 | Docs (Mintlify)     | `mint broken-links` over `docs/`                              |
 | Dependency audit    | `cargo audit` on `Cargo.lock` and `methods/guest/Cargo.lock`; each ignored advisory is justified in `ci.yml` |

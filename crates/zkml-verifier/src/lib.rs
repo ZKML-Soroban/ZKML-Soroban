@@ -2665,9 +2665,19 @@ mod test_risc0_receipts {
 /// ```text
 /// RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
 ///     --test groth16_bundle real_groth16 -- --ignored
+/// cp target/groth16_bundle.json crates/zkml-verifier/testdata/
 /// cargo run -p zkml-prover --features zkvm -- export-vk --format json \
 ///     -o crates/zkml-verifier/testdata/risc0_vk.json
 /// ```
+///
+/// Run both on the same machine: the guest build is not reproducible across
+/// machines, so the image id depends on where it was built.
+///
+/// These tests read the image id and the RISC Zero parameters from the
+/// fixtures, so they cannot tell when either is stale.
+/// `crates/zkml-prover/tests/verifier_fixtures.rs` checks the parameters
+/// against the pinned RISC Zero version. See CONTRIBUTING.md, "Changing the
+/// zkVM guest".
 #[cfg(test)]
 mod test_golden_receipt {
     use super::*;
