@@ -404,8 +404,7 @@ mod zkvm_prove {
         use risc0_zkvm::{Groth16Receipt, InnerReceipt, Journal, MaybePruned, ReceiptClaim};
 
         let journal = Journal::new(bundle.journal.clone());
-        let image: Digest = Digest::try_from(bundle.image_id)
-            .map_err(|e| ProveError::Zkvm(format!("bad image id: {e}")))?;
+        let image = Digest::from(bundle.image_id);
         let claim = ReceiptClaim::ok(image, MaybePruned::Value(bundle.journal.clone()));
 
         let mut selector = [0u8; 4];

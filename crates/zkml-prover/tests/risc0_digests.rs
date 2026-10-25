@@ -76,7 +76,7 @@ fn receipt_claim_ok_digest_matches_risc0() {
         for journal in journals() {
             let ours = receipt_claim_ok_digest(Sha2Hasher, &image_id, &journal);
 
-            let image: Digest = Digest::try_from(image_id).expect("32 bytes is a digest");
+            let image = Digest::from(image_id);
             let claim = ReceiptClaim::ok(image, MaybePruned::Value(journal.clone()));
             let theirs: [u8; 32] = claim.digest().into();
 
