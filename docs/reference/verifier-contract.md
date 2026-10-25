@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `8`                                     |
+| Interface `VERSION`       | `9`                                     |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -36,7 +36,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `get_risc0_config()` | none | `Risc0Config` | The registered configuration. Panics if never set. |
 | `set_risc0_vk(vk: VerificationKey)` | admin | `()` | Registers RISC Zero's universal verifying key. Refuses a key without six `ic` points, or with any point off its curve or at infinity. Emits `cfg_upd`. |
 | `get_risc0_vk()` | none | `VerificationKey` | The registered key, so anyone can check it is RISC Zero's. Panics if never set. |
-| `claim_digest(image_id: BytesN<32>, journal: Bytes)` | none | `BytesN<32>` | Recomputes the digest a receipt commits to, so off-chain tools can check agreement. Panics on a journal that is not 96 bytes. |
+| `claim_digest(image_id: BytesN<32>, journal: Bytes)` | none | `Result<BytesN<32>, VerificationError>` | Recomputes the digest a receipt commits to, so off-chain tools can check agreement. Returns `MalformedJournal` for a journal that is not 96 bytes. |
 
 ### Verifying a RISC Zero receipt
 
