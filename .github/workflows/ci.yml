@@ -194,11 +194,12 @@ jobs:
     # Fails on any RustSec vulnerability in either lockfile. Unmaintained and
     # other informational advisories are reported but do not fail the job.
     #
-    # Every ignore below arrives through RISC Zero 3.0.6 (pinned with `=` in
-    # Cargo.toml) and has no semver-compatible fix, so it cannot be cleared
-    # with `cargo update`. None of them reaches the published crates
-    # (zkml-common, zkml-verifier). Drop an ignore as soon as a RISC Zero bump
-    # clears it, so the list never hides a new advisory in the same crate.
+    # Every ignore below has no semver-compatible fix, so `cargo update` cannot
+    # clear it, and none of them reaches the deployed contract WASM or
+    # zkml-common. Most arrive through RISC Zero 3.0.6 (pinned with `=` in
+    # Cargo.toml); RUSTSEC-2026-0387 arrives through soroban-sdk's native test
+    # host. Drop an ignore as soon as an upstream bump clears it, so the list
+    # never hides a new advisory in the same crate.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -214,6 +215,11 @@ jobs:
         # RUSTSEC-2026-0369
         # RUSTSEC-2025-0055  tracing-subscriber 0.2: fixed in 0.3.20. Via
         #                    ark-relations in the Groth16 stack.
+        # RUSTSEC-2026-0387  crypto-bigint 0.5: fixed in 0.7.6. Via
+        #                    elliptic-curve 0.13 in soroban-env-host, the
+        #                    native Soroban host soroban-sdk uses for tests and
+        #                    clients. The contract WASM links soroban-env-guest
+        #                    instead and does not contain it.
         run: >
           cargo audit
           --ignore RUSTSEC-2023-0071
@@ -222,6 +228,7 @@ jobs:
           --ignore RUSTSEC-2026-0368
           --ignore RUSTSEC-2026-0369
           --ignore RUSTSEC-2025-0055
+          --ignore RUSTSEC-2026-0387
       - name: Audit the zkVM guest lockfile
         # RUSTSEC-2026-0220  ruint 1.19: updating the guest lockfile changes the
         #                    image id, so it waits for a golden receipt
