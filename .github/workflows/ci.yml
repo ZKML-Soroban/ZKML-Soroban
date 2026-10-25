@@ -156,6 +156,12 @@ jobs:
       - name: Check that the Metal feature compiles on Apple Silicon
         if: runner.os == 'macOS'
         run: cargo check -p zkml-prover --features metal
+      - name: Clippy with the zkVM and Groth16 features
+        # The Clippy job builds default features only, so code behind `zkvm`
+        # and `groth16` was never linted there. It needs the RISC Zero
+        # toolchain to build the guest, which this job already installs.
+        if: runner.os == 'Linux'
+        run: cargo clippy -p zkml-prover --features groth16 --all-targets -- -D warnings
 
   groth16:
     name: Groth16 compression (manual)
