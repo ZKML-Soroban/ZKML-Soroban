@@ -103,11 +103,17 @@
           "project/use-cases",
           "project/devlog",
           "project/references",
-          "project/contributing"
+          "project/development"
         ]
       }
     ]
   },
+  "redirects": [
+    {
+      "source": "/project/contributing",
+      "destination": "/project/development"
+    }
+  ],
   "footer": {
     "socials": {
       "github": "https://github.com/ZKML-Soroban/ZKML-Soroban"
