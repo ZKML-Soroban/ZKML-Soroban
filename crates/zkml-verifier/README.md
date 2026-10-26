@@ -53,7 +53,8 @@ order of checks, is in [docs/reference/verifier-contract.md](https://github.com/
 | `accept_admin()` | pending admin | Completes the transfer. |
 | `set_pause(paused)` | admin | Pauses or resumes verification. |
 
-Every admin setter emits an event.
+Every admin setter emits an event. Events are declared with `#[contractevent]`, so their
+schemas ship in the contract spec; see the events section of the contract reference.
 
 ### Proof encoding
 

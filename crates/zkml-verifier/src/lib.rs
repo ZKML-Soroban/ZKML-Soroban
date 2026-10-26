@@ -26,8 +26,8 @@ extern crate std;
 
 use soroban_sdk::crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, log, symbol_short, vec, Address, Bytes,
-    BytesN, Env, Symbol, Vec, U256,
+    contract, contracterror, contractevent, contractimpl, contracttype, log, symbol_short, vec,
+    Address, Bytes, BytesN, Env, Symbol, Vec, U256,
 };
 
 use zkml_common::journal::{JournalV1, JOURNAL_V1_LEN};
@@ -172,6 +172,56 @@ pub struct InferenceRecord {
     pub verified_at: u32,
 }
 
+/// Published by `verify_inference` and `verify_receipt` on success.
+///
+/// Topics `("verified", model_hash)`, so indexers can filter per model; data
+/// `(verified_at, output)`.
+#[contractevent(topics = ["verified"], data_format = "vec")]
+pub struct Verified {
+    #[topic]
+    pub model_hash: Bytes,
+    pub verified_at: u32,
+    pub output: Bytes,
+}
+
+/// `set_risc0_config`: topics `("cfg_upd", "risc0")`, data the new image id.
+#[contractevent(topics = ["cfg_upd", "risc0"], data_format = "single-value")]
+pub struct Risc0ConfigUpdated {
+    pub image_id: BytesN<32>,
+}
+
+/// `set_risc0_vk`: topics `("cfg_upd", "risc0_vk")`, no data.
+#[contractevent(topics = ["cfg_upd", "risc0_vk"], data_format = "single-value")]
+pub struct Risc0VkUpdated {}
+
+/// `set_verification_key`: topics `("cfg_upd", "vk")`, no data.
+#[contractevent(topics = ["cfg_upd", "vk"], data_format = "single-value")]
+pub struct VerificationKeyUpdated {}
+
+/// `set_model_hash`: topics `("cfg_upd", "mdl_hash")`, data the new commitment.
+#[contractevent(topics = ["cfg_upd", "mdl_hash"], data_format = "single-value")]
+pub struct ModelHashUpdated {
+    pub model_hash: Bytes,
+}
+
+/// `propose_admin`: topics `("cfg_upd", "adm_prop")`, data the proposed admin.
+#[contractevent(topics = ["cfg_upd", "adm_prop"], data_format = "single-value")]
+pub struct AdminProposed {
+    pub new_admin: Address,
+}
+
+/// `accept_admin`: topics `("cfg_upd", "admin")`, data the new admin.
+#[contractevent(topics = ["cfg_upd", "admin"], data_format = "single-value")]
+pub struct AdminChanged {
+    pub admin: Address,
+}
+
+/// `set_pause`: topics `("cfg_upd", "pause")`, data the new pause flag.
+#[contractevent(topics = ["cfg_upd", "pause"], data_format = "single-value")]
+pub struct PauseSet {
+    pub paused: bool,
+}
+
 #[contract]
 pub struct ZkmlVerifierContract;
 
@@ -203,11 +253,10 @@ impl ZkmlVerifierContract {
         env.storage().instance().set(&RISC0_CFG, &config);
         Self::bump_instance_ttl(&env);
         // Public, so anyone can see when the admin changes what verifies.
-        #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("cfg_upd"), symbol_short!("risc0")),
-            config.image_id.clone(),
-        );
+        Risc0ConfigUpdated {
+            image_id: config.image_id.clone(),
+        }
+        .publish(&env);
     }
 
     /// The registered RISC Zero configuration.
@@ -258,9 +307,7 @@ impl ZkmlVerifierContract {
         }
         env.storage().instance().set(&RISC0_VK, &vk);
         Self::bump_instance_ttl(&env);
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("cfg_upd"), symbol_short!("risc0_vk")), ());
+        Risc0VkUpdated {}.publish(&env);
     }
 
     /// The registered RISC Zero verifying key, so anyone can check it is the
@@ -590,11 +637,12 @@ impl ZkmlVerifierContract {
     /// indexers can filter per model) and `output` (data), alongside the ledger
     /// sequence number (`verified_at`).
     fn emit_verified_event(env: &Env, record: &InferenceRecord) {
-        #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("verified"), record.model_hash.clone()),
-            (record.verified_at, record.output.clone()),
-        );
+        Verified {
+            model_hash: record.model_hash.clone(),
+            verified_at: record.verified_at,
+            output: record.output.clone(),
+        }
+        .publish(env);
     }
 
     /// Deserialize a G1 point from 64 bytes (Ethereum-compatible format).
@@ -996,9 +1044,7 @@ impl ZkmlVerifierContract {
         // profile, so in the deployed WASM a log leaves no trace at all. This is
         // the key `verify_inference` checks against, so the change has to be
         // observable on chain.
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("cfg_upd"), symbol_short!("vk")), ());
+        VerificationKeyUpdated {}.publish(&env);
     }
 
     /// Set a new model hash. Only callable by admin.
@@ -1012,11 +1058,10 @@ impl ZkmlVerifierContract {
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         log!(&env, "Model hash updated by admin");
         // The commitment every proof is checked against, so publish the new one.
-        #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("cfg_upd"), symbol_short!("mdl_hash")),
-            model_hash.clone(),
-        );
+        ModelHashUpdated {
+            model_hash: model_hash.clone(),
+        }
+        .publish(&env);
     }
 
     /// Propose a new admin. Only callable by the current admin.
@@ -1037,11 +1082,10 @@ impl ZkmlVerifierContract {
         env.storage().instance().set(&PENDING_ADMIN, &new_admin);
         Self::bump_instance_ttl(&env);
         log!(&env, "Admin transfer proposed");
-        #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("cfg_upd"), symbol_short!("adm_prop")),
-            new_admin.clone(),
-        );
+        AdminProposed {
+            new_admin: new_admin.clone(),
+        }
+        .publish(&env);
     }
 
     /// Accept a pending admin transfer. Only callable by the proposed admin.
@@ -1060,11 +1104,10 @@ impl ZkmlVerifierContract {
         env.storage().instance().remove(&PENDING_ADMIN);
         Self::bump_instance_ttl(&env);
         log!(&env, "Admin transfer accepted");
-        #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("cfg_upd"), symbol_short!("admin")),
-            pending.clone(),
-        );
+        AdminChanged {
+            admin: pending.clone(),
+        }
+        .publish(&env);
     }
 
     /// Set the pause flag. Only callable by admin.
@@ -1078,9 +1121,7 @@ impl ZkmlVerifierContract {
         env.storage().instance().set(&PAUSED, &paused);
         log!(&env, "Pause flag set to {}", paused);
         // Pausing stops every verification, so callers need to see it happen.
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("cfg_upd"), symbol_short!("pause")), paused);
+        PauseSet { paused }.publish(&env);
     }
 
     /// Get the current admin address.
