@@ -211,7 +211,11 @@ See [Errors](/reference/errors) for the full table of `VerificationError` codes.
 
 ## Events
 
-On success the contract publishes:
+Events are declared with `#[contractevent]`, so their schemas are part of the
+contract spec embedded in the WASM, under the struct names below. Clients and
+indexers can read them from the deployed contract instead of from this page.
+
+On success `verify_inference` and `verify_receipt` publish `Verified`:
 
 | Part   | Value                                          |
 | ------ | ---------------------------------------------- |
@@ -223,15 +227,15 @@ Indexers can filter by `model_hash` topic.
 Changing the RISC Zero configuration also publishes an event, so anyone can see
 when the admin changes what verifies:
 
-| Call | Topics | Data |
-| ---- | ------ | ---- |
-| `set_risc0_config` | `("cfg_upd", "risc0")` | the new `image_id` |
-| `set_risc0_vk` | `("cfg_upd", "risc0_vk")` | `()` |
-| `set_verification_key` | `("cfg_upd", "vk")` | `()` |
-| `set_model_hash` | `("cfg_upd", "mdl_hash")` | the new `model_hash` |
-| `propose_admin` | `("cfg_upd", "adm_prop")` | the proposed admin `Address` |
-| `accept_admin` | `("cfg_upd", "admin")` | the new admin `Address` |
-| `set_pause` | `("cfg_upd", "pause")` | the new flag, a `bool` |
+| Call | Event | Topics | Data |
+| ---- | ----- | ------ | ---- |
+| `set_risc0_config` | `Risc0ConfigUpdated` | `("cfg_upd", "risc0")` | the new `image_id` |
+| `set_risc0_vk` | `Risc0VkUpdated` | `("cfg_upd", "risc0_vk")` | `()` |
+| `set_verification_key` | `VerificationKeyUpdated` | `("cfg_upd", "vk")` | `()` |
+| `set_model_hash` | `ModelHashUpdated` | `("cfg_upd", "mdl_hash")` | the new `model_hash` |
+| `propose_admin` | `AdminProposed` | `("cfg_upd", "adm_prop")` | the proposed admin `Address` |
+| `accept_admin` | `AdminChanged` | `("cfg_upd", "admin")` | the new admin `Address` |
+| `set_pause` | `PauseSet` | `("cfg_upd", "pause")` | the new flag, a `bool` |
 
 Every admin setter emits one, so each of them is observable on chain. The setters
 also write a `log!` line, which is useful when running against a local network
