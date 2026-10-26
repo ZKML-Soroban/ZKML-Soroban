@@ -26,7 +26,7 @@ The same code runs in three places, so their results must match bit for bit:
 
 ```toml
 [dependencies]
-zkml-common = "0.0.1"
+zkml-common = "0.0.2"
 ```
 
 ```rust

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-10-25
+
+Second crates.io release (`zkml-common`, `zkml-verifier`). The contract
+interface moves from `VERSION` 5 to 9, and model commitments change, so a
+model registered with `0.0.1` has to be registered again. See Breaking.
+
 ### Breaking
 - The contract `VERSION` goes from `5` to `9` in this release:
   - `5 -> 6`: `verify_receipt` and the RISC Zero configuration calls below.
@@ -254,6 +260,7 @@ June 2026 Phase 1 off-chain milestone and was never published.
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.1
 [0.2.0]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.2.0
