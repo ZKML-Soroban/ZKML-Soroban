@@ -8,8 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Breaking
-- The contract `VERSION` is bumped `5 -> 6` for `verify_receipt` and the RISC Zero
-  configuration calls below.
+- The contract `VERSION` goes from `5` to `9` in this release:
+  - `5 -> 6`: `verify_receipt` and the RISC Zero configuration calls below.
+  - `6 -> 7`: `initialize` is gone. The admin, model commitment and
+    verification key are passed to a `__constructor` at deploy, so nobody can
+    initialize a deployed contract before its owner does. `set_admin` is
+    replaced by the two-step `propose_admin` / `accept_admin`. New error
+    `NonCanonicalPublicInput` (15).
+  - `7 -> 8`: `get_result` and `get_model_hash` return `Option` instead of
+    panicking when nothing is stored.
+  - `8 -> 9`: `claim_digest` returns `MalformedJournal` for a journal that is
+    not 96 bytes instead of panicking.
+- Model commitments change. The element stream behind the Poseidon commitment
+  now starts with the model kind and length-prefixes every variable-length part,
+  so two models of different shape can no longer share a commitment. A model
+  hash computed with `0.0.1` does not match the one this release computes for
+  the same model; re-register it with `set_model_hash`.
 - `zkml-common` built with `default-features = false` no longer includes the
   `commitment` and `merkle` modules unless the new `poseidon` feature is on.
   Their arkworks dependency does not build for `wasm32v1-none`, and gating it is
@@ -42,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   journal.
 - Both setters publish a `cfg_upd` event, so a change to what verifies is public.
 - `claim_digest` as a public view, so off-chain tools can check that they agree
-  with the contract. It refuses a journal that is not 96 bytes.
+  with the contract. It returns `MalformedJournal` for a journal that is not 96
+  bytes.
 - Error codes `UnknownSelector` (11), `MalformedSeal` (12), `MalformedJournal`
   (13) and `Risc0NotConfigured` (14).
 - `zkml-prover export-vk` also prints RISC Zero's universal verifying key,
@@ -75,6 +90,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `try_run_inference_with_decision`, its fallible inference entry point.
 - A manual `workflow_dispatch` CI job that proves and verifies a real Groth16
   bundle.
+- `FixedPoint::try_quantize`, which refuses `NaN`, infinities and values that do
+  not fit in `i64` instead of saturating.
+- `tools/sklearn_to_json.py` converts a scikit-learn model to the JSON exchange
+  format, and `tools/inspect_bundle.py` prints what the contract receives from a
+  bundle and rebuilds its 80-byte public input (`--check` sets the exit code).
+- Golden vectors for logistic regression edge cases, and every success case now
+  asserts its `class_label` as well as its score.
+- Contract tests for the pause path and the verification counter.
+- CI jobs: a dependency audit of both lockfiles (`cargo audit`), a build on the
+  declared MSRV (Rust 1.91), the `wasm_budget` tests on the compiled contract
+  with a 32M-instruction ceiling, and clippy with `--features groth16`. Clippy
+  with `-D warnings` is now blocking.
+- `tests/verifier_fixtures.rs` checks the RISC Zero parameters in the verifier's
+  fixtures against the pinned RISC Zero version.
 
 ### Changed
 - `zkml-common` is genuinely `no_std` now, which it was documented as but was
@@ -88,6 +117,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `generate_proof` is deprecated in favour of `prove_groth16`.
 - The crates.io dry run packages the crates together, so the verifier is
   checked against the `zkml-common` in the same checkout.
+- The contract's events are declared with `#[contractevent]`, so their schemas
+  are part of the contract spec. Their topics and data are unchanged.
+- Every admin setter publishes a `cfg_upd` event, including
+  `set_verification_key`, `set_model_hash` and `set_pause`, since `log!` is
+  compiled out of the deployed contract.
+- `commit` and `prove` run the model range and overflow-bounds checks by default
+  and refuse a model that fails them (`--skip-safety-check` opts out), and the
+  ONNX importer refuses non-finite or out-of-range parameters.
+- `verify_inference` checks the nullifier before the pairing, so a replay is
+  refused without paying for it, as `verify_receipt` already did.
+- The zkVM guest uses the fallible inference path, so a malformed model fails
+  with a typed reason instead of a panic.
+- Documentation: the verifier README, TTL policy, error table, fixed-point
+  rounding rules and quickstart describe the current contract, and
+  `CONTRIBUTING.md` explains what a change to the guest costs. The contributing
+  docs page moved to `project/development`, with a redirect.
+
+### Removed
+- `OnnxImportError::ExtractionNotImplemented`, which nothing constructed once
+  tree and linear extraction landed.
 
 ### Fixed
 - The BN254 control id is byte-reversed before being used as a public input, as
@@ -97,6 +146,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of silently hashing a truncated struct in release builds.
 - `cargo test --workspace` passes on Windows: the main thread gets the same 8 MB
   of stack it has on Linux and macOS.
+- The ONNX protobuf wire types match the ONNX schema, so files written by real
+  exporters decode; real skl2onnx and `onnx` fixtures guard it.
+- The KYC demo model is exported with opset 17, which the importer accepts.
+- The CLI accepts a feature vector whose first value is negative
+  (`-i -0.5,0.2`).
+- The golden receipt was regenerated for the current guest, and the
+  `wasm_budget` tests, broken since the constructor change, run again.
+- `compute_expected.py` rounds halfway cases away from zero, as
+  `FixedPoint::quantize` does, and a flaky fixed-point property test no longer
+  aborts on too many rejected inputs.
+
+### Security
+- The contract accepts only the canonical encoding of each public input. A
+  `model_hash` or `input_hash` at or above the BN254 modulus is refused, so one
+  proof can no longer be recorded again under `x + r` with a fresh nullifier.
+- The model commitment change under Breaking closes a collision between models
+  of different shape, which let a model of another kind pass `verify_receipt`
+  under a registered hash.
+- Dependency updates for published advisories: `ruint` 1.20.1
+  (RUSTSEC-2026-0220), `rustls` 0.23.46 (RUSTSEC-2026-0285, -0346, -0348, -0349),
+  `quinn-proto` 0.11.19 (RUSTSEC-2026-0338 to -0342), `rustls-webpki` 0.103.16
+  (RUSTSEC-2026-0382) and `webpki-roots` 1.0.10 (RUSTSEC-2026-0381). They come in
+  through the RISC Zero host stack; none reaches the published crates. The
+  zkVM guest lockfile still pins `ruint` 1.19.0, because updating it changes the
+  guest's image id.
 
 ## [0.0.1] - 2026-09-15
 
