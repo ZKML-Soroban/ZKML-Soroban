@@ -13,7 +13,7 @@ exclude = ["methods", "methods/guest"]
 
 [workspace.package]
 # Single workspace version: every publishable crate is released together.
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 rust-version = "1.91"
 license = "Apache-2.0"
@@ -25,7 +25,7 @@ keywords = ["zkml", "zero-knowledge", "stellar", "soroban", "groth16"]
 [workspace.dependencies]
 # Internal crates. `version` is required for crates.io and must match
 # `workspace.package.version`.
-zkml-common = { path = "crates/zkml-common", version = "0.0.1", default-features = false }
+zkml-common = { path = "crates/zkml-common", version = "0.0.2", default-features = false }
 # `default-features = false` so `zkml-common` can build for `wasm32v1-none`.
 # Crates that need the std layer ask for it themselves; with workspace
 # inheritance a member cannot turn default features off again.
