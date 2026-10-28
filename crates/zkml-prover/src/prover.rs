@@ -116,7 +116,7 @@ impl ProverBackend {
     }
 }
 
-/// Commit to a model's parameters (the on-chain `initialize` value).
+/// Commit to a model's parameters (the `model_hash` the contract is deployed with).
 pub fn model_commitment(model: &Model) -> Commitment {
     commitment_hash(&model_elements(model))
 }

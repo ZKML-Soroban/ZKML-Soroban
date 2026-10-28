@@ -159,7 +159,7 @@ stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_co
 stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_vk --vk '{"alpha":"…",…,"ic":[…]}'
 ```
 
-These are not arguments to `initialize`, which takes the key for the
+These are not constructor arguments: the constructor takes the key for the
 native-circuit path. See
 [the verifier contract](/reference/verifier-contract#verifying-a-risc-zero-receipt).
 

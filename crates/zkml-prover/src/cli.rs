@@ -694,7 +694,8 @@ fn cmd_prove_groth16(
     })
 }
 
-/// `export-vk [--format json|soroban-args]`: constants for `initialize`.
+/// `export-vk [--format json|soroban-args]`: the RISC Zero values the admin
+/// registers with `set_risc0_config` and `set_risc0_vk`.
 #[cfg(feature = "zkvm")]
 pub fn cmd_export_vk(
     format: &str,
@@ -724,7 +725,7 @@ pub fn cmd_export_vk(
 
     let payload = match format {
         "soroban-args" => {
-            // Two admin calls, not arguments to `initialize`: the RISC Zero
+            // Two admin calls, not constructor arguments: the RISC Zero
             // values belong to `set_risc0_config(config: Risc0Config)` and
             // `set_risc0_vk(vk: VerificationKey)`, which each take a struct.
             // The Stellar CLI takes a struct as JSON, with bytes as hex.
