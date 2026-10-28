@@ -34,7 +34,7 @@ cargo build -p zkml-common --no-default-features
 | CLI                   | `crates/zkml-prover/tests/cli.rs`                | Subcommands, input parsing, exit codes              |
 | zkVM                  | `tests/zkvm_receipt.rs`, `tests/zkvm_differential.rs` (feature `zkvm`) | Receipt journals vs native inference |
 | Verifier fixtures     | `tests/verifier_fixtures.rs` (feature `zkvm`)    | The RISC Zero parameters in `crates/zkml-verifier/testdata/risc0_vk.json` match the pinned RISC Zero version |
-| Contract              | `crates/zkml-verifier/src/lib.rs` test modules   | Initialize, guards, admin auth, events, accept path and resource budget (the TTL tests were lost in a merge; their snapshots remain in `test_snapshots/test_ttl/`) |
+| Contract              | `crates/zkml-verifier/src/lib.rs` test modules   | Constructor, guards, admin auth, events, accept path, instance TTL policy and resource budget |
 
 Contract tests write snapshots to `crates/zkml-verifier/test_snapshots/`; commit
 updated snapshots together with the change that produced them.
