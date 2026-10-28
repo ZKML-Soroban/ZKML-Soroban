@@ -9,7 +9,7 @@
 //! infer         <MODEL> -i <CSV>              Commitment + dequantized output + raw Q16.16
 //! prove         <MODEL> -i <CSV> [--groth16]  Verification bundle JSON (stdout or file)
 //! verify-bundle <FILE>                        Verify a v2 bundle locally
-//! export-vk     [--format <FMT>]              Constants for the contract's initialize
+//! export-vk     [--format <FMT>]              RISC Zero values for set_risc0_config/set_risc0_vk
 //! validate      <MODEL> [--dataset <FILE>]    Quantization validation report
 //! inspect       <MODEL>                       Kind, features, structure, commitment, validity
 //! ```

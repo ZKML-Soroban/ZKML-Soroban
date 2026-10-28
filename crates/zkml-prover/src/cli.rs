@@ -725,7 +725,7 @@ pub fn cmd_export_vk(
 
     let payload = match format {
         "soroban-args" => {
-            // Two admin calls, not arguments to `initialize`: the RISC Zero
+            // Two admin calls, not constructor arguments: the RISC Zero
             // values belong to `set_risc0_config(config: Risc0Config)` and
             // `set_risc0_vk(vk: VerificationKey)`, which each take a struct.
             // The Stellar CLI takes a struct as JSON, with bytes as hex.

@@ -25,7 +25,7 @@ pub type G1Bytes = [u8; 64];
 /// A G2 point: `be(x.c1) || be(x.c0) || be(y.c1) || be(y.c0)`.
 pub type G2Bytes = [u8; 128];
 
-/// RISC Zero's universal verifying key, ready for `initialize`.
+/// RISC Zero's universal verifying key, ready for `set_risc0_vk`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Groth16VerifyingKey {
     /// `alpha` in G1.
