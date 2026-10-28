@@ -8,7 +8,8 @@ Every proof is bound to a specific model and a specific input through 32-byte
 Poseidon commitments over the BN254 scalar field.
 
 - **Model commitment:** Poseidon over the quantized model parameters. Computed
-  once (`zkml-prover commit`) and stored on-chain at `initialize`.
+  once (`zkml-prover commit`) and stored on-chain by the contract constructor
+  at deploy, or later by `set_model_hash`.
 - **Input commitment:** Poseidon over the quantized input features. Carried in
   the public inputs of every proof.
 

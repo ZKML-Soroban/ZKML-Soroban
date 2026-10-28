@@ -9,12 +9,18 @@
 //!
 //! # Contract Interface
 //!
-//! - `initialize`: Register the model commitment.
+//! - `__constructor`: Store the admin, the model commitment and the
+//!   verification key, once, at deploy.
+//! - `verify_receipt`: Verify a RISC Zero Groth16 receipt against the
+//!   registered guest, record the result, and emit an event.
 //! - `verify_inference`: Accept a Groth16 proof and public inputs, verify
 //!   correctness, record the result, and emit an event.
 //! - `get_result`: Query the last verified inference result.
 //! - `get_model_hash`: Query the registered model commitment.
 //! - `get_verification_count`: Query how many proofs have been verified.
+//!
+//! The admin calls and the full interface are in
+//! `docs/reference/verifier-contract.md`.
 
 #![no_std]
 

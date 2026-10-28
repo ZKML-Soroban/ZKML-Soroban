@@ -1,6 +1,6 @@
 ---
 title: "Testnet deployment"
-description: "Build, deploy, and initialize the verifier contract on Stellar testnet with the stellar CLI."
+description: "Build the verifier contract and deploy it on Stellar testnet with the stellar CLI, passing its constructor arguments."
 icon: "cloud-arrow-up"
 ---
 

@@ -68,9 +68,10 @@ for the host and the zkVM guest. Its `std` feature can be disabled for the guest
 ### zkml-verifier
 
 See the [verifier contract reference](/reference/verifier-contract) for the full
-interface. In short: `initialize` stores the admin, model commitment, and
-verification key; `verify_inference` runs the pairing check, enforces the
-nullifier, records an `InferenceRecord`, and emits a `verified` event.
+interface. In short: the constructor stores the admin, model commitment, and
+verification key at deploy; `verify_receipt` and `verify_inference` run the
+pairing check, enforce the nullifier, record an `InferenceRecord`, and emit a
+`verified` event.
 
 ## Data flow
 
@@ -81,7 +82,8 @@ nullifier, records an `InferenceRecord`, and emits a `verified` event.
 
 1. **Model preparation (one time).** Export a trained model to ONNX or JSON,
    import it, quantize it, and compute its Poseidon commitment
-   (`zkml-prover commit`). Register it on-chain with `initialize`.
+   (`zkml-prover commit`). Pass it to the contract constructor at deploy, or
+   replace it later with `set_model_hash`.
 2. **Proving.** The host writes the model and inputs to the zkVM guest. The
    guest runs the shared inference engine and commits
    `(model_hash, input_hash, output, class_label)` to the journal. The host
@@ -157,8 +159,9 @@ flowchart TD
   commitment; changing a model requires the admin to update it.
 - **Input binding.** The input commitment is part of the public inputs and the
   nullifier.
-- **Access control.** `initialize` requires the admin signature and can run once;
-  `set_verification_key`, `set_model_hash`, `propose_admin`, `accept_admin`, and `set_pause` require
-  the current admin.
+- **Access control.** The constructor runs once, atomically with the deploy,
+  and requires the admin signature. `set_verification_key`, `set_model_hash`,
+  `set_risc0_config`, `set_risc0_vk`, `propose_admin` and `set_pause` require
+  the current admin, and `accept_admin` the proposed one.
 - **Overflow.** Fixed-point multiplication uses `i128` intermediates with checked
   results; the quantization validator runs static overflow bounds.

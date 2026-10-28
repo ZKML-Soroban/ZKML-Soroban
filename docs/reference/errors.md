@@ -34,9 +34,17 @@ Panics (not error codes):
 
 | Function                          | Message                                   |
 | --------------------------------- | ----------------------------------------- |
-| `initialize` (second call)        | `contract is already initialized`         |
-| `get_admin`, admin setters before init | `contract is not initialized` |
+| `get_admin`, admin setters without stored state | `contract is not initialized` |
+| `get_risc0_config` before `set_risc0_config` | `risc0 config has not been set` |
+| `get_risc0_vk` before `set_risc0_vk` | `risc0 verifying key has not been set` |
+| `set_risc0_config` with an invalid control id | `bn254_control_id is not a valid BN254 scalar` |
+| `set_risc0_vk` without six `ic` points | `a RISC Zero verifying key has six ic points` |
+| `set_risc0_vk` with a point off its curve or at infinity | `the RISC Zero verifying key holds a point that is off the curve or at infinity` |
+| `accept_admin` with no transfer proposed | `no pending admin transfer` |
 | Admin setters without admin auth  | Soroban auth failure                      |
+
+The constructor cannot be called a second time: the protocol runs it once, at
+deploy.
 
 ## ZkmlError (zkml-common)
 

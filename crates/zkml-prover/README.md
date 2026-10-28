@@ -70,7 +70,7 @@ cargo run -p zkml-prover --features groth16 -- \
 # Verify it with RISC Zero's own verifier
 cargo run -p zkml-prover --features zkvm -- verify-bundle bundle.json
 
-# Constants the contract needs at initialize
+# The RISC Zero values the contract admin registers (set_risc0_config, set_risc0_vk)
 cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
 
 # The end-to-end test
