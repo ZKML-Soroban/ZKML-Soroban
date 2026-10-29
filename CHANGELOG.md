@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- The contract `VERSION` goes from `9` to `10`: the constructor's native
+  verification key is now `Option<VerificationKey>`. A verifier that only checks
+  RISC Zero receipts is deployed without one, and `verify_inference` then
+  returns the new error `NativeKeyNotConfigured` (16). With the `stellar` CLI,
+  leave out `--vk`; from Rust, pass `Some(vk)` or `None`.
+
+### Security
+- The constructor and `set_verification_key` refuse a native key without five
+  `ic` points, or with a point off its curve or at infinity. A receipt-only
+  deployment previously had to pass some native key, and the placeholder the
+  tests and deploy script used, with beta, gamma and delta at infinity, accepted
+  an all-zero proof for any public input, so anyone could record a verified
+  result. No contract had been deployed with it.
+
 ## [0.0.2] - 2026-10-25
 
 Second crates.io release (`zkml-common`, `zkml-verifier`). The contract

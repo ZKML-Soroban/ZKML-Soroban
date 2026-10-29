@@ -25,6 +25,7 @@ Returned by `verify_inference`, `verify_receipt` and `claim_digest` as a Soroban
 | 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout, or its magic or version do not match. Also returned by `claim_digest` for a journal that is not 96 bytes |
 | 14   | `Risc0NotConfigured`            | `set_risc0_config` or `set_risc0_vk` has not been called     |
 | 15   | `NonCanonicalPublicInput`       | `model_hash` or `input_hash` is not below the BN254 scalar modulus `r`, so it is not the canonical encoding of its scalar |
+| 16   | `NativeKeyNotConfigured`        | `verify_inference` on a contract deployed without a native verification key |
 
 There is no `ImageIdMismatch`. The image id is carried by neither the seal nor
 the journal; it only enters the claim digest, so a receipt from another guest
@@ -41,6 +42,8 @@ Panics (not error codes):
 | `set_risc0_vk` without six `ic` points | `a RISC Zero verifying key has six ic points` |
 | `set_risc0_vk` with a point off its curve or at infinity | `the RISC Zero verifying key holds a point that is off the curve or at infinity` |
 | `accept_admin` with no transfer proposed | `no pending admin transfer` |
+| Constructor or `set_verification_key` with a native key without five `ic` points | `a native verifying key has five ic points` |
+| Constructor or `set_verification_key` with a native key point off its curve or at infinity | `the native verifying key holds a point that is off the curve or at infinity` |
 | Admin setters without admin auth  | Soroban auth failure                      |
 
 The constructor cannot be called a second time: the protocol runs it once, at

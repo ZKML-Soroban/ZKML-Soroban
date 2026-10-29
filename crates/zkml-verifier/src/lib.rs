@@ -85,7 +85,11 @@ const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// panicking when empty.
 /// 8 -> 9: `claim_digest` returns `MalformedJournal` for a journal that is not
 /// 96 bytes instead of panicking.
-pub const VERSION: u32 = 9;
+/// 9 -> 10: the constructor's native verification key is an `Option`. Without
+/// one, `verify_inference` returns `NativeKeyNotConfigured`, and a native key
+/// is refused unless it has five `ic` points, all on their curves and none at
+/// infinity.
+pub const VERSION: u32 = 10;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -128,6 +132,15 @@ pub enum VerificationError {
     /// and passing the replay guard. Only a canonical encoding is accepted, the
     /// same rule `set_risc0_config` applies to `bn254_control_id`.
     NonCanonicalPublicInput = 15,
+    /// `verify_inference` was called on a contract deployed without a native
+    /// verification key.
+    ///
+    /// A contract that only verifies RISC Zero receipts has no native circuit,
+    /// and so no native key it could register safely: a key whose trapdoor is
+    /// known, like one built from generator points, lets anyone produce a proof
+    /// for any public input. The native path stays off until an admin registers
+    /// a real key with `set_verification_key`.
+    NativeKeyNotConfigured = 16,
 }
 
 /// On-chain representation of BN254 Groth16 verification key.
@@ -294,19 +307,7 @@ impl ZkmlVerifierContract {
         // so the public inputs, and with them the journal, drop out of the
         // pairing and a seal verifies against any journal. An ic point at
         // infinity unbinds its input the same way.
-        let bad = VerificationError::MalformedVerificationKey;
-        let g1_ok = |point: &Bytes| {
-            !Self::is_point_at_infinity(point) && Self::validate_g1(&env, point, bad).is_ok()
-        };
-        let g2_ok = |point: &Bytes| {
-            !Self::is_point_at_infinity(point) && Self::validate_g2(point, bad).is_ok()
-        };
-        if !g1_ok(&vk.alpha)
-            || !g2_ok(&vk.beta)
-            || !g2_ok(&vk.gamma)
-            || !g2_ok(&vk.delta)
-            || !vk.ic.iter().all(|point| g1_ok(&point))
-        {
+        if !Self::key_points_are_valid(&env, &vk) {
             panic!(
                 "the RISC Zero verifying key holds a point that is off the curve or at infinity"
             );
@@ -498,11 +499,21 @@ impl ZkmlVerifierContract {
     /// its arguments are supplied by whoever deploys, in the same transaction.
     ///
     /// `admin.require_auth()` keeps the admin address one the deployer controls.
-    pub fn __constructor(env: Env, admin: Address, model_hash: Bytes, vk: VerificationKey) {
+    ///
+    /// `vk` is the key for the native-circuit path, `verify_inference`. Pass
+    /// `None` when there is no native circuit, which is the case for a contract
+    /// that verifies RISC Zero receipts: the native path then refuses every call
+    /// with `NativeKeyNotConfigured` instead of trusting a placeholder key. A key
+    /// that is passed must have five `ic` points, all on their curves and none
+    /// at infinity, or the deploy fails.
+    pub fn __constructor(env: Env, admin: Address, model_hash: Bytes, vk: Option<VerificationKey>) {
         admin.require_auth();
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&MODEL_HASH, &model_hash);
-        env.storage().instance().set(&VERIFICATION_KEY, &vk);
+        if let Some(vk) = vk {
+            Self::require_valid_native_vk(&env, &vk);
+            env.storage().instance().set(&VERIFICATION_KEY, &vk);
+        }
         env.storage().instance().set(&VERIFY_CNT, &0u32);
         env.storage().instance().set(&PAUSED, &false);
         env.storage().instance().set(&INITIALIZED, &true);
@@ -543,7 +554,7 @@ impl ZkmlVerifierContract {
             .storage()
             .instance()
             .get(&VERIFICATION_KEY)
-            .ok_or(VerificationError::ContractNotInitialized)?;
+            .ok_or(VerificationError::NativeKeyNotConfigured)?;
 
         // Parse public inputs with canonical length validation
         let parsed_inputs = Self::parse_public_inputs(&env, &public_inputs)?;
@@ -783,6 +794,38 @@ impl ZkmlVerifierContract {
     /// True for Soroban's encoding of the point at infinity: all zero bytes.
     fn is_point_at_infinity(bytes: &Bytes) -> bool {
         bytes.iter().all(|b| b == 0)
+    }
+
+    /// True when every point of `vk` is on its curve and none is the point at
+    /// infinity. See [`Self::set_risc0_vk`] for why infinity is refused.
+    fn key_points_are_valid(env: &Env, vk: &VerificationKey) -> bool {
+        let bad = VerificationError::MalformedVerificationKey;
+        let g1_ok = |point: &Bytes| {
+            !Self::is_point_at_infinity(point) && Self::validate_g1(env, point, bad).is_ok()
+        };
+        let g2_ok = |point: &Bytes| {
+            !Self::is_point_at_infinity(point) && Self::validate_g2(point, bad).is_ok()
+        };
+        g1_ok(&vk.alpha)
+            && g2_ok(&vk.beta)
+            && g2_ok(&vk.gamma)
+            && g2_ok(&vk.delta)
+            && vk.ic.iter().all(|point| g1_ok(&point))
+    }
+
+    /// Refuse a native key that `verify_inference` could not check against.
+    ///
+    /// With all of beta, gamma and delta at infinity, a proof whose A is also at
+    /// infinity satisfies the pairing for any public input; a gamma or an `ic`
+    /// point at infinity unbinds the inputs on its own. The native path has four
+    /// public inputs, so the key carries five `ic` points.
+    fn require_valid_native_vk(env: &Env, vk: &VerificationKey) {
+        if vk.ic.len() != 5 {
+            panic!("a native verifying key has five ic points");
+        }
+        if !Self::key_points_are_valid(env, vk) {
+            panic!("the native verifying key holds a point that is off the curve or at infinity");
+        }
     }
 
     /// Check a seal's length and that it was made for the registered verifying
@@ -1036,7 +1079,12 @@ impl ZkmlVerifierContract {
         VERSION
     }
 
-    /// Set a new verification key. Only callable by admin.
+    /// Set or replace the native verification key. Only callable by admin.
+    ///
+    /// The key must have five `ic` points, all on their curves and none at
+    /// infinity. That refuses a degenerate key, not a weak one: register only a
+    /// key from a real setup of the native circuit, since anyone who knows a
+    /// key's trapdoor can prove any public input against it.
     pub fn set_verification_key(env: Env, vk: VerificationKey) {
         let admin: Address = env
             .storage()
@@ -1044,6 +1092,7 @@ impl ZkmlVerifierContract {
             .get(&ADMIN)
             .expect("contract is not initialized");
         admin.require_auth();
+        Self::require_valid_native_vk(&env, &vk);
         env.storage().instance().set(&VERIFICATION_KEY, &vk);
         log!(&env, "Verification key updated by admin");
         // An event, not just a log: `log!` is compiled out of the contract
@@ -1158,7 +1207,9 @@ mod test_utils {
             0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 2,
         ];
-        let g2_bytes = [0u8; 128];
+        // Valid points, so the constructor accepts the key, but with a known
+        // trapdoor: fine for tests, never for a deployment.
+        let g2_bytes = crate::test_budget::G2_GEN;
         let _g1 = Bn254G1Affine::from_array(env, &g1_bytes);
         let _g2 = Bn254G2Affine::from_array(env, &g2_bytes);
 
@@ -1197,11 +1248,11 @@ mod test {
         let env = Env::default();
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
-        let vk = create_dummy_vk(&env, 4); // 4 IC points for model_hash, input_hash, output
+        let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         // The constructor ran at deploy, so the state it sets is already in place.
@@ -1231,7 +1282,7 @@ mod test_guards {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         client
@@ -1322,32 +1373,94 @@ mod test_guards {
     }
 
     #[test]
-    fn verify_vk_length_mismatch() {
+    #[should_panic(expected = "a native verifying key has five ic points")]
+    fn a_native_key_without_five_ic_points_is_refused_at_deploy() {
         let env = Env::default();
+        env.mock_all_auths();
+        env.register(
+            ZkmlVerifierContract,
+            (
+                Address::generate(&env),
+                Bytes::from_slice(&env, &[3u8; 32]),
+                Some(create_dummy_vk(&env, 6)),
+            ),
+        );
+    }
 
-        // Initialize with VK that has 6 IC points
-        let admin = Address::generate(&env);
-        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 6);
+    /// The test key every contract test used to deploy with: beta, gamma and
+    /// delta at infinity. Against it an all-zero proof verified any public
+    /// input, so anyone could record a result.
+    fn degenerate_vk(env: &Env) -> VerificationKey {
+        let mut vk = create_dummy_vk(env, 5);
+        vk.beta = Bytes::from_slice(env, &[0u8; 128]);
+        vk.gamma = Bytes::from_slice(env, &[0u8; 128]);
+        vk.delta = Bytes::from_slice(env, &[0u8; 128]);
+        vk
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "the native verifying key holds a point that is off the curve or at infinity"
+    )]
+    fn a_native_key_with_points_at_infinity_is_refused_at_deploy() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.register(
+            ZkmlVerifierContract,
+            (
+                Address::generate(&env),
+                Bytes::from_slice(&env, &[3u8; 32]),
+                Some(degenerate_vk(&env)),
+            ),
+        );
+    }
+
+    #[test]
+    fn set_verification_key_refuses_a_degenerate_key() {
+        let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (
+                Address::generate(&env),
+                Bytes::from_slice(&env, &[3u8; 32]),
+                None::<VerificationKey>,
+            ),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        assert!(client
+            .try_set_verification_key(&degenerate_vk(&env))
+            .is_err());
+        assert!(client
+            .try_set_verification_key(&create_dummy_vk(&env, 4))
+            .is_err());
+        // A well-formed key is still accepted.
+        client.set_verification_key(&create_dummy_vk(&env, 5));
+    }
 
-        // Provide public inputs for single output + class_label (4 scalars: model_hash, input_hash, output, class_label)
-        // This requires 5 IC points, but VK has 6
-        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
-        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
-        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]);
-
-        let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(
-            result,
-            Err(Ok(VerificationError::VerificationKeyLengthMismatch))
+    /// The deployment a receipt-only verifier uses: no native key. The all-zero
+    /// proof that forged results against the degenerate key gets a typed error.
+    #[test]
+    fn without_a_native_key_verify_inference_is_off() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (
+                Address::generate(&env),
+                Bytes::from_slice(&env, &[3u8; 32]),
+                None::<VerificationKey>,
+            ),
         );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let (a, b, c) = test_utils::dummy_proof(&env);
+        let mut inputs = [0u8; 80];
+        inputs[0] = 3;
+        assert_eq!(
+            client.try_verify_inference(&a, &b, &c, &Bytes::from_slice(&env, &inputs)),
+            Err(Ok(VerificationError::NativeKeyNotConfigured))
+        );
+        assert_eq!(client.get_verification_count(), 0);
     }
 
     #[test]
@@ -1361,7 +1474,7 @@ mod test_guards {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1392,7 +1505,7 @@ mod test_guards {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1410,34 +1523,40 @@ mod test_guards {
     fn verify_replay_attack_prevented() {
         let env = Env::default();
 
-        // Initialize with model hash [3u8; 32]
-        let admin = Address::generate(&env);
-        let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 5);
+        // A real proof against the accept-path key: model 3, input 5, output
+        // 42, label 7, each little-endian in the 80-byte layout. This used to
+        // run an all-zero proof against a degenerate key, which only passed
+        // because that key accepted anything.
+        let mut inputs = [0u8; 80];
+        inputs[0] = 3;
+        inputs[32] = 5;
+        inputs[64] = 42;
+        inputs[72] = 7;
+        let public_inputs = Bytes::from_slice(&env, &inputs);
+        let vk = crate::test_budget::create_accept_fixture_vk(&env);
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (
+                Address::generate(&env),
+                public_inputs.slice(0..32),
+                Some(vk.clone()),
+            ),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let (proof_a, proof_b, proof_c) =
+            crate::test_budget::compute_valid_proof(&env, &vk, 3, 5, 42, 7);
 
-        // First verification should succeed (or fail with verification error, but not ProofAlreadyUsed)
-        let proof_a = Bytes::from_slice(&env, &[0u8; 64]);
-        let proof_b = Bytes::from_slice(&env, &[0u8; 128]);
-        let proof_c = Bytes::from_slice(&env, &[0u8; 64]);
-        let public_inputs = Bytes::from_slice(&env, &[3u8; 80]); // 32+32+8+8 = 80 bytes (model_hash + input_hash + output + class_label)
-
-        let first_result =
-            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        // First attempt should not return ProofAlreadyUsed
-        if let Err(Ok(VerificationError::ProofAlreadyUsed)) = first_result {
-            panic!("First verification should not return ProofAlreadyUsed");
-        }
-
-        // Second verification with identical inputs should return ProofAlreadyUsed
-        let second_result =
-            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        assert_eq!(second_result, Err(Ok(VerificationError::ProofAlreadyUsed)));
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Ok(Ok(()))
+        );
+        // The same proof and public inputs a second time is a replay.
+        assert_eq!(
+            client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs),
+            Err(Ok(VerificationError::ProofAlreadyUsed))
+        );
+        assert_eq!(client.get_verification_count(), 1);
     }
 
     #[test]
@@ -1447,11 +1566,11 @@ mod test_guards {
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1487,11 +1606,11 @@ mod test_guards {
         // Initialize with model hash [3u8; 32]
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[3u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1555,7 +1674,7 @@ mod test_admin_auth {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         (client, admin)
@@ -1572,9 +1691,9 @@ mod test_admin_auth {
         env.mock_all_auths();
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
 
-        let _ = env.register(ZkmlVerifierContract, (admin.clone(), model_hash, vk));
+        let _ = env.register(ZkmlVerifierContract, (admin.clone(), model_hash, Some(vk)));
 
         assert!(
             env.auths().iter().any(|(addr, _)| addr == &admin),
@@ -1587,10 +1706,10 @@ mod test_admin_auth {
         let env = Env::default();
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[1u8; 32]);
-        let vk = create_dummy_vk(&env, 4);
+        let vk = create_dummy_vk(&env, 5);
 
         env.mock_all_auths();
-        let contract_id = env.register(ZkmlVerifierContract, (admin.clone(), model_hash, vk));
+        let contract_id = env.register(ZkmlVerifierContract, (admin.clone(), model_hash, Some(vk)));
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
         // The admin passed at deploy time is the one stored.
@@ -1623,7 +1742,7 @@ mod test_admin_auth {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1649,7 +1768,7 @@ mod test_admin_auth {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1697,7 +1816,7 @@ mod test_admin_auth {
         let (client, _admin) = setup_with_admin(&env);
 
         // Rotate verification key
-        let new_vk = create_dummy_vk(&env, 4);
+        let new_vk = create_dummy_vk(&env, 5);
         env.mock_all_auths();
         client.set_verification_key(&new_vk);
 
@@ -1744,11 +1863,11 @@ mod test_panic_free_getters {
         let env = Env::default();
         let admin = Address::generate(&env);
         let model_hash = Bytes::from_slice(&env, &[42u8; 32]);
-        let vk = test_utils::create_dummy_vk(&env, 4);
+        let vk = test_utils::create_dummy_vk(&env, 5);
 
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -1756,8 +1875,7 @@ mod test_panic_free_getters {
         assert_eq!(client.get_result(), None);
         // get_model_hash returns Some(model_hash)
         assert_eq!(client.get_model_hash(), Some(model_hash));
-        // version returns 8
-        assert_eq!(client.version(), 9);
+        assert_eq!(client.version(), VERSION);
 
         // If storage is unpopulated, get_model_hash returns None without trapping
         env.as_contract(&contract_id, || {
@@ -1784,7 +1902,7 @@ mod test_verified_event {
             (
                 Address::generate(&env),
                 Bytes::from_slice(&env, &[0u8; 32]),
-                test_utils::create_dummy_vk(&env, 4),
+                None::<VerificationKey>,
             ),
         );
 
@@ -1835,7 +1953,7 @@ mod test_budget {
     /// test suite (g1_pairing_hardcoded).  Serialized in Soroban/Ethereum
     /// format: x_imaginary(32) || x_real(32) || y_imaginary(32) || y_real(32),
     /// each component big-endian.
-    const G2_GEN: [u8; 128] = [
+    pub(crate) const G2_GEN: [u8; 128] = [
         0x1f, 0xb1, 0x9b, 0xb4, 0x76, 0xf6, 0xb9, 0xe4, 0x4e, 0x2a, 0x32, 0x23, 0x4d, 0xa8, 0x21,
         0x2f, 0x61, 0xcd, 0x63, 0x91, 0x93, 0x54, 0xbc, 0x06, 0xae, 0xf3, 0x1e, 0x3c, 0xfa, 0xff,
         0x3e, 0xbc, 0x22, 0x60, 0x68, 0x45, 0xff, 0x18, 0x67, 0x93, 0x91, 0x4e, 0x03, 0xe2, 0x1d,
@@ -1987,7 +2105,7 @@ mod test_budget {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -2078,7 +2196,7 @@ mod test_pause_and_counter {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash(&env, 3), vk.clone()),
+            (admin.clone(), model_hash(&env, 3), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         client.set_pause(&true);
@@ -2115,7 +2233,7 @@ mod test_pause_and_counter {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash(&env, 3), vk.clone()),
+            (admin.clone(), model_hash(&env, 3), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -2155,7 +2273,7 @@ mod test_pause_and_counter {
         env.mock_all_auths();
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash(&env, 3), vk.clone()),
+            (admin.clone(), model_hash(&env, 3), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
 
@@ -2200,7 +2318,7 @@ mod test_admin_events {
         let vk = crate::test_utils::create_dummy_vk(env, 5);
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         client
@@ -2210,7 +2328,7 @@ mod test_admin_events {
     fn set_verification_key_emits_an_event() {
         let env = Env::default();
         let client = setup(&env);
-        let vk = crate::test_utils::create_dummy_vk(&env, 4);
+        let vk = crate::test_utils::create_dummy_vk(&env, 5);
 
         client.set_verification_key(&vk);
 
@@ -2380,7 +2498,7 @@ mod test_canonical_public_inputs {
         let model_hash = Bytes::from_slice(env, &field_bytes(3, 0));
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         (client, vk)
@@ -2534,7 +2652,7 @@ mod test_risc0_receipts {
         let vk = crate::test_utils::create_dummy_vk(env, 5);
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), vk.clone()),
+            (admin.clone(), model_hash.clone(), Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         (client, admin)
@@ -2808,10 +2926,10 @@ mod test_golden_receipt {
         let model_hash = Bytes::from_slice(env, &decoded.model_hash);
 
         let admin = Address::generate(env);
-        let route_b_vk = crate::test_utils::create_dummy_vk(env, 5);
+
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (admin.clone(), model_hash.clone(), route_b_vk.clone()),
+            (admin.clone(), model_hash.clone(), None::<VerificationKey>),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
 
@@ -3281,7 +3399,7 @@ mod test_golden_receipt {
             (
                 admin.clone(),
                 Bytes::from_slice(&env, &[0x11; 32]),
-                vk.clone(),
+                Some(vk.clone()),
             ),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
@@ -3366,13 +3484,13 @@ mod test_wasm_budget {
         let decoded = zkml_common::journal::JournalV1::decode(&journal_raw).unwrap();
 
         let admin = Address::generate(&env);
-        let route_b_vk = crate::test_utils::create_dummy_vk(&env, 5);
+
         let contract_id = env.register(
             wasm.as_slice(),
             (
                 admin,
                 Bytes::from_slice(&env, &decoded.model_hash),
-                route_b_vk,
+                None::<VerificationKey>,
             ),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
@@ -3450,7 +3568,7 @@ mod test_wasm_budget {
         let vk = crate::test_budget::create_accept_fixture_vk(&env);
         let contract_id = env.register(
             wasm.as_slice(),
-            (Address::generate(&env), model_hash, vk.clone()),
+            (Address::generate(&env), model_hash, Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
         let (a, b, c) = crate::test_budget::compute_valid_proof(&env, &vk, 3, 5, 42, 7);
@@ -3515,7 +3633,7 @@ mod test_ttl {
         let model_hash = public_inputs(env, 42).slice(0..32);
         let contract_id = env.register(
             ZkmlVerifierContract,
-            (Address::generate(env), model_hash, vk.clone()),
+            (Address::generate(env), model_hash, Some(vk.clone())),
         );
         let client = ZkmlVerifierContractClient::new(env, &contract_id);
         (contract_id, client, vk)
@@ -3735,7 +3853,7 @@ mod test_ttl {
             (
                 Address::generate(&env),
                 Bytes::from_slice(&env, &decoded.model_hash),
-                crate::test_utils::create_dummy_vk(&env, 5),
+                None::<VerificationKey>,
             ),
         );
         let client = ZkmlVerifierContractClient::new(&env, &contract_id);
