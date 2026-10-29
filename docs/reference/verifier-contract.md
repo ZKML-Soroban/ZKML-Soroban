@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `9`                                     |
+| Interface `VERSION`       | `10`                                    |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -18,7 +18,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Function | Auth | Returns | Description |
 | -------- | ---- | ------- | ----------- |
-| `__constructor(admin: Address, model_hash: Bytes, vk: VerificationKey)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and verification key; sets counter to 0 and pause to false; bumps instance TTL. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
+| `__constructor(admin: Address, model_hash: Bytes, vk: Option<VerificationKey>)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and the native verification key if one is given; sets counter to 0 and pause to false; bumps instance TTL. Pass no `vk` for a contract that only verifies RISC Zero receipts: `verify_inference` then returns `NativeKeyNotConfigured`. A key that is passed must have five `ic` points, all on their curves and none at infinity. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
 | `verify_inference(proof_a: Bytes, proof_b: Bytes, proof_c: Bytes, public_inputs: Bytes)` | none | `Result<(), VerificationError>` | Verifies the proof, enforces the nullifier, records the result, emits `verified`. |
 | `get_result()` | none | `Option<InferenceRecord>` | Last verified record. Returns `None` if none has been recorded. |
 | `get_model_hash()` | none | `Option<Bytes>` | Registered model commitment. Returns `None` before initialization. |
@@ -26,7 +26,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `get_admin()` | none | `Address` | Current admin. Panics before initialization. |
 | `is_paused()` | none | `bool` | Pause flag. |
 | `version()` | none | `u32` | Interface version. |
-| `set_verification_key(vk: VerificationKey)` | admin | `()` | Rotates the verification key. |
+| `set_verification_key(vk: VerificationKey)` | admin | `()` | Sets or replaces the native verification key. Refuses a key without five `ic` points, or with any point off its curve or at infinity. Emits `cfg_upd`. |
 | `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. |
 | `propose_admin(new_admin: Address)` | admin | `()` | Records a pending admin. The transfer is not effective until the pending admin accepts. |
 | `accept_admin()` | pending admin | `()` | Completes the transfer started by `propose_admin`. Two-step, so a mistyped address cannot orphan the contract. |
@@ -63,12 +63,20 @@ Those values are pinned to a RISC Zero version **and** to a guest build. Any
 change to the guest or to `zkml-common` changes the image id, so re-export
 after either, or every proof fails.
 
-Two keys are registered, not one. The constructor takes the key for the
-native-circuit path, which has five `ic` points for four public inputs;
+Two keys can be registered, not one. The constructor optionally takes the key
+for the native-circuit path, which has five `ic` points for four public inputs;
 `set_risc0_vk` takes RISC Zero's universal key, which has six for five. They are
 not interchangeable. That is also why the RISC Zero values are set by their own
 calls instead of by the constructor: a contract serves both routes, and each needs
 its own key.
+
+<Warning>
+Deploy a receipt-only verifier without a native key. Until there is a native
+circuit there is no native key that is safe to register: a key whose trapdoor
+is known, like one built from generator points, lets anyone prove any public
+input against it, and a key with points at infinity accepted an all-zero proof
+for any input. The contract refuses the second kind; it cannot detect the first.
+</Warning>
 
 Checks run cheapest first, and everything that can fail without cryptography
 does:

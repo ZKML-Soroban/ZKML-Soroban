@@ -52,9 +52,9 @@ a window between deploy and init in which anyone could initialize the contract
 first, seize the admin role and register a verification key of their own. The
 constructor closes that window.
 
-`vk` is a `VerificationKey` struct whose fields are hex-encoded bytes: `alpha`
-(G1, 64 bytes), `beta`, `gamma`, `delta` (G2, 128 bytes each), and `ic` (a list
-of exactly 5 G1 points, 64 bytes each). The admin must sign the deploy.
+The admin must sign the deploy. `vk`, the key for the native-circuit path
+(`verify_inference`), is optional. A verifier for RISC Zero receipts, which is
+what the prover produces today, is deployed without it:
 
 ```bash
 CONTRACT_ID=$(stellar contract deploy \
@@ -63,12 +63,28 @@ CONTRACT_ID=$(stellar contract deploy \
   --network testnet \
   -- \
   --admin "$(stellar keys address deployer)" \
-  --model_hash "$MODEL_HASH" \
-  --vk "$(cat vk.json)")
+  --model_hash "$MODEL_HASH")
 echo "$CONTRACT_ID"
 ```
 
-`vk.json` shape:
+Without a native key, `verify_inference` returns `NativeKeyNotConfigured`, and
+the contract verifies receipts once the admin registers the RISC Zero values
+(`set_risc0_config` and `set_risc0_vk`, printed by
+`zkml-prover export-vk --format soroban-args`).
+
+<Warning>
+Do not deploy with a test or placeholder native key. There is no native circuit
+yet, so no native key is safe: a key whose trapdoor is known, like one built
+from generator points, lets anyone prove any public input against it. The
+contract refuses keys with points at infinity, which accepted an all-zero proof
+for any input, but it cannot detect a known trapdoor.
+</Warning>
+
+When a native circuit exists, pass its key as `--vk "$(cat vk.json)"`, or
+register it later with `set_verification_key`. `vk` is a `VerificationKey`
+struct whose fields are hex-encoded bytes: `alpha` (G1, 64 bytes), `beta`,
+`gamma`, `delta` (G2, 128 bytes each), and `ic` (exactly 5 G1 points, 64 bytes
+each). Every point must be on its curve and none may be the point at infinity.
 
 ```json
 {
@@ -80,12 +96,11 @@ echo "$CONTRACT_ID"
 }
 ```
 
-**Pending:** there is no tool yet that exports `vk.json` from the prover. Until
-then, deployment can only use test keys.
-
 ## 5. Verify an inference
 
-**Pending:** requires a Groth16 proof from the prover.
+**Pending:** requires a native circuit, its key registered as above, and a
+Groth16 proof from it. Receipts from the prover go through `verify_receipt`
+instead; see [the verifier contract](/reference/verifier-contract#verifying-a-risc-zero-receipt).
 
 ```bash
 stellar contract invoke \
