@@ -18,9 +18,18 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   validates its points and returns a typed error; the native-circuit path does
   not yet. In both, a G2 point on the curve but outside the subgroup traps,
   which takes a deliberately crafted point.
-- **Groth16 compression is x86_64 Linux only** and requires Docker. The Circom
-  witness generator image is not published for other platforms (risc0 issue
-  #1749), so `prove_groth16` fails fast with `UnsupportedPlatform` elsewhere.
+- **Groth16 compression needs x86_64 Linux with Docker.** The Circom witness
+  generator image is not published for other platforms (risc0 issue #1749), so
+  `prove_groth16` fails fast with `UnsupportedPlatform` elsewhere. The `cuda`
+  feature wraps natively on Linux with an NVIDIA GPU in theory, but the native
+  wrap crashed on the one card it was tried on; see
+  [Proving](/concepts/proving).
+- **The guest image id depends on the build machine.** `methods/build.rs`
+  compiles the guest with the host toolchain, so the same commit produces a
+  different image id on different machines, and a contract only accepts
+  receipts from the id its admin registered. Register the id that
+  `zkml-prover export-vk` prints on the machine that produces the proofs, until
+  the guest is built with RISC Zero's reproducible Docker build.
 - **No remote proving.** RISC Zero shut down Bonsai in December 2025.
   `--backend boundless` returns `ProveError::RemoteBackend` until a Boundless or
   self-hosted Bento client is written.
@@ -39,14 +48,19 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 - The proving path uses `commitment_hash` (domain `0`) for both model and input
   commitments; the domain-separated `commit_model` (1) and `commit_inputs` (2)
   are not wired in.
-- Decision tree nodes are serialized without a node-type tag.
+- The input commitment does not absorb the input length: inputs are padded
+  with zeros to the hash rate, so `[x]` and `[x, 0]` commit to the same value.
+  The model commitment is length-prefixed since `0.0.2`.
 - `bundle_id` ignores `class_label`.
 
 ## Models
 
 - Decision trees always produce `class_label = 0`; the prediction is in `output`.
 - ONNX: single trees only (no ensembles), binary linear classifiers only.
-- The KYC demo exports ONNX with opset 12, below the importer floor of 17.
+- **ONNX multi-class trees import wrong leaf values.** The tree extractor ignores
+  `class_ids` and keeps the last class weight it sees for each leaf, so a tree
+  with more than one class weight per leaf imports with the wrong values. Binary
+  trees and the JSON exchange format are not affected.
 
 ## Contract
 
@@ -55,19 +69,25 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   `ProofAlreadyUsed`.
 - **Single result slot.** `get_result` returns a global last record that any
   successful verification overwrites; there is no per-subject lookup.
+- **One model per contract.** A contract holds a single model commitment; a
+  second model needs a second deployment.
 - **Pause error.** A paused contract returns the generic `VerificationFailed`.
-- **Admin changes are not events.** Setters only log.
-- **Some getters panic.** `get_admin` panics before initialization;
-  `get_verification_count` and `is_paused` do not.
-- **No point validation beyond the host.** Points at infinity are accepted if
-  the host accepts them; test fixtures with zero G2 points make the pairing pass
-  trivially.
+- **Some getters panic.** `get_risc0_config` and `get_risc0_vk` panic until the
+  RISC Zero values are set. `get_admin` panics only on a contract without stored
+  state, which the constructor rules out.
+- **A native key with a known trapdoor cannot be detected.** The constructor and
+  `set_verification_key` refuse a native key with a point off its curve or at
+  infinity, but a key built from points whose discrete logs are known, such as
+  generator points, passes and lets anyone prove any public input against it.
+  There is no native circuit yet, so deploy without a native key; see
+  [Testnet deployment](/guides/deployment).
 
 ## Tooling
 
 - `zkml-demo` is a skeleton.
-- `examples/kyc-demo/deploy.sh` still uses the deprecated `soroban` CLI, omits
-  `--admin`, and uses placeholder values. Use the
+- `examples/kyc-demo/deploy.sh` still uses the deprecated `soroban` CLI, calls
+  `initialize`, which the constructor replaced, and passes all-zero placeholder
+  keys, which the constructor now refuses. Use the
   [deployment guide](/guides/deployment).
 - **Windows needs a larger main thread stack.** Windows gives the main thread
   1 MB where Linux and macOS give 8 MB, and the Poseidon commitment path
