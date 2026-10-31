@@ -10,6 +10,14 @@ use zkml_common::models::{DecisionTree, TreeNode};
 
 /// Extract a DecisionTree from a TreeEnsembleClassifier node.
 ///
+/// Leaf values: a leaf with one class weight keeps that weight as its value.
+/// A leaf with one weight per class, which is what skl2onnx writes, takes the
+/// predicted class as its value: the class with the largest weight, ties going
+/// to the lowest class id, as `argmax` does elsewhere in the engine. The class
+/// id is mapped through `classlabels_int64s` when the model carries it, so the
+/// value is the label the model predicts. Text labels cannot be a fixed-point
+/// value and are refused for such leaves.
+///
 /// # Arguments
 ///
 /// * `node` - The TreeEnsembleClassifier node
@@ -49,7 +57,7 @@ pub fn extract_tree(
         .ok_or_else(|| OnnxImportError::MalformedModel("missing nodes_falsenodeids".into()))?;
 
     // Extract class attributes for leaf values
-    let _class_ids = get_ints_attribute(node, "class_ids")
+    let class_ids = get_ints_attribute(node, "class_ids")
         .ok_or_else(|| OnnxImportError::MalformedModel("missing class_ids".into()))?;
     let class_weights = get_floats_attribute(node, "class_weights")?;
     let class_nodeids = get_ints_attribute(node, "class_nodeids")
@@ -76,19 +84,13 @@ pub fn extract_tree(
         node_id_to_index.insert(node_id, i);
     }
 
-    // Build a map from leaf node IDs to their class weights
-    // class_nodeids[k] tells which leaf node the class weight belongs to
-    // class_treeids[k] tells which tree (should all be 0 for single tree)
-    // class_weights[k] is the actual leaf value
-    let mut leaf_values = std::collections::HashMap::new();
-    for (k, &leaf_node_id) in class_nodeids.iter().enumerate() {
-        if class_treeids[k] != 0 {
-            return Err(OnnxImportError::MalformedModel(
-                "multi-tree class weights not supported".into(),
-            ));
-        }
-        leaf_values.insert(leaf_node_id, class_weights[k]);
-    }
+    let leaf_values = leaf_values(
+        node,
+        &class_ids,
+        &class_weights,
+        &class_nodeids,
+        &class_treeids,
+    )?;
 
     // Build the flat node vector
     let mut nodes = Vec::with_capacity(num_nodes);
@@ -159,6 +161,95 @@ pub fn extract_tree(
     validate_tree_structure(&tree)?;
 
     Ok(tree)
+}
+
+/// The value of each leaf, keyed by leaf node id. See [`extract_tree`].
+///
+/// `class_nodeids[k]` names the leaf that `class_weights[k]` belongs to, for
+/// class `class_ids[k]` of tree `class_treeids[k]`. The four lists are parallel,
+/// so their lengths are checked before any of them is indexed.
+fn leaf_values(
+    node: &NodeProto,
+    class_ids: &[i64],
+    class_weights: &[f64],
+    class_nodeids: &[i64],
+    class_treeids: &[i64],
+) -> Result<std::collections::HashMap<i64, f64>, OnnxImportError> {
+    let n = class_nodeids.len();
+    if class_ids.len() != n || class_weights.len() != n || class_treeids.len() != n {
+        return Err(OnnxImportError::MalformedModel(
+            "inconsistent class attribute lengths".into(),
+        ));
+    }
+
+    let mut per_leaf: std::collections::HashMap<i64, Vec<(i64, f64)>> =
+        std::collections::HashMap::new();
+    for k in 0..n {
+        if class_treeids[k] != 0 {
+            return Err(OnnxImportError::MalformedModel(
+                "multi-tree class weights not supported".into(),
+            ));
+        }
+        per_leaf
+            .entry(class_nodeids[k])
+            .or_default()
+            .push((class_ids[k], class_weights[k]));
+    }
+
+    let int_labels = get_ints_attribute(node, "classlabels_int64s").filter(|l| !l.is_empty());
+    let text_labels = node
+        .attribute
+        .iter()
+        .any(|attr| attr.name == "classlabels_strings" && !attr.strings.is_empty());
+
+    let mut values = std::collections::HashMap::new();
+    for (leaf, entries) in per_leaf {
+        let value = match entries.as_slice() {
+            [(_, weight)] => *weight,
+            _ => {
+                if entries.iter().any(|(_, weight)| !weight.is_finite()) {
+                    return Err(OnnxImportError::MalformedModel(format!(
+                        "leaf node id {leaf}: class weight is not finite"
+                    )));
+                }
+                if text_labels {
+                    return Err(OnnxImportError::MalformedModel(format!(
+                        "leaf node id {leaf}: trees with text class labels are not supported; \
+                         export the classifier with integer labels"
+                    )));
+                }
+                // The predicted class: largest weight, lowest class id on a tie.
+                let (class_id, _) = entries
+                    .iter()
+                    .copied()
+                    .reduce(|best, next| {
+                        if next.1 > best.1 || (next.1 == best.1 && next.0 < best.0) {
+                            next
+                        } else {
+                            best
+                        }
+                    })
+                    .expect("a leaf entry exists for every key");
+                match &int_labels {
+                    Some(labels) => {
+                        let label = usize::try_from(class_id)
+                            .ok()
+                            .and_then(|i| labels.get(i))
+                            .ok_or_else(|| {
+                                OnnxImportError::MalformedModel(format!(
+                                    "leaf node id {leaf}: class id {class_id} has no entry in \
+                                     classlabels_int64s"
+                                ))
+                            })?;
+                        *label as f64
+                    }
+                    None => class_id as f64,
+                }
+            }
+        };
+        values.insert(leaf, value);
+    }
+    Ok(values)
 }
 
 /// Get a vector of integer attribute values by name.

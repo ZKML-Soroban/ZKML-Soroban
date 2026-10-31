@@ -227,6 +227,21 @@ fn real_exporter_output_imports_into_a_decision_tree() {
         zkml_common::models::Model::DecisionTree(tree) => {
             assert_eq!(tree.num_features, 4, "iris has four features");
             assert!(!tree.nodes.is_empty());
+            // skl2onnx writes one probability per class at each of the three
+            // leaves; each leaf must hold its predicted class, one per class.
+            // Keeping the last weight instead imported every leaf as the
+            // probability of class 2.
+            let mut leaves: Vec<i64> = tree
+                .nodes
+                .iter()
+                .filter_map(|node| match node {
+                    zkml_common::models::TreeNode::Leaf { value } => Some(value.value),
+                    _ => None,
+                })
+                .collect();
+            leaves.sort_unstable();
+            let one = zkml_common::fixed_point::FixedPoint::quantize(1.0).value;
+            assert_eq!(leaves, vec![0, one, 2 * one], "leaves hold classes 0, 1, 2");
         }
         other => panic!("expected a decision tree, got {other:?}"),
     }

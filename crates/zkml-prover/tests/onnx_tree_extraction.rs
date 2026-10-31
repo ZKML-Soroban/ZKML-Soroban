@@ -643,3 +643,147 @@ fn test_reject_cycle_in_tree() {
     eprintln!("Cycle test error: {}", err);
     assert!(err.to_string().contains("cycle"));
 }
+
+/// The test tree with its class attributes replaced, and optional class labels.
+///
+/// Leaves are node ids 1 (taken for a feature at or below 0.5) and 2.
+fn tree_with_classes(
+    class_ids: Vec<i64>,
+    class_weights: Vec<f32>,
+    class_nodeids: Vec<i64>,
+    int_labels: Option<Vec<i64>>,
+    text_labels: Option<Vec<&str>>,
+) -> Vec<u8> {
+    use prost::Message;
+    use zkml_prover::onnx::{AttributeProto, ModelProto};
+
+    let mut model = ModelProto::decode(create_test_tree_onnx().as_slice()).expect("decodes");
+    let node = &mut model.graph.as_mut().expect("graph").node[0];
+    let treeids = vec![0; class_nodeids.len()];
+    node.attribute.retain(|a| !a.name.starts_with("class_"));
+    node.attribute.push(AttributeProto {
+        name: "class_ids".into(),
+        ints: class_ids,
+        ..Default::default()
+    });
+    node.attribute.push(AttributeProto {
+        name: "class_weights".into(),
+        floats: class_weights,
+        ..Default::default()
+    });
+    node.attribute.push(AttributeProto {
+        name: "class_nodeids".into(),
+        ints: class_nodeids,
+        ..Default::default()
+    });
+    node.attribute.push(AttributeProto {
+        name: "class_treeids".into(),
+        ints: treeids,
+        ..Default::default()
+    });
+    if let Some(labels) = int_labels {
+        node.attribute.push(AttributeProto {
+            name: "classlabels_int64s".into(),
+            ints: labels,
+            ..Default::default()
+        });
+    }
+    if let Some(labels) = text_labels {
+        node.attribute.push(AttributeProto {
+            name: "classlabels_strings".into(),
+            strings: labels.iter().map(|l| l.as_bytes().to_vec()).collect(),
+            ..Default::default()
+        });
+    }
+    model.encode_to_vec()
+}
+
+/// Output for a feature that reaches leaf 1 and one that reaches leaf 2.
+fn leaf_outputs(onnx_bytes: &[u8]) -> (f64, f64) {
+    let model = onnx::import_onnx(onnx_bytes).expect("imports");
+    let left = run_inference(&model, &[FixedPoint::quantize(0.3)]).dequantize();
+    let right = run_inference(&model, &[FixedPoint::quantize(0.7)]).dequantize();
+    (left, right)
+}
+
+/// skl2onnx writes one weight per class at every leaf. The leaf value is the
+/// predicted class, not whichever weight came last.
+#[test]
+fn a_leaf_with_one_weight_per_class_takes_the_predicted_class() {
+    let bytes = tree_with_classes(
+        vec![0, 1, 2, 0, 1, 2],
+        vec![0.7, 0.2, 0.1, 0.1, 0.3, 0.6],
+        vec![1, 1, 1, 2, 2, 2],
+        None,
+        None,
+    );
+    assert_eq!(leaf_outputs(&bytes), (0.0, 2.0));
+}
+
+#[test]
+fn a_tie_goes_to_the_lowest_class_id() {
+    let bytes = tree_with_classes(
+        vec![0, 1, 2, 0, 1, 2],
+        vec![0.5, 0.5, 0.0, 0.0, 0.4, 0.4],
+        vec![1, 1, 1, 2, 2, 2],
+        None,
+        None,
+    );
+    assert_eq!(leaf_outputs(&bytes), (0.0, 1.0));
+}
+
+#[test]
+fn integer_class_labels_are_what_the_leaf_holds() {
+    let bytes = tree_with_classes(
+        vec![0, 1, 2, 0, 1, 2],
+        vec![0.7, 0.2, 0.1, 0.1, 0.3, 0.6],
+        vec![1, 1, 1, 2, 2, 2],
+        Some(vec![10, 20, 30]),
+        None,
+    );
+    assert_eq!(leaf_outputs(&bytes), (10.0, 30.0));
+}
+
+#[test]
+fn text_class_labels_are_refused() {
+    let bytes = tree_with_classes(
+        vec![0, 1, 0, 1],
+        vec![0.9, 0.1, 0.2, 0.8],
+        vec![1, 1, 2, 2],
+        None,
+        Some(vec!["low", "high"]),
+    );
+    let err = onnx::import_onnx(&bytes).unwrap_err();
+    assert!(
+        err.to_string().contains("text class labels"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_class_id_outside_the_labels_is_refused() {
+    let bytes = tree_with_classes(
+        vec![0, 3, 0, 1],
+        vec![0.1, 0.9, 0.2, 0.8],
+        vec![1, 1, 2, 2],
+        Some(vec![10, 20]),
+        None,
+    );
+    let err = onnx::import_onnx(&bytes).unwrap_err();
+    assert!(
+        err.to_string().contains("classlabels_int64s"),
+        "unexpected error: {err}"
+    );
+}
+
+/// The class lists are parallel; a short one used to be indexed out of bounds.
+#[test]
+fn class_lists_of_different_lengths_are_refused() {
+    let bytes = tree_with_classes(vec![0, 1], vec![0.0], vec![1, 2], None, None);
+    let err = onnx::import_onnx(&bytes).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("inconsistent class attribute lengths"),
+        "unexpected error: {err}"
+    );
+}
