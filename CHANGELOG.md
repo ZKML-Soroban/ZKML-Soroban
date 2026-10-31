@@ -8,11 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Breaking
+- ONNX tree imports change value at every leaf that carries one weight per
+  class, as skl2onnx writes them: the leaf now holds the predicted class (see
+  Fixed), so the imported model, and its commitment, differ from `0.0.2`.
 - The contract `VERSION` goes from `9` to `10`: the constructor's native
   verification key is now `Option<VerificationKey>`. A verifier that only checks
   RISC Zero receipts is deployed without one, and `verify_inference` then
   returns the new error `NativeKeyNotConfigured` (16). With the `stellar` CLI,
   leave out `--vk`; from Rust, pass `Some(vk)` or `None`.
+
+### Fixed
+- ONNX `TreeEnsembleClassifier` import kept the last class weight it read for
+  each leaf, so a skl2onnx tree imported every leaf as the probability of its
+  last class: the three-class iris fixture had a leaf that predicts class 0 with
+  probability 1.0 imported as `0.0`. A leaf with one weight per class now holds
+  its predicted class, mapped through `classlabels_int64s`; ties go to the lowest
+  class id. Text labels are refused, and class attribute lists of different
+  lengths are an error instead of an out-of-bounds index.
 
 ### Security
 - The constructor and `set_verification_key` refuse a native key without five

@@ -55,6 +55,20 @@ A model with no opset imports is rejected as malformed.
 
 Unsupported operators fail with an error naming the `op_type`.
 
+### Tree leaf values
+
+A `DecisionTree` leaf holds one value, and `output` is that value; `class_label`
+is always `0` for trees. From a `TreeEnsembleClassifier`:
+
+- A leaf with one class weight keeps that weight.
+- A leaf with one weight per class, which is what skl2onnx writes, holds the
+  predicted class: the class with the largest weight, ties going to the lowest
+  class id. If the model has `classlabels_int64s`, the leaf holds that label,
+  so a classifier trained on labels `0`, `1`, `2` outputs `0`, `1` or `2`, the
+  same convention as `tools/sklearn_to_json.py`.
+- Such a leaf is refused if the model uses text labels
+  (`classlabels_strings`), since a label has to be a number.
+
 ## Errors
 
 | Variant                                  | When                                                          |

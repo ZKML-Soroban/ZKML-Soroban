@@ -57,10 +57,8 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 
 - Decision trees always produce `class_label = 0`; the prediction is in `output`.
 - ONNX: single trees only (no ensembles), binary linear classifiers only.
-- **ONNX multi-class trees import wrong leaf values.** The tree extractor ignores
-  `class_ids` and keeps the last class weight it sees for each leaf, so a tree
-  with more than one class weight per leaf imports with the wrong values. Binary
-  trees and the JSON exchange format are not affected.
+- ONNX trees with text class labels are refused; export the classifier with
+  integer labels.
 
 ## Contract
 
