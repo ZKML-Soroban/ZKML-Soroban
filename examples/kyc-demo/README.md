@@ -17,8 +17,8 @@ Deployment with the `stellar` CLI: [docs/guides/deployment.md](../../docs/guides
 | Verifier contract with Groth16 (BN254) verification | Implemented |
 | Poseidon model commitment | Implemented (`zkml-prover commit` for JSON models) |
 | Contract build and deployment | Works with the `stellar` CLI (see the deployment guide) |
-| STARK to Groth16 compression | Pending (returns "not yet implemented") |
-| Verification key export | Pending |
+| STARK to Groth16 compression | Works on x86_64 Linux with Docker (`zkml-prover prove --groth16`) |
+| RISC Zero parameter export | Works (`zkml-prover export-vk --format soroban-args`) |
 | Demo runner (`zkml-demo`) | Skeleton only |
 
 ## Prerequisites
@@ -66,12 +66,13 @@ model would be rejected.
 
 `deploy.sh` builds the contract with
 `cargo build -p zkml-verifier --target wasm32v1-none --profile contract`, but its
-deploy and initialize steps are outdated:
+deploy steps are outdated:
 
 - they call the deprecated `soroban` CLI
-- `initialize` now requires `--admin`
-- the verification key parameter is `vk` (a struct), not `--verification_key`
-- the model commitment and key fall back to placeholder values
+- they call `initialize`, which the contract no longer has: the admin and the
+  model commitment are passed to the constructor at deploy
+- they pass all-zero placeholder keys, which the constructor now refuses; a
+  receipt-only verifier is deployed without a native key
 
 Until the script is updated, follow
 [docs/guides/deployment.md](../../docs/guides/deployment.md).

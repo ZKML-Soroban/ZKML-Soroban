@@ -195,20 +195,22 @@ Length errors:
 1. Fail with `ContractNotInitialized` if not initialized.
 2. Fail with `VerificationFailed` if paused.
 3. Deserialize `proof_a`, `proof_b`, `proof_c` (length-checked).
-4. Parse the 80-byte public inputs. Fail with `NonCanonicalPublicInput` if
+4. Fail with `NativeKeyNotConfigured` if the contract has no native key.
+5. Parse the 80-byte public inputs. Fail with `NonCanonicalPublicInput` if
    `model_hash` or `input_hash`, read as a little-endian integer, is not below
    the BN254 scalar modulus `r`. The pairing reduces each field modulo `r`
    while the nullifier hashes the raw bytes, so only the canonical encoding may
    be accepted, or one proof could be recorded once per multiple of `r`.
-5. Fail with `VerificationFailed` if `model_hash` differs from the stored value.
-6. Deserialize the verification key.
-7. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
+6. Fail with `VerificationFailed` if `model_hash` differs from the stored value.
+7. Derive `nullifier = sha256(public_inputs)`; fail with `ProofAlreadyUsed` if
+   it exists. This runs before the pairing, so a replay is refused without
+   paying for it.
+8. Deserialize the verification key.
+9. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
    `VerificationKeyLengthMismatch` if `ic.len() != 5`.
-8. Run `pairing_check([-A, alpha, L, C], [B, beta, gamma, delta])`; fail with
-   `VerificationFailed` if it does not hold.
-9. Derive `nullifier = sha256(public_inputs)`; fail with `ProofAlreadyUsed` if
-   it exists.
-10. Store the nullifier, the `InferenceRecord`, and the incremented counter;
+10. Run `pairing_check([-A, alpha, L, C], [B, beta, gamma, delta])`; fail with
+    `VerificationFailed` if it does not hold.
+11. Store the nullifier, the `InferenceRecord`, and the incremented counter;
     bump instance TTL; emit `verified`.
 
 Failed verifications do not modify state.

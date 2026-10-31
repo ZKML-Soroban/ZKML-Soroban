@@ -55,7 +55,7 @@ them. That gap is exactly what this track works on.
 
 | Stage | Change | Status |
 | ----- | ------ | ------ |
-| 1. Crypto-agile verifier | Proof system identifier in the bundle and public inputs; contract dispatches per system. | Planned |
+| 1. Crypto-agile verifier | Proof system identifier in the bundle (shipped: `proof_system` in bundle v2) and in what the contract sees; contract dispatches per system. | Planned (bundle part done) |
 | 2. Versioned commitments | Hash-based (SHA-256 or Keccak) commitment option next to Poseidon; re-attestation of stored records. | Planned |
 | 3. Hybrid mode | Registry flag that requires two independent proofs per inference. | Planned |
 | 4. Post-quantum verification | Research spike: verify a hash-based STARK proof on Soroban, implementing the required field (BabyBear) and hash (Poseidon2) arithmetic in WASM and splitting the work across several transactions. Output is a go / no-go report with CPU measurements. | Research |
