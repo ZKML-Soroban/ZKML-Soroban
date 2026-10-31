@@ -17,14 +17,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns the new error `NativeKeyNotConfigured` (16). With the `stellar` CLI,
   leave out `--vk`; from Rust, pass `Some(vk)` or `None`.
 
+### Added
+- Contract tests for the instance TTL policy: the constructor, both
+  verification entry points on success, `set_risc0_config`, `set_risc0_vk` and
+  both steps of the admin transfer renew the TTL; a failed verification and the
+  other admin setters do not. The original TTL tests had been lost in a merge.
+
+### Changed
+- Documentation: the roadmap is reviewed for October 2026, with the reproducible
+  guest build as the first remaining Phase 1 item. Pages and code comments that
+  still told readers to call `initialize` describe the constructor. The known
+  limitations, the model serialization in the commitments page, the KYC demo
+  status, the order of the `verify_inference` checks and the post-quantum
+  migration table describe the current code.
+
+### Removed
+- 27 contract test snapshots whose tests no longer exist, most of them from
+  before the constructor replaced `initialize`.
+
 ### Fixed
 - ONNX `TreeEnsembleClassifier` import kept the last class weight it read for
   each leaf, so a skl2onnx tree imported every leaf as the probability of its
-  last class: the three-class iris fixture had a leaf that predicts class 0 with
-  probability 1.0 imported as `0.0`. A leaf with one weight per class now holds
-  its predicted class, mapped through `classlabels_int64s`; ties go to the lowest
-  class id. Text labels are refused, and class attribute lists of different
+  last class: in the three-class iris fixture, the leaf that predicts class 1
+  with probability 0.907 imported as `0.093`. A leaf with one weight per class
+  now holds its predicted class, mapped through `classlabels_int64s`; ties go to
+  the lowest class id. Text labels are refused, and class attribute lists of different
   lengths are an error instead of an out-of-bounds index.
+- The `wasm_budget` assertion messages printed a run of spaces in the middle of
+  the sentence.
 
 ### Security
 - The constructor and `set_verification_key` refuse a native key without five
