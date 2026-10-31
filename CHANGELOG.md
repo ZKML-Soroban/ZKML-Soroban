@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (pinned to `r0.1.91.1`, since `risc0-build`'s default image ships a Rust older
   than the workspace MSRV), so the guest image id is the same on every machine.
   The default local build is unchanged; `export-vk` warns when its image id is
-  machine-specific, and CI builds the reproducible guest.
+  machine-specific. CI builds the reproducible guest and checks that the
+  committed golden receipt was proved by it.
 - Contract tests for the instance TTL policy: the constructor, both
   verification entry points on success, `set_risc0_config`, `set_risc0_vk` and
   both steps of the admin transfer renew the TTL; a failed verification and the
@@ -35,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limitations, the model serialization in the commitments page, the KYC demo
   status, the order of the `verify_inference` checks and the post-quantum
   migration table describe the current code.
+- The golden receipt and RISC Zero parameters in
+  `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
+  build. The guest image id is now
+  `dc3eb6de1a71a7d7bdfd97e3e117cecc66ede06c3761e3e57d6f781355dc1328`; a verifier
+  configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed
 - 27 contract test snapshots whose tests no longer exist, most of them from
@@ -52,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the sentence.
 
 ### Security
+- The zkVM guest lockfile moves `ruint` to 1.20.1, which fixes
+  RUSTSEC-2026-0220, and the dependency audit no longer ignores it for the
+  guest.
 - The constructor and `set_verification_key` refuse a native key without five
   `ic` points, or with a point off its curve or at infinity. A receipt-only
   deployment previously had to pass some native key, and the placeholder the

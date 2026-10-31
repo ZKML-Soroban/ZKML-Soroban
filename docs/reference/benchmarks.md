@@ -90,8 +90,8 @@ on `examples/models/credit_lr.json` (logistic regression, 4 features):
 | Machine | Ryzen AI 9 HX 370, 24 threads, 15 GB RAM, Arch Linux x86_64 under WSL2 |
 | Acceleration | none (CPU only) |
 | Peak prover memory | about 8.9 GB (`r0vm`) |
-| Guest cycles | 9,437,184 |
-| Total wall clock, prove + compress | 1,302 s and 1,506 s over two runs |
+| Guest cycles | 11,010,048 (current guest; 9,437,184 before the 0.0.2 guest changes) |
+| Total wall clock, prove + compress | 1,302 s, 1,506 s and 1,452 s over three runs |
 | Seal | 260 bytes (4-byte selector + 256-byte proof) |
 | Journal | 96 bytes |
 | Total on-chain payload | 356 bytes |
@@ -99,9 +99,12 @@ on `examples/models/credit_lr.json` (logistic regression, 4 features):
 Reproduce it with:
 
 ```bash
-RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
+ZKML_GUEST_DOCKER=1 RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
   --test groth16_bundle real_groth16 -- --ignored --nocapture
 ```
+
+`ZKML_GUEST_DOCKER=1` builds the reproducible guest, the one the golden receipt
+in `crates/zkml-verifier/testdata/` comes from.
 
 Two things this table is not: a floor and a ceiling. The model is tiny, so
 almost all of that time is the fixed cost of the zkVM and the recursion, not the

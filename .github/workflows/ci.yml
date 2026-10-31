@@ -157,15 +157,15 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo check -p zkml-prover --features metal
       - name: Reproducible guest build
-        # Builds the guest in RISC Zero's pinned builder image and prints its
-        # image id. That id must be the same on every machine; a later change
-        # asserts it against the committed golden receipt.
+        # Builds the guest in RISC Zero's pinned builder image, prints its image
+        # id, and checks that the committed golden receipt was proved by it.
         if: runner.os == 'Linux'
         env:
           ZKML_GUEST_DOCKER: "1"
         run: |
           cargo run -q -p zkml-prover --features zkvm -- export-vk --format json > vk.json
           python3 -c "import json; print('reproducible image id:', json.load(open('vk.json'))['image_id'])"
+          RISC0_DEV_MODE=1 cargo test -p zkml-prover --features zkvm --test verifier_fixtures
       - name: Clippy with the zkVM and Groth16 features
         # The Clippy job builds default features only, so code behind `zkvm`
         # and `groth16` was never linted there. It needs the RISC Zero
@@ -246,13 +246,9 @@ jobs:
           --ignore RUSTSEC-2025-0055
           --ignore RUSTSEC-2026-0387
       - name: Audit the zkVM guest lockfile
-        # RUSTSEC-2026-0220  ruint 1.19: updating the guest lockfile changes the
-        #                    image id, so it waits for a golden receipt
-        #                    regeneration. Fixed in the workspace lockfile.
         # RUSTSEC-2025-0055  tracing-subscriber 0.2, as above.
         run: >
           cargo audit --file methods/guest/Cargo.lock
-          --ignore RUSTSEC-2026-0220
           --ignore RUSTSEC-2025-0055
 
   docs:

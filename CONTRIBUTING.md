@@ -142,21 +142,24 @@ so keep it in its own pull request:
 1. **The golden fixtures go stale.** `crates/zkml-verifier/testdata/` holds a
    real receipt and the RISC Zero parameters it verifies against. The contract
    tests read the image id from the receipt itself, so they do not notice. The
-   `verifier_fixtures` test in `zkml-prover` (run by the zkVM CI jobs) does
-   catch a RISC Zero bump, because it compares the parameters with what the
-   pinned version derives. Regenerating takes about 22 minutes of CPU and
-   needs x86_64 Linux with Docker:
+   `verifier_fixtures` test in `zkml-prover` does: CI runs it on the
+   reproducible guest build and fails when the receipt was proved by a
+   different guest or when the parameters differ from what the pinned RISC Zero
+   version derives. Regenerating takes about 22 minutes of CPU and needs x86_64
+   Linux with Docker. Use the reproducible build, or CI will reject the result:
 
    ```bash
+   export ZKML_GUEST_DOCKER=1
    RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
        --test groth16_bundle real_groth16 -- --ignored --nocapture
    cp target/groth16_bundle.json crates/zkml-verifier/testdata/groth16_bundle.json
    cargo run -p zkml-prover --features zkvm -- export-vk --format json \
        -o crates/zkml-verifier/testdata/risc0_vk.json
+   RISC0_DEV_MODE=1 cargo test -p zkml-prover --features zkvm --test verifier_fixtures
    ```
 
-   Run both commands on the same machine, then `cargo test -p zkml-verifier`,
-   and commit the fixtures and any updated snapshots with the change.
+   Then run `cargo test -p zkml-verifier` and commit the fixtures and any
+   updated snapshots with the change.
 2. **Deployed verifiers stop accepting new proofs.** A contract keeps the image
    id it was configured with, so every receipt from the new guest fails with
    `VerificationFailed` until its admin calls `set_risc0_config` with the
