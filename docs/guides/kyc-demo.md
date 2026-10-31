@@ -21,9 +21,9 @@ risk score, and verify it on-chain.
 | ONNX import into `zkml-prover`          | Works: a decision tree of 43 nodes over 10 features |
 | Model commitment                        | Available via `zkml-prover commit` (JSON models)    |
 | Contract build and deployment           | Works with the `stellar` CLI ([guide](/guides/deployment)) |
-| On-chain Groth16 verification           | Implemented in the contract                         |
-| Groth16 proof generation                | Pending (STARK-to-Groth16 wrap)                     |
-| Verification key export                 | Pending                                             |
+| On-chain receipt verification (`verify_receipt`) | Implemented and tested in the Soroban test environment; not yet run on testnet |
+| Groth16 proof generation                | Works on x86_64 Linux with Docker (`prove --groth16`) |
+| RISC Zero parameter export              | Works (`export-vk --format soroban-args`)           |
 | Demo runner (`zkml-demo`)               | Skeleton only                                       |
 
 ## 1. Generate the dataset
