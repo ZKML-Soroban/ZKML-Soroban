@@ -2824,10 +2824,11 @@ mod test_risc0_receipts {
 /// byte orders, or the key were subtly wrong, because every one of those
 /// produces a valid-looking failure rather than an error.
 ///
-/// The fixture in `testdata/` took 22 minutes of CPU to make. Regenerate it
-/// with:
+/// The fixture in `testdata/` took about 22 minutes of CPU to make. Regenerate
+/// it from the reproducible guest build:
 ///
 /// ```text
+/// export ZKML_GUEST_DOCKER=1
 /// RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
 ///     --test groth16_bundle real_groth16 -- --ignored
 /// cp target/groth16_bundle.json crates/zkml-verifier/testdata/
@@ -2835,14 +2836,12 @@ mod test_risc0_receipts {
 ///     -o crates/zkml-verifier/testdata/risc0_vk.json
 /// ```
 ///
-/// Run both on the same machine: the guest build is not reproducible across
-/// machines, so the image id depends on where it was built.
-///
 /// These tests read the image id and the RISC Zero parameters from the
 /// fixtures, so they cannot tell when either is stale.
-/// `crates/zkml-prover/tests/verifier_fixtures.rs` checks the parameters
-/// against the pinned RISC Zero version. See CONTRIBUTING.md, "Changing the
-/// zkVM guest".
+/// `crates/zkml-prover/tests/verifier_fixtures.rs` can: on the reproducible
+/// build it checks that the receipt's image id is the one this tree builds,
+/// and it checks the parameters against the pinned RISC Zero version. See
+/// CONTRIBUTING.md, "Changing the zkVM guest".
 #[cfg(test)]
 mod test_golden_receipt {
     use super::*;
