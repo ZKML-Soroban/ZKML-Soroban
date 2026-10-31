@@ -80,29 +80,41 @@ chunk, which makes the result order-sensitive.
 ## Model serialization
 
 `model_elements(model)` flattens parameters in this order (all fixed-point
-values as their raw `i64`):
+values as their raw `i64`). The stream is injective: it starts with the model
+kind and length-prefixes every variable-length part, so two models of
+different shape cannot flatten to the same sequence, and tree nodes carry a tag
+so a leaf value cannot be read as a split's fields. This layout is new in
+`0.0.2`; a model hash computed with `0.0.1` does not match.
+
+Every model starts with its kind, the same number the journal carries:
+`0` decision tree, `1` logistic regression, `2` tiny MLP.
 
 **Logistic regression**
 
-1. `weights[0..n]`
-2. `bias`
-3. `decision_threshold`
+1. kind (`1`)
+2. number of weights, then `weights[0..n]`
+3. `bias`
+4. `decision_threshold`
 
 **Decision tree**
 
-1. `num_features`
-2. For each node in index order:
-   - split: `feature_index`, `threshold`, `left`, `right`
-   - leaf: `value`
+1. kind (`0`)
+2. `num_features`
+3. number of nodes
+4. For each node in index order:
+   - split: tag `0`, `feature_index`, `threshold`, `left`, `right`
+   - leaf: tag `1`, `value`
 
-**Tiny MLP**, for each layer in order:
+**Tiny MLP**
 
-1. `weights` (row-major)
-2. `biases`
-3. `input_size`
-4. `output_size`
+1. kind (`2`)
+2. number of layers
+3. For each layer in order: number of weights, `weights` (row-major), number
+   of biases, `biases`, `input_size`, `output_size`
 
-**Inputs:** `features[0..n]` in model feature order.
+**Inputs:** `features[0..n]` in model feature order, with no length prefix. The
+hash pads the last chunk with zeros, so `[x]` and `[x, 0]` commit to the same
+value; see [Known limitations](/security/known-limitations).
 
 ## Public input byte order
 
