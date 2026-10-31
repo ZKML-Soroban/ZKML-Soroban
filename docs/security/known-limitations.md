@@ -24,12 +24,11 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   feature wraps natively on Linux with an NVIDIA GPU in theory, but the native
   wrap crashed on the one card it was tried on; see
   [Proving](/concepts/proving).
-- **The guest image id depends on the build machine.** `methods/build.rs`
-  compiles the guest with the host toolchain, so the same commit produces a
-  different image id on different machines, and a contract only accepts
-  receipts from the id its admin registered. Register the id that
-  `zkml-prover export-vk` prints on the machine that produces the proofs, until
-  the guest is built with RISC Zero's reproducible Docker build.
+- **A local guest build has its own image id.** By default the guest is
+  compiled with the local RISC Zero toolchain, so its image id differs between
+  machines, and a contract only accepts receipts from the id its admin
+  registered. Build with `ZKML_GUEST_DOCKER=1` (RISC Zero's pinned builder
+  image) to get the reproducible id, and prove with that same build.
 - **No remote proving.** RISC Zero shut down Bonsai in December 2025.
   `--backend boundless` returns `ProveError::RemoteBackend` until a Boundless or
   self-hosted Bento client is written.

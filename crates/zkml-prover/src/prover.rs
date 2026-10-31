@@ -251,6 +251,13 @@ mod zkvm_prove {
         pub cycles: u64,
     }
 
+    /// True when the embedded guest came from RISC Zero's reproducible Docker
+    /// build (`ZKML_GUEST_DOCKER=1`), so its image id is the same on every
+    /// machine. A local build's image id is specific to the machine.
+    pub fn guest_build_is_reproducible() -> bool {
+        zkml_methods::ZKML_GUEST_BUILD == "docker"
+    }
+
     /// The guest image id as bytes.
     pub fn image_id() -> [u8; 32] {
         let mut out = [0u8; 32];
@@ -437,8 +444,8 @@ mod zkvm_prove {
 
 #[cfg(feature = "zkvm")]
 pub use zkvm_prove::{
-    bundle_from_output, decode_journal, encode_seal, generate_receipt, image_id, prove_groth16,
-    verify_bundle, ProveOutput,
+    bundle_from_output, decode_journal, encode_seal, generate_receipt, guest_build_is_reproducible,
+    image_id, prove_groth16, verify_bundle, ProveOutput,
 };
 
 /// Serialize a legacy bundle to JSON.

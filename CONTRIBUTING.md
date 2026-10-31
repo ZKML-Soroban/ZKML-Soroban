@@ -122,13 +122,19 @@ never a local change. It changes when any of these change:
 - the RISC Zero version, pinned with `=` in the root `Cargo.toml`,
   `methods/Cargo.toml` and `methods/guest/Cargo.toml`.
 
-It also depends on the machine that builds it. `methods/build.rs` calls
-`risc0_build::embed_methods()`, which compiles the guest with the host's
-toolchain, so the same commit can produce different binaries: the CI runners
-and a local Linux machine get different image ids. RISC Zero's Docker build
-(`GuestOptions::use_docker` in `risc0-build`) is what makes the id
-reproducible; the project does not use it yet. Until it does, register the
-image id that `export-vk` prints on the machine that produces the proofs.
+It can also depend on the machine that builds it. By default `methods/build.rs`
+compiles the guest with your own RISC Zero toolchain, which is fast but gives
+an image id specific to your machine and toolchain version. With
+`ZKML_GUEST_DOCKER=1` it builds inside RISC Zero's builder image, pinned to
+`r0.1.91.1`, from the guest's `Cargo.lock`, and every machine gets the same id.
+That is the id to register on chain, and the one CI builds:
+
+```bash
+ZKML_GUEST_DOCKER=1 cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
+```
+
+It needs Docker and takes about two minutes the first time, while the image
+downloads. `export-vk` warns on stderr when the guest was built locally.
 
 A change to the guest, to `zkml-common` or to RISC Zero costs three things,
 so keep it in its own pull request:

@@ -148,8 +148,13 @@ verifying key. `--format json` (the default) is machine-readable.
 run once `<CONTRACT>` and `<ADMIN>` are filled in:
 
 ```bash
-cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
+ZKML_GUEST_DOCKER=1 cargo run -p zkml-prover --features zkvm -- export-vk --format soroban-args
 ```
+
+`ZKML_GUEST_DOCKER=1` builds the guest in RISC Zero's pinned builder image, so
+the image id is the same on every machine. Without it the guest is built with
+your local toolchain, the image id is specific to your machine, and `export-vk`
+prints a warning on stderr.
 
 ```text
 # 1. The guest and RISC Zero's parameters.

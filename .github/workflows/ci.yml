@@ -156,6 +156,16 @@ jobs:
       - name: Check that the Metal feature compiles on Apple Silicon
         if: runner.os == 'macOS'
         run: cargo check -p zkml-prover --features metal
+      - name: Reproducible guest build
+        # Builds the guest in RISC Zero's pinned builder image and prints its
+        # image id. That id must be the same on every machine; a later change
+        # asserts it against the committed golden receipt.
+        if: runner.os == 'Linux'
+        env:
+          ZKML_GUEST_DOCKER: "1"
+        run: |
+          cargo run -q -p zkml-prover --features zkvm -- export-vk --format json > vk.json
+          python3 -c "import json; print('reproducible image id:', json.load(open('vk.json'))['image_id'])"
       - name: Clippy with the zkVM and Groth16 features
         # The Clippy job builds default features only, so code behind `zkvm`
         # and `groth16` was never linted there. It needs the RISC Zero

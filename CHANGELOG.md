@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leave out `--vk`; from Rust, pass `Some(vk)` or `None`.
 
 ### Added
+- `ZKML_GUEST_DOCKER=1` builds the zkVM guest inside RISC Zero's builder image
+  (pinned to `r0.1.91.1`, since `risc0-build`'s default image ships a Rust older
+  than the workspace MSRV), so the guest image id is the same on every machine.
+  The default local build is unchanged; `export-vk` warns when its image id is
+  machine-specific, and CI builds the reproducible guest.
 - Contract tests for the instance TTL policy: the constructor, both
   verification entry points on success, `set_risc0_config`, `set_risc0_vk` and
   both steps of the admin transfer renew the TTL; a failed verification and the

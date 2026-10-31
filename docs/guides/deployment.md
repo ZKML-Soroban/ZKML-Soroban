@@ -70,7 +70,9 @@ echo "$CONTRACT_ID"
 Without a native key, `verify_inference` returns `NativeKeyNotConfigured`, and
 the contract verifies receipts once the admin registers the RISC Zero values
 (`set_risc0_config` and `set_risc0_vk`, printed by
-`zkml-prover export-vk --format soroban-args`).
+`zkml-prover export-vk --format soroban-args`). Run `export-vk` with
+`ZKML_GUEST_DOCKER=1`, so the image id you register is the reproducible one,
+and prove with a build made the same way.
 
 <Warning>
 Do not deploy with a test or placeholder native key. There is no native circuit
