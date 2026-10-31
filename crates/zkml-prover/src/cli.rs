@@ -711,6 +711,13 @@ pub fn cmd_export_vk(
     let control_root: [u8; 32] = params.control_root.into();
     let bn254_control_id: [u8; 32] = params.bn254_control_id.into();
     let image_id = crate::prover::image_id();
+    if !crate::prover::guest_build_is_reproducible() {
+        // stderr, so the JSON or the commands on stdout stay usable as they are.
+        eprintln!(
+            "warning: this guest was built with the local toolchain, so its image id is specific \
+             to this machine. Rebuild with ZKML_GUEST_DOCKER=1 before registering it on chain."
+        );
+    }
     let selector = selector_from_params_digest(&params_digest);
 
     // The verifying key the receipts are checked against. Six ic points,
