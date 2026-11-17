@@ -267,5 +267,6 @@ crates/zkml-prover   host: generate_receipt, prove_groth16, verify_bundle, bundl
 - Remote proving (`--backend boundless`) returns `ProveError::RemoteBackend`.
 - Compression needs roughly 10 GB of RAM and takes minutes on a laptop.
 - Model and input commitments share domain `0` in the proving path.
-- The legacy `prove` output (without `--groth16`) carries public inputs but no
-  proof. It prints a warning and must not be treated as evidence.
+- The legacy `prove --no-proof` output carries public inputs but no proof. It
+  prints a warning and must not be treated as evidence. `prove` refuses to run
+  without `--groth16` or `--no-proof`.

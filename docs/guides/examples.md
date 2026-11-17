@@ -21,10 +21,11 @@ Export a verification bundle for the same evaluation:
 
 ```bash
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --no-proof -o bundle.json
 ```
 
-The proof bytes in the bundle are empty until Groth16 compression lands.
+`--no-proof` writes the public inputs only. Use `--groth16` instead for a
+bundle the contract can verify; see the [CLI reference](/guides/cli#prove).
 
 ## KYC risk (decision tree)
 

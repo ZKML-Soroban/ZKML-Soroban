@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrong-length `proof_c` as `MalformedProofC` instead of `MalformedProofA`. And a
   journal whose reserved bytes (7 and 88 to 95) are not zero is refused with
   `MalformedJournal`.
+- `zkml-prover prove` needs `--groth16` or `--no-proof`. Without a flag it
+  used to write the legacy v1 bundle, which carries no proof, so a script that
+  forgot `--groth16` got a bundle that looked usable. It now exits with code 2
+  and names both flags. `--no-proof` writes the same legacy bundle as before,
+  and its warning goes to stderr, so stdout is the JSON alone.
 - `JournalV1::decode` in `zkml-common` refuses a non-zero reserved byte with
   the new `JournalError::NonZeroReserved`, so a `match` on `JournalError` needs
   an arm for it. The guest has always written zeros there, so no real journal

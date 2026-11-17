@@ -129,7 +129,7 @@ a bundle from another guest fails the pairing. See
 
 ## Legacy v1 (`VerificationBundle`)
 
-`zkml_common::proof`, produced by `prove` without `--groth16`. Byte arrays are
+`zkml_common::proof`, produced by `prove --no-proof`. Byte arrays are
 JSON arrays of integers and `proof.data` is empty.
 
 ```json

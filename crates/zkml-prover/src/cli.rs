@@ -12,9 +12,10 @@
 //! confusing error (extraction is tracked in #5 / #6).
 //!
 //! `prove --groth16` produces a real RISC Zero Groth16 bundle (v2) and requires
-//! the `groth16` feature plus x86_64 Linux with Docker. Without the flag it
+//! the `groth16` feature plus x86_64 Linux with Docker. `prove --no-proof`
 //! emits the legacy v1 bundle, which carries public inputs but no proof and
-//! must not be treated as evidence.
+//! must not be treated as evidence. One of the two flags is required, so a
+//! bundle without a proof is never written by accident.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -78,9 +79,14 @@ pub enum Command {
 
     /// Generate a verification bundle as JSON.
     ///
-    /// With `--groth16` the bundle is a v2 bundle carrying a real RISC Zero
-    /// Groth16 seal. Without it, the bundle is the legacy v1 format: public
-    /// inputs only, no proof.
+    /// Pass `--groth16` for a v2 bundle carrying a real RISC Zero Groth16
+    /// seal, or `--no-proof` for the legacy v1 format: public inputs only, no
+    /// proof. One of the two is required.
+    #[command(group(
+        clap::ArgGroup::new("proof_mode")
+            .required(true)
+            .args(["groth16", "no_proof"])
+    ))]
     Prove {
         /// Path to a JSON model.
         model: PathBuf,
@@ -94,6 +100,10 @@ pub enum Command {
         /// feature, x86_64 Linux and Docker).
         #[arg(long)]
         groth16: bool,
+        /// Write the legacy v1 bundle: the public inputs, with no proof. Useful
+        /// for inspecting what would be proven, and for nothing else.
+        #[arg(long)]
+        no_proof: bool,
         /// Where to run the Groth16 compression.
         #[arg(long, default_value = "local", value_parser = ["local", "boundless"])]
         backend: String,
@@ -527,6 +537,7 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
             input,
             out: dest,
             groth16,
+            no_proof: _,
             backend,
             skip_safety_check,
         } => cmd_prove(
@@ -597,7 +608,10 @@ pub fn cmd_infer(model_path: &Path, raw: &str, out: &mut impl Write) -> Result<(
     .map_err(|e| io_err("<stdout>", e))
 }
 
-/// `prove <MODEL> -i <CSV> [--groth16] [--backend B] [-o <FILE>]`.
+/// `prove <MODEL> -i <CSV> (--groth16 | --no-proof) [--backend B] [-o <FILE>]`.
+///
+/// `groth16: false` is `--no-proof`: clap refuses a call with neither flag, so
+/// the legacy bundle is only written when it was asked for.
 pub fn cmd_prove(
     model_path: &Path,
     raw: &str,
@@ -620,11 +634,10 @@ pub fn cmd_prove(
         .map_err(|message| CliError::Inference(ZkmlError::InvalidModel(message)))?;
     let json = bundle_to_json(&bundle).map_err(CliError::Serialization)?;
 
-    writeln!(
-        out,
+    // stderr, so the JSON on stdout stays usable as it is.
+    eprintln!(
         "warning: this is a legacy v1 bundle and carries no proof. Use --groth16 for a real one."
-    )
-    .map_err(|e| io_err("<stdout>", e))?;
+    );
 
     write_or_print(json, dest, "verification bundle", out)
 }
@@ -1018,27 +1031,34 @@ mod tests_commands {
             )
         })
         .unwrap();
-        let json = &out[out.find('{').expect("json follows the warning")..];
-        let bundle = crate::prover::bundle_from_json(json.trim()).expect("bundle parses");
+        // The warning goes to stderr, so stdout is the bundle and nothing else.
+        let bundle = crate::prover::bundle_from_json(out.trim()).expect("bundle parses");
         assert_eq!(bundle.public_inputs.output.len(), 8);
     }
 
     #[test]
-    fn prove_without_groth16_warns_that_the_bundle_carries_no_proof() {
-        let out = capture(|w| {
-            cmd_prove(
-                Path::new(CREDIT),
-                "0.5,0.2,0.9,0.1",
-                None,
-                false,
-                "local",
-                false,
-                w,
-            )
-        })
-        .unwrap();
-        assert!(out.contains("carries no proof"), "got: {out}");
-        assert!(out.contains("--groth16"), "got: {out}");
+    fn prove_needs_groth16_or_no_proof() {
+        let err = Cli::try_parse_from(["zkml-prover", "prove", "model.json", "-i", "0.5"])
+            .expect_err("prove without a proof mode must be refused");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        let text = err.to_string();
+        assert!(text.contains("--groth16"), "got: {text}");
+        assert!(text.contains("--no-proof"), "got: {text}");
+    }
+
+    #[test]
+    fn prove_refuses_both_proof_modes() {
+        let err = Cli::try_parse_from([
+            "zkml-prover",
+            "prove",
+            "model.json",
+            "-i",
+            "0.5",
+            "--groth16",
+            "--no-proof",
+        ])
+        .expect_err("--groth16 and --no-proof contradict each other");
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
@@ -1151,8 +1171,15 @@ mod tests_args {
             }
         }
 
-        let cli =
-            Cli::try_parse_from(["zkml-prover", "prove", "model.json", "-i", "-1,-2"]).unwrap();
+        let cli = Cli::try_parse_from([
+            "zkml-prover",
+            "prove",
+            "model.json",
+            "-i",
+            "-1,-2",
+            "--no-proof",
+        ])
+        .unwrap();
         match cli.command {
             Command::Prove { input, .. } => assert_eq!(input, "-1,-2"),
             other => panic!("expected Prove, got {other:?}"),
@@ -1170,6 +1197,7 @@ mod tests_args {
             "-0.5,0.2",
             "-o",
             "bundle.json",
+            "--no-proof",
         ])
         .unwrap();
         match cli.command {

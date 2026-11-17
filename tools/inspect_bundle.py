@@ -19,8 +19,9 @@ A file that cannot be read as a bundle at all, because it is not JSON, has no
 `public_inputs`, or is a v2 bundle, always exits with 1: there is nothing to
 show.
 
-This reads the bundle `zkml-prover prove` writes. A v2 bundle carries a RISC
-Zero journal instead and is checked with `zkml-prover verify-bundle`.
+This reads the bundle `zkml-prover prove --no-proof` writes. A v2 bundle, from
+`prove --groth16`, carries a RISC Zero journal instead and is checked with
+`zkml-prover verify-bundle`.
 """
 
 import argparse
@@ -132,7 +133,7 @@ def main():
         description="Print the public inputs a verification bundle carries."
     )
     parser.add_argument(
-        "bundle", type=Path, help="bundle written by `zkml-prover prove`"
+        "bundle", type=Path, help="bundle written by `zkml-prover prove --no-proof`"
     )
     parser.add_argument(
         "--check",
