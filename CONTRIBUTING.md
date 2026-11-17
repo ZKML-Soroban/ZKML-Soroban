@@ -118,7 +118,10 @@ never a local change. It changes when any of these change:
 
 - anything under `methods/guest/`, including `Cargo.toml` and `Cargo.lock`
   (a dependency bump there counts);
-- any code in `zkml-common` that the guest compiles in;
+- any code in `zkml-common` that the guest compiles in. That includes a change
+  that only moves lines in one of those files, even in a function the guest
+  never calls: panic messages carry file and line numbers, so shifting a
+  panicking call the guest does use changes the binary;
 - the RISC Zero version, pinned with `=` in the root `Cargo.toml`,
   `methods/Cargo.toml` and `methods/guest/Cargo.toml`.
 

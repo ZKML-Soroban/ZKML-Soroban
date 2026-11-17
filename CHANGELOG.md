@@ -48,8 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   migration table describe the current code.
 - The golden receipt and RISC Zero parameters in
   `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
-  build. The guest image id is now
-  `dc3eb6de1a71a7d7bdfd97e3e117cecc66ede06c3761e3e57d6f781355dc1328`; a verifier
+  build, and again after the reserved-byte check in `JournalV1::decode` (see
+  Breaking), which moved lines in a file the guest compiles. The guest image id is now
+  `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
   configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed
