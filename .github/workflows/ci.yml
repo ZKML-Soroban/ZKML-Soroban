@@ -227,8 +227,11 @@ jobs:
         #                    Via risc0-zkvm and risc0-build.
         # RUSTSEC-2026-0344  ruzstd 0.7: fixed in 0.9. Via object 0.36 in risc0-zkvm.
         # RUSTSEC-2026-0367  zip 2.3: fixed in 9.0. Via risc0-circuit-recursion
-        # RUSTSEC-2026-0368  and risc0-circuit-keccak.
-        # RUSTSEC-2026-0369
+        # RUSTSEC-2026-0368  and risc0-circuit-keccak, which only read the
+        # RUSTSEC-2026-0369  recursion circuits embedded in the crate: no
+        # RUSTSEC-2026-0429  untrusted archive, no symlink extraction, no
+        # RUSTSEC-2026-0545  AES entries and no ZipStreamReader.
+        # RUSTSEC-2026-0548
         # RUSTSEC-2025-0055  tracing-subscriber 0.2: fixed in 0.3.20. Via
         #                    ark-relations in the Groth16 stack.
         # RUSTSEC-2026-0387  crypto-bigint 0.5: fixed in 0.7.6. Via
@@ -243,6 +246,9 @@ jobs:
           --ignore RUSTSEC-2026-0367
           --ignore RUSTSEC-2026-0368
           --ignore RUSTSEC-2026-0369
+          --ignore RUSTSEC-2026-0429
+          --ignore RUSTSEC-2026-0545
+          --ignore RUSTSEC-2026-0548
           --ignore RUSTSEC-2025-0055
           --ignore RUSTSEC-2026-0387
       - name: Audit the zkVM guest lockfile
