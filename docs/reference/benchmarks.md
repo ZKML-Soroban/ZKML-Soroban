@@ -141,5 +141,8 @@ Note also that `-arch` matters enormously. With nothing set, nvcc targets
 
 - Proving time per model family (tree, MLP) under real mode
 - Remote proving latency, once a Boundless client exists
-- End-to-end latency on testnet: proof, submission and verification. On-chain
-  verification exists and is measured above, but nothing has been deployed
+- End-to-end latency on testnet. The on-chain half is measured: a real receipt
+  verified in a testnet transaction declaring 30,944,431 instructions, charged
+  733,897 stroops (see [Live on testnet](/guides/deployment#live-on-testnet)).
+  The proving half is the 25 minutes above, so the 60-second Phase 1 target
+  needs a faster prover, not a cheaper contract.

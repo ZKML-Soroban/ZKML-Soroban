@@ -21,10 +21,12 @@ risk score, and verify it on-chain.
 | ONNX import into `zkml-prover`          | Works: a decision tree of 43 nodes over 10 features |
 | Model commitment                        | Available via `zkml-prover commit` (JSON models)    |
 | Contract build and deployment           | Works with the `stellar` CLI ([guide](/guides/deployment)) |
-| On-chain receipt verification (`verify_receipt`) | Implemented and tested in the Soroban test environment; not yet run on testnet |
+| On-chain receipt verification (`verify_receipt`) | Verified on testnet ([transactions](/guides/deployment#live-on-testnet)) |
 | Groth16 proof generation                | Works on x86_64 Linux with Docker (`prove --groth16`) |
 | RISC Zero parameter export              | Works (`export-vk --format soroban-args`)           |
+| End-to-end script (`deploy.sh`)         | Works: deploy, register, prove, verify, read        |
 | Demo runner (`zkml-demo`)               | Skeleton only                                       |
+| The trained ONNX model through the CLI  | Not yet: the CLI reads JSON models only             |
 
 ## 1. Generate the dataset
 
@@ -60,13 +62,26 @@ It prints every opset import and every operator in the graph, and exits with a
 non-zero status when the core opset is too low. See also the tier mapping
 limitation below.
 
-## 3. Deploy the verifier
+## 3. Deploy, prove and verify
 
-Follow [Testnet deployment](/guides/deployment).
+From the repository root, on x86_64 Linux with Docker and the stellar CLI:
 
-## 4. Prove and verify (pending)
+```bash
+examples/kyc-demo/deploy.sh
+```
 
-The intended flow once Groth16 compression lands:
+It creates and funds a testnet identity if needed, deploys the verifier with
+the KYC tree's commitment, registers the reproducible guest, proves one risk
+score with Groth16 (about 25 minutes of CPU) and records it with
+`verify_receipt`, then reads the result back. The step-by-step commands are in
+[Testnet deployment](/guides/deployment), which also lists the transactions
+of the first verification on testnet.
+
+The script proves `examples/models/kyc_tree.json`, the three-feature JSON tree,
+on `0.6,0.4,0.0`, which takes the high-risk branch: `output` is `65536`, risk
+`1.0` in Q16.16. `KYC_MODEL` and `KYC_INPUT` change both; the ONNX model from
+step 2 needs converting to the JSON format first, since the CLI does not read
+ONNX.
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +90,7 @@ sequenceDiagram
     participant Contract as zkml-verifier
     Anchor->>Prover: user features + KYC model
     Prover->>Prover: zkVM inference, Groth16 wrap
-    Prover->>Contract: verify_inference(proof, public_inputs)
+    Prover->>Contract: verify_receipt(seal, journal)
     Contract-->>Anchor: verified event (model_hash, output)
     Anchor->>Contract: get_result
 ```
@@ -83,10 +98,10 @@ sequenceDiagram
 ## Mapping risk tiers to the public inputs
 
 For decision trees, `class_label` is always `0` and `output` carries the leaf value
-(raw Q16.16). The leaf value equals the risk tier only for JSON trees whose leaves
-store the tier (tier 2 is `2 * 65536`). Multi-class ONNX `TreeEnsembleClassifier`
-models are not mapped to a tier yet: the extractor keeps one class weight per leaf,
-so raising the opset alone does not make the KYC model usable.
+(raw Q16.16). For a JSON tree whose leaves store the tier, that is the tier (tier 2
+is `2 * 65536`). A multi-class ONNX `TreeEnsembleClassifier`, such as the model
+from step 2, imports with the predicted class in each leaf, so its output is the
+tier too; see [ONNX import](/guides/onnx-import#tree-leaf-values).
 
 ## Success criteria
 

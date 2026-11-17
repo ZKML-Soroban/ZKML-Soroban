@@ -8,10 +8,11 @@ This guide deploys `zkml-verifier` to Stellar testnet with the current
 [`stellar` CLI](https://developers.stellar.org/docs/tools/cli). The legacy
 `soroban` CLI is deprecated and should not be used.
 
-> **Status.** Building, deploying, and initializing work today. A real
-> verification key and real proofs are not available yet (Groth16 compression
-> and VK export are pending), so `verify_inference` cannot succeed against a
-> production proof. Steps marked **Pending** depend on that work.
+> **Status.** The whole receipt path runs on testnet: a contract deployed with
+> these commands verified a real Groth16 receipt on 2026-11-17. See
+> [Live on testnet](#live-on-testnet) for the transactions.
+> `examples/kyc-demo/deploy.sh` runs every step below in one go; see
+> [The demo script](#the-demo-script).
 
 ## 1. Prerequisites
 
@@ -69,10 +70,7 @@ echo "$CONTRACT_ID"
 
 Without a native key, `verify_inference` returns `NativeKeyNotConfigured`, and
 the contract verifies receipts once the admin registers the RISC Zero values
-(`set_risc0_config` and `set_risc0_vk`, printed by
-`zkml-prover export-vk --format soroban-args`). Run `export-vk` with
-`ZKML_GUEST_DOCKER=1`, so the image id you register is the reproducible one,
-and prove with a build made the same way.
+(step 5).
 
 <Warning>
 Do not deploy with a test or placeholder native key. There is no native circuit
@@ -98,23 +96,42 @@ each). Every point must be on its curve and none may be the point at infinity.
 }
 ```
 
-## 5. Verify an inference
+## 5. Register the guest
 
-**Pending:** requires a native circuit, its key registered as above, and a
-Groth16 proof from it. Receipts from the prover go through `verify_receipt`
-instead; see [the verifier contract](/reference/verifier-contract#verifying-a-risc-zero-receipt).
+`export-vk --format soroban-args` prints the two admin calls that register the
+guest image id with RISC Zero's parameters and its universal verifying key.
+Build it with `ZKML_GUEST_DOCKER=1`, so the image id is the reproducible one,
+and prove with a build made the same way:
 
 ```bash
-stellar contract invoke \
-  --id "$CONTRACT_ID" \
-  --source-account deployer \
-  --network testnet \
-  -- verify_inference \
-  --proof_a "<64-byte hex>" \
-  --proof_b "<128-byte hex>" \
-  --proof_c "<64-byte hex>" \
-  --public_inputs "<80-byte hex>"
+ZKML_GUEST_DOCKER=1 cargo run -q -p zkml-prover --features zkvm -- \
+  export-vk --format soroban-args
 ```
+
+Replace `<CONTRACT>` and `<ADMIN>` in the two commands it prints with
+`$CONTRACT_ID` and `deployer`, add `--network testnet`, and run them.
+
+## 6. Prove and verify a receipt
+
+Prove on x86_64 Linux with Docker (about 25 minutes of CPU for a small model),
+then submit the bundle's seal and journal, both hex:
+
+```bash
+ZKML_GUEST_DOCKER=1 RISC0_DEV_MODE=0 cargo run -q -p zkml-prover --features groth16 -- \
+  prove examples/models/kyc_tree.json -i "0.6,0.4,0.0" --groth16 -o bundle.json
+
+stellar contract invoke --id "$CONTRACT_ID" --source-account deployer --network testnet \
+  -- verify_receipt \
+  --seal "$(python3 -c 'import json; print(json.load(open("bundle.json"))["seal"])')" \
+  --journal "$(python3 -c 'import json; print(json.load(open("bundle.json"))["journal"])')"
+```
+
+It returns the recorded `InferenceRecord` and emits `verified`. The model hash
+in the journal must be the one passed to the constructor, and a receipt can be
+recorded only once.
+
+`verify_inference`, the native-circuit path, needs a native circuit and its
+key, which do not exist yet.
 
 ## 7. Read the result
 
@@ -138,8 +155,43 @@ admin).
 
 ## The demo script
 
-`examples/kyc-demo/deploy.sh` builds the contract with the command above but
-still calls the deprecated `soroban` CLI, does not pass `--admin`, uses a
-`--verification_key` argument (the parameter is `vk`), and falls back to
-placeholder values. Prefer the commands on this page until the script is
-updated. See [KYC demo](/guides/kyc-demo).
+`examples/kyc-demo/deploy.sh` runs steps 1 to 7 from the repository root: it
+creates and funds the identity if needed, deploys with the constructor and no
+native key, registers the guest, proves the KYC model and submits the receipt.
+
+```bash
+examples/kyc-demo/deploy.sh
+```
+
+Proving and exporting need x86_64 Linux with Docker. On another machine, make
+the bundle and the `export-vk --format json` file on such a host and pass them
+with `--bundle` and `--risc0-params`; the rest needs only cargo, Python and the
+stellar CLI. `--help` lists the options and environment variables. See
+[KYC demo](/guides/kyc-demo).
+
+## Live on testnet
+
+On 2026-11-17 the script deployed the `VERSION` 10 contract and verified the
+golden receipt in `crates/zkml-verifier/testdata/`: a real Groth16 proof of
+`examples/models/credit_lr.json` on input `0.5,0.2,0.9,0.1`, from the
+reproducible guest.
+
+| Item | Value |
+| ---- | ----- |
+| Contract | [`CDRSZLNZCBLLNPDIWFIOCP4N3VB6UWTZTGH7ACSAFILQGYRG255FAPH7`](https://stellar.expert/explorer/testnet/contract/CDRSZLNZCBLLNPDIWFIOCP4N3VB6UWTZTGH7ACSAFILQGYRG255FAPH7) |
+| WASM hash | `78553d40232a758e3989b20a944331f90aac97b5f94ca84581aa128836c061db` |
+| Guest image id | `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712` |
+| Model hash | `c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521` |
+
+| Step | Transaction |
+| ---- | ----------- |
+| Upload WASM | [`3a2598f1...`](https://stellar.expert/explorer/testnet/tx/3a2598f1cd71a685fc324e1c3c754d677d9233c85901fee6d329fb1f67b54531) |
+| Deploy and construct | [`a84bfd38...`](https://stellar.expert/explorer/testnet/tx/a84bfd38dac48cfc9e32c495bcc22a9a15c130440dd885a513931a7119080c66) |
+| `set_risc0_config` | [`7472ec5b...`](https://stellar.expert/explorer/testnet/tx/7472ec5bbfdcbc025eb501d6c0ecb3d456946c855e65428893d3886d41c39d39) |
+| `set_risc0_vk` | [`ed95ecde...`](https://stellar.expert/explorer/testnet/tx/ed95ecded190c09130fd3e58c7dd22fd9b7bd1367768cfe5031ad68b53144f15) |
+| `verify_receipt` | [`06e534c2...`](https://stellar.expert/explorer/testnet/tx/06e534c2ea9e168d339632f7b6b2a62a6cb685a89f67ac6b47bed59b6a1c4c7c) |
+
+The verification landed in ledger 5,785,346 and recorded output `34865` (raw
+Q16.16, 0.532) with `class_label` `1`, the same values the native inference
+gives. The transaction declared 30,944,431 CPU instructions, as simulated, and
+was charged 733,897 stroops (about 0.073 XLM), 100 of them the inclusion fee.

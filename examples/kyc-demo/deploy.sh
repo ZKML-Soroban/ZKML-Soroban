@@ -1,119 +1,140 @@
 #!/usr/bin/env bash
-set -e
-
-# Deployment script for zkml-verifier contract to Stellar testnet
+# The KYC demo on Stellar testnet, end to end.
 #
-# This script:
-# 1. Builds the verifier WASM
-# 2. Deploys it to testnet via stellar CLI
-# 3. Calls initialize with the model's Poseidon commitment and verification key
+# Deploys the verifier contract, registers the reproducible zkVM guest with it,
+# proves one KYC risk score with Groth16 and records it on chain through
+# verify_receipt. Every step prints the command it runs, and the stellar CLI
+# prints a link to each transaction.
 #
-# Prerequisites:
-# - stellar-cli installed and configured
-# - soroban-cli installed
-# - testnet account with sufficient XLM
-# - friendbot funding for testnet account
+# Run it from the repository root:
 #
-# TODO: This script is a scaffold. The following features are not yet implemented:
-# - Actual Groth16 verification key extraction (risc0-groth16 3.0.5 API investigation needed)
-# - Poseidon commitment calculation for model parameters
-# - Real verification key format for contract initialization
+#   examples/kyc-demo/deploy.sh [--bundle FILE] [--risc0-params FILE] [--contract-id ID]
+#
+#   --bundle FILE        Submit this bundle (from `prove --groth16`) instead of
+#                        proving here.
+#   --risc0-params FILE  Register these RISC Zero values (from
+#                        `export-vk --format json`) instead of exporting them here.
+#   --contract-id ID     Use a contract this identity already administers
+#                        instead of deploying a new one.
+#
+# Proving and exporting build the guest with ZKML_GUEST_DOCKER=1, so they need
+# x86_64 Linux with Docker; proving takes about 25 minutes of CPU. On another
+# machine, make the two files on such a host and pass them with --bundle and
+# --risc0-params: the rest only needs cargo, python3 and the stellar CLI.
+#
+# Environment:
+#   ZKML_IDENTITY  stellar identity that deploys and administers the contract
+#                  (default zkml-kyc-demo; generated and funded by friendbot
+#                  when it does not exist yet)
+#   ZKML_NETWORK   stellar network (default testnet)
+#   KYC_MODEL      model to prove (default examples/models/kyc_tree.json)
+#   KYC_INPUT      its features (default 0.6,0.4,0.0, the high-risk branch)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-VERIFIER_WASM="$PROJECT_ROOT/target/wasm32v1-none/contract/zkml_verifier.wasm"
+set -euo pipefail
 
-# Network configuration
-NETWORK="testnet"
-SOROBAN_RPC_URL="https://soroban-testnet.stellar.org:443"
-SOROBAN_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+IDENTITY="${ZKML_IDENTITY:-zkml-kyc-demo}"
+NETWORK="${ZKML_NETWORK:-testnet}"
+MODEL="${KYC_MODEL:-examples/models/kyc_tree.json}"
+INPUT="${KYC_INPUT:-0.6,0.4,0.0}"
+WASM="target/wasm32v1-none/contract/zkml_verifier.wasm"
+WORK="target/kyc-demo"
 
-# Account configuration (set via environment variables)
-DEPLOYER_PUBLIC_KEY="${DEPLOYER_PUBLIC_KEY:-}"
-DEPLOYER_SECRET_KEY="${DEPLOYER_SECRET_KEY:-}"
+BUNDLE=""
+PARAMS=""
+CONTRACT_ID=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --bundle) BUNDLE="$2"; shift 2 ;;
+        --risc0-params) PARAMS="$2"; shift 2 ;;
+        --contract-id) CONTRACT_ID="$2"; shift 2 ;;
+        -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
+    esac
+done
 
-# Model configuration
-MODEL_ONNX_PATH="$SCRIPT_DIR/kyc_decision_tree.onnx"
-MODEL_COMMITMENT_HEX="${MODEL_COMMITMENT_HEX:-}"
-VERIFICATION_KEY_HEX="${VERIFICATION_KEY_HEX:-}"
+step() { printf '\n== %s\n' "$*"; }
+run() { printf '$ %s\n' "$*"; "$@"; }
+die() { echo "error: $*" >&2; exit 1; }
 
-echo "=== zkml-verifier Deployment Script ==="
-echo "Network: $NETWORK"
-echo "RPC URL: $SOROBAN_RPC_URL"
-echo ""
+[ -f Cargo.toml ] && [ -d crates/zkml-verifier ] || die "run this from the repository root"
+command -v stellar >/dev/null || die "the stellar CLI is not on PATH: https://developers.stellar.org/docs/tools/cli"
+PYTHON="$(command -v python3 || command -v python || true)"
+[ -n "$PYTHON" ] || die "python3 is needed to read the JSON files"
+mkdir -p "$WORK"
 
-# Check prerequisites
-if [ -z "$DEPLOYER_PUBLIC_KEY" ] || [ -z "$DEPLOYER_SECRET_KEY" ]; then
-    echo "Error: DEPLOYER_PUBLIC_KEY and DEPLOYER_SECRET_KEY must be set"
-    echo "Example: export DEPLOYER_PUBLIC_KEY=GB..."
-    echo "         export DEPLOYER_SECRET_KEY=S..."
-    exit 1
+# Read one top-level field of a JSON file, without a trailing carriage return.
+json_field() {
+    "$PYTHON" -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2" | tr -d '\r'
+}
+
+step "1. Identity ($IDENTITY on $NETWORK)"
+if ! stellar keys address "$IDENTITY" >/dev/null 2>&1; then
+    run stellar keys generate "$IDENTITY" --network "$NETWORK" --fund
 fi
+ADMIN="$(stellar keys address "$IDENTITY" | tr -d '\r')"
+echo "admin: $ADMIN"
 
-if [ ! -f "$MODEL_ONNX_PATH" ]; then
-    echo "Error: Model file not found: $MODEL_ONNX_PATH"
-    echo "Run train_model.py first to generate the model"
-    exit 1
+step "2. Model commitment"
+MODEL_HASH="$(cargo run -q -p zkml-prover -- commit "$MODEL" | tr -d '\r')"
+echo "$MODEL: $MODEL_HASH"
+
+step "3. RISC Zero values for the reproducible guest"
+if [ -z "$PARAMS" ]; then
+    PARAMS="$WORK/risc0_params.json"
+    run env ZKML_GUEST_DOCKER=1 cargo run -q -p zkml-prover --features zkvm -- \
+        export-vk --format json -o "$PARAMS"
 fi
+IMAGE_ID="$(json_field "$PARAMS" image_id)"
+echo "image id: $IMAGE_ID"
 
-# Build the verifier WASM
-echo "Building verifier WASM..."
-cd "$PROJECT_ROOT"
-cargo build -p zkml-verifier --target wasm32v1-none --profile contract
-
-if [ ! -f "$VERIFIER_WASM" ]; then
-    echo "Error: WASM build failed: $VERIFIER_WASM not found"
-    exit 1
+step "4. Bundle"
+if [ -z "$BUNDLE" ]; then
+    BUNDLE="$WORK/bundle.json"
+    run env ZKML_GUEST_DOCKER=1 RISC0_DEV_MODE=0 cargo run -q -p zkml-prover --features groth16 -- \
+        prove "$MODEL" -i "$INPUT" --groth16 -o "$BUNDLE"
 fi
+SEAL="$(json_field "$BUNDLE" seal)"
+JOURNAL="$(json_field "$BUNDLE" journal)"
+[ "$(json_field "$BUNDLE" image_id)" = "$IMAGE_ID" ] \
+    || die "$BUNDLE was proved by guest $(json_field "$BUNDLE" image_id), not $IMAGE_ID; prove and export with the same ZKML_GUEST_DOCKER=1 build"
+# Journal bytes 8..40 are the model hash: refuse here what the contract would.
+[ "${JOURNAL:16:64}" = "$MODEL_HASH" ] \
+    || die "$BUNDLE is for model ${JOURNAL:16:64}, not $MODEL ($MODEL_HASH)"
+echo "seal: ${#SEAL} hex chars, journal: ${#JOURNAL} hex chars"
 
-echo "WASM built successfully: $VERIFIER_WASM"
-echo ""
-
-# Calculate model commitment (TODO: implement Poseidon commitment)
-if [ -z "$MODEL_COMMITMENT_HEX" ]; then
-    echo "Warning: MODEL_COMMITMENT_HEX not set"
-    echo "TODO: Implement Poseidon commitment calculation for model parameters"
-    echo "For now, using placeholder commitment"
-    MODEL_COMMITMENT_HEX="0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+if [ -z "$CONTRACT_ID" ]; then
+    step "5. Build and deploy the verifier (constructor: admin, model hash, no native key)"
+    run cargo build -q -p zkml-verifier --target wasm32v1-none --profile contract
+    printf '$ stellar contract deploy --wasm %s --source-account %s --network %s -- --admin %s --model_hash %s\n' \
+        "$WASM" "$IDENTITY" "$NETWORK" "$ADMIN" "$MODEL_HASH"
+    CONTRACT_ID="$(stellar contract deploy --wasm "$WASM" --source-account "$IDENTITY" --network "$NETWORK" \
+        -- --admin "$ADMIN" --model_hash "$MODEL_HASH" | tr -d '\r')"
 fi
+echo "contract: $CONTRACT_ID"
 
-# Get verification key (TODO: implement VK extraction)
-if [ -z "$VERIFICATION_KEY_HEX" ]; then
-    echo "Warning: VERIFICATION_KEY_HEX not set"
-    echo "TODO: Implement verification key extraction from risc0-groth16"
-    echo "For now, using placeholder VK"
-    VERIFICATION_KEY_HEX="0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-fi
+invoke() {
+    run stellar contract invoke --id "$CONTRACT_ID" --source-account "$IDENTITY" --network "$NETWORK" -- "$@"
+}
 
-# Deploy contract
-echo "Deploying contract to testnet..."
-CONTRACT_ID=$(soroban contract deploy \
-    --wasm "$VERIFIER_WASM" \
-    --source "$DEPLOYER_SECRET_KEY" \
-    --rpc-url "$SOROBAN_RPC_URL" \
-    --network-passphrase "$SOROBAN_NETWORK_PASSPHRASE" \
-    --fee 10000)
+step "6. Register the guest and RISC Zero's verifying key"
+CONFIG="$("$PYTHON" -c '
+import json, sys
+p = json.load(open(sys.argv[1]))
+keys = ("image_id", "control_root", "bn254_control_id", "selector")
+print(json.dumps({k: p[k] for k in keys}, separators=(",", ":")))' "$PARAMS" | tr -d '\r')"
+VK="$("$PYTHON" -c '
+import json, sys
+print(json.dumps(json.load(open(sys.argv[1]))["vk"], separators=(",", ":")))' "$PARAMS" | tr -d '\r')"
+invoke set_risc0_config --config "$CONFIG"
+invoke set_risc0_vk --vk "$VK"
 
-echo "Contract deployed: $CONTRACT_ID"
-echo ""
+step "7. Verify the receipt on chain"
+invoke verify_receipt --seal "$SEAL" --journal "$JOURNAL"
 
-# Initialize contract
-echo "Initializing contract with model commitment and verification key..."
-soroban contract invoke \
-    --id "$CONTRACT_ID" \
-    --source "$DEPLOYER_SECRET_KEY" \
-    --rpc-url "$SOROBAN_RPC_URL" \
-    --network-passphrase "$SOROBAN_NETWORK_PASSPHRASE" \
-    --fee 10000 \
-    -- \
-    initialize \
-    --model_hash "$MODEL_COMMITMENT_HEX" \
-    --verification_key "$VERIFICATION_KEY_HEX"
+step "8. Read the recorded result"
+invoke get_result
+invoke get_verification_count
 
-echo ""
-echo "=== Deployment Complete ==="
-echo "Contract ID: $CONTRACT_ID"
-echo "Model commitment: $MODEL_COMMITMENT_HEX"
-echo ""
-echo "Save the CONTRACT_ID for the demo runner:"
-echo "export CONTRACT_ID=$CONTRACT_ID"
+step "Done"
+echo "contract: $CONTRACT_ID"
+echo "explorer: https://stellar.expert/explorer/$NETWORK/contract/$CONTRACT_ID"

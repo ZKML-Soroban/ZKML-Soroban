@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes.
 
 ### Added
+- The verifier runs on Stellar testnet. On 2026-11-17 a `VERSION` 10 contract
+  verified the golden receipt, a real Groth16 proof from the reproducible
+  guest, in transaction `06e534c2...`; the contract id and every transaction
+  are listed in the deployment guide, under "Live on testnet".
+- `examples/kyc-demo/deploy.sh` is rewritten for the `stellar` CLI and runs the
+  KYC demo end to end: it creates and funds an identity, deploys with the
+  constructor and no native key, registers the reproducible guest, proves with
+  Groth16, submits the receipt with `verify_receipt` and reads the result.
+  `--bundle` and `--risc0-params` take files made elsewhere, for machines that
+  cannot prove. The old script called the `soroban` CLI and `initialize`, and
+  passed all-zero placeholder keys.
 - `ZKML_GUEST_DOCKER=1` builds the zkVM guest inside RISC Zero's builder image
   (pinned to `r0.1.91.1`, since `risc0-build`'s default image ships a Rust older
   than the workspace MSRV), so the guest image id is the same on every machine.

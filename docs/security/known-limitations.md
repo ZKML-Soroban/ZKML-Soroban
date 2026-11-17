@@ -9,11 +9,10 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 
 ## Proving
 
-- **Nothing has been verified on a live network yet.** `verify_receipt` accepts
-  a real receipt in the Soroban test environment, at 29.6 million CPU
-  instructions on the compiled WASM against a 100 million limit, but the
-  contract has not been deployed to testnet and no transaction has carried a
-  proof.
+- **Testnet only.** A real receipt has been verified on Stellar testnet (see
+  [Live on testnet](/guides/deployment#live-on-testnet)), at about 31 million
+  CPU instructions against a 100 million limit. Nothing has been deployed to
+  mainnet, and the contract has not had a third-party audit.
 - **A crafted G2 point can still trap.** Both entry points validate their proof
   points and return a typed error for a corrupted one, but a G2 point on the
   curve and outside the subgroup traps in the host. Corruption does not

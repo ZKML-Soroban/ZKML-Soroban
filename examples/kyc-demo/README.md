@@ -16,9 +16,10 @@ Deployment with the `stellar` CLI: [docs/guides/deployment.md](../../docs/guides
 | ONNX import into `zkml-prover` | Works: a decision tree of 43 nodes over 10 features |
 | Verifier contract with Groth16 (BN254) verification | Implemented |
 | Poseidon model commitment | Implemented (`zkml-prover commit` for JSON models) |
-| Contract build and deployment | Works with the `stellar` CLI (see the deployment guide) |
+| Contract build and deployment | Works with the `stellar` CLI (`deploy.sh`) |
 | STARK to Groth16 compression | Works on x86_64 Linux with Docker (`zkml-prover prove --groth16`) |
 | RISC Zero parameter export | Works (`zkml-prover export-vk --format soroban-args`) |
+| On-chain verification (`verify_receipt`) | Verified on testnet, see the deployment guide |
 | Demo runner (`zkml-demo`) | Skeleton only |
 
 ## Prerequisites
@@ -62,35 +63,49 @@ python check_model.py
 It prints every opset import and every operator, and exits non-zero when the
 model would be rejected.
 
-## 3. Deploy the verifier
+## 3. Deploy, prove and verify on testnet
 
-`deploy.sh` builds the contract with
-`cargo build -p zkml-verifier --target wasm32v1-none --profile contract`, but its
-deploy steps are outdated:
+From the repository root:
 
-- they call the deprecated `soroban` CLI
-- they call `initialize`, which the contract no longer has: the admin and the
-  model commitment are passed to the constructor at deploy
-- they pass all-zero placeholder keys, which the constructor now refuses; a
-  receipt-only verifier is deployed without a native key
+```bash
+examples/kyc-demo/deploy.sh
+```
 
-Until the script is updated, follow
-[docs/guides/deployment.md](../../docs/guides/deployment.md).
+The script creates and funds the `zkml-kyc-demo` identity if it does not exist,
+deploys the verifier with the KYC tree's commitment and no native key, registers
+the reproducible guest (`set_risc0_config`, `set_risc0_vk`), proves one risk
+score with Groth16, submits it with `verify_receipt` and reads the result back.
+Each step prints its command, and the stellar CLI prints a link to each
+transaction.
 
-## 4. Run the demo (pending)
+Proving and exporting need x86_64 Linux with Docker; proving takes about 25
+minutes of CPU. On another machine, make the bundle and the RISC Zero values on
+such a host and pass them in:
+
+```bash
+examples/kyc-demo/deploy.sh --bundle bundle.json --risc0-params risc0_params.json
+```
+
+`--help` lists every option. The model and input default to
+`examples/models/kyc_tree.json` and `0.6,0.4,0.0`; `KYC_MODEL` and `KYC_INPUT`
+change them. The CLI reads JSON models only, so the ONNX model from step 2 has
+to be converted first.
+
+## 4. Run the demo runner (pending)
 
 ```bash
 cargo run -p zkml-demo -- --model kyc_decision_tree.onnx --contract-id <CONTRACT_ID>
 ```
 
-The runner currently prints the planned steps only.
+The runner currently prints the planned steps only; `deploy.sh` is the working
+path.
 
 ## Mapping the result
 
 For decision trees, `class_label` is always `0` and `output` carries the leaf value
-(raw Q16.16). That equals the risk tier only for JSON trees whose leaves store the
-tier (tier 2 is `131072`). Multi-class ONNX trees such as `kyc_decision_tree.onnx`
-are not mapped to a tier yet.
+(raw Q16.16). For JSON trees whose leaves store the tier, that is the tier (tier 2
+is `131072`). Multi-class ONNX trees such as `kyc_decision_tree.onnx` import with
+the predicted class in each leaf, so their output is the tier too.
 
 ## Success criteria
 
@@ -115,11 +130,9 @@ are not mapped to a tier yet.
 
 ## Next steps
 
-1. STARK to Groth16 compression in `zkml-prover`
-2. Verification key export
-3. Contract path for RISC Zero Groth16 public inputs
-4. Update `deploy.sh` to the `stellar` CLI
-5. Implement the `zkml-demo` pipeline with metrics
+1. Accept ONNX models in the CLI, so the trained model can be proved directly
+2. Implement the `zkml-demo` pipeline with metrics
+3. Remote proving, to bring the 25-minute proof under the latency target
 
 ## References
 
