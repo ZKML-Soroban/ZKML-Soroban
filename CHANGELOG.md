@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-11-17
+
+Third crates.io release (`zkml-common`, `zkml-verifier`), and the first whose
+contract has verified a real proof on Stellar testnet. The contract interface
+moves from `VERSION` 9 to 10, the guest image id changes, ONNX tree imports
+change their leaf values, and `zkml-prover prove` needs `--groth16` or
+`--no-proof`. See Breaking.
+
 ### Breaking
 - ONNX tree imports change value at every leaf that carries one weight per
   class, as skl2onnx writes them: the leaf now holds the predicted class (see
@@ -361,7 +369,8 @@ June 2026 Phase 1 off-chain milestone and was never published.
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.3
 [0.0.2]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.1
 [0.2.0]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.2.0
