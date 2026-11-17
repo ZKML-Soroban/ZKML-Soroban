@@ -47,10 +47,7 @@ fn prove_output_round_trips_and_binds_the_model() {
     )
     .expect("prove succeeds");
     let out = String::from_utf8(buf).expect("bundle json is utf-8");
-    // `prove` without `--groth16` prints a warning line before the JSON.
-    let json = &out[out.find('{').expect("json follows the warning")..];
-
-    let bundle = bundle_from_json(json.trim()).expect("bundle_from_json accepts CLI output");
+    let bundle = bundle_from_json(out.trim()).expect("bundle_from_json accepts CLI output");
 
     let model = import_json(&std::fs::read(CREDIT).unwrap()).unwrap();
     assert_eq!(
@@ -79,6 +76,36 @@ fn prove_to_file_round_trips() {
 
     let written = std::fs::read_to_string(&path).expect("bundle file exists");
     assert!(bundle_from_json(&written).is_ok());
+}
+
+#[test]
+fn prove_without_a_proof_mode_exits_two_and_names_both_flags() {
+    let out = run_bin(&["prove", CREDIT, "-i", "0.5,0.2,0.9,0.1"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        out.stdout.is_empty(),
+        "nothing may be written without a proof mode"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--groth16"), "got: {stderr}");
+    assert!(stderr.contains("--no-proof"), "got: {stderr}");
+}
+
+#[test]
+fn prove_no_proof_warns_on_stderr_and_prints_only_json() {
+    let out = run_bin(&["prove", CREDIT, "-i", "0.5,0.2,0.9,0.1", "--no-proof"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("carries no proof"), "got: {stderr}");
+    let stdout = String::from_utf8(out.stdout).expect("utf-8");
+    assert!(
+        bundle_from_json(stdout.trim()).is_ok(),
+        "stdout must be the bundle alone, got: {stdout}"
+    );
 }
 
 #[test]

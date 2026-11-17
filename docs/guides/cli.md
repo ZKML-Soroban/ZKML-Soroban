@@ -25,7 +25,8 @@ zkml-prover <COMMAND>
 commit        <MODEL>                           Model commitment as 64-char hex
 infer         <MODEL> -i <CSV>                  Commitment + dequantized output + raw Q16.16
 prove         <MODEL> -i <CSV> [-o <FILE>]      Verification bundle JSON (stdout or file)
-                      [--groth16]               Produce a real proof (needs the groth16 feature)
+                      --groth16                 Produce a real proof (needs the groth16 feature)
+                      | --no-proof              Public inputs only, no proof (legacy v1)
                       [--backend local|boundless]
 verify-bundle <FILE>                            Verify a v2 bundle locally (needs zkvm)
 export-vk     [--format json|soroban-args]      What the contract needs to verify receipts
@@ -74,15 +75,18 @@ inputs. The dequantized value is for humans.
 
 ### prove
 
-Writes a verification bundle as JSON to stdout, or to `-o <FILE>`.
+Writes a verification bundle as JSON to stdout, or to `-o <FILE>`. It needs
+one of two flags, so a bundle without a proof is never written by accident:
+`--groth16` for a real proof, or `--no-proof` for the public inputs alone.
+Without either, the command exits with code 2 and names both.
 
-Without `--groth16` the bundle is the legacy v1 shape: it carries the public
-inputs but no proof, and the command says so on stderr. It is useful for
-inspecting what would be proven, and for nothing else.
+With `--no-proof` the bundle is the legacy v1 shape: it carries the public
+inputs but no proof, and the command says so on stderr, so stdout stays plain
+JSON. It is useful for inspecting what would be proven, and for nothing else.
 
 ```bash
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --no-proof -o bundle.json
 ```
 
 ```text
@@ -246,7 +250,7 @@ structure: valid
 80-byte public input from the bundle:
 
 ```bash
-cargo run -p zkml-prover -- prove examples/models/credit_lr.json --input="0.5,0.2,0.9,0.1" -o bundle.json
+cargo run -p zkml-prover -- prove examples/models/credit_lr.json --input="0.5,0.2,0.9,0.1" --no-proof -o bundle.json
 python tools/inspect_bundle.py bundle.json --check
 ```
 

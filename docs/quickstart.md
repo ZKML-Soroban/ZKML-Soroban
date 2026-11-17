@@ -124,12 +124,13 @@ output (raw Q16.16): 34865
 
 ```bash
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --no-proof -o bundle.json
 ```
 
-> **Warning.** The Groth16 proof bytes in the bundle are empty until
-> STARK-to-Groth16 compression is implemented. The bundle exercises the
-> interface but will not verify against a live contract.
+> **Warning.** `--no-proof` writes the public inputs without a proof, which is
+> enough to see what would be proven and nothing more. A bundle that verifies
+> needs `--groth16`, the `groth16` feature and x86_64 Linux with Docker; see
+> the [CLI reference](/guides/cli#prove).
 
 ## Run the zkVM guest (optional)
 

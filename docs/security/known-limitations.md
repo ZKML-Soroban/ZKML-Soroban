@@ -35,8 +35,10 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 - **Dev mode produces no proof.** `RISC0_DEV_MODE=1` makes receipts fake, so
   `prove_groth16` refuses to run under it rather than emitting a bundle that
   looks real.
-- **The legacy `prove` output carries no proof.** It stays for inspection and
-  prints a warning; it must never be accepted as evidence.
+- **The legacy `prove --no-proof` output carries no proof.** It stays for
+  inspection and prints a warning; it must never be accepted as evidence.
+  `prove` refuses to run without `--groth16` or `--no-proof`, so it is never
+  written by default.
 - **Panicking decision path.** `run_inference_with_decision` can panic (MLP
   overflow, tree iteration limit). The fallible
   `try_run_inference_with_decision` is what the proving path uses, but the
