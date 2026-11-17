@@ -53,8 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   migration table describe the current code.
 - The golden receipt and RISC Zero parameters in
   `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
-  build. The guest image id is now
-  `dc3eb6de1a71a7d7bdfd97e3e117cecc66ede06c3761e3e57d6f781355dc1328`; a verifier
+  build, and again after the reserved-byte check in `JournalV1::decode` (see
+  Breaking), which moved lines in a file the guest compiles. The guest image id is now
+  `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
   configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed
@@ -82,6 +83,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The zkVM guest lockfile moves `ruint` to 1.20.1, which fixes
   RUSTSEC-2026-0220, and the dependency audit no longer ignores it for the
   guest.
+- The workspace lockfile moves `quinn-udp` to 0.5.16, which fixes
+  RUSTSEC-2026-0538. The audit ignores three new advisories in `zip` 2.3
+  (RUSTSEC-2026-0429, 0545 and 0548), which RISC Zero 3.0.6 pins and only uses
+  to read the recursion circuits embedded in its own crate; the fix is in
+  `zip` 9, a major version RISC Zero has not adopted.
 - The constructor and `set_verification_key` refuse a native key without five
   `ic` points, or with a point off its curve or at infinity. A receipt-only
   deployment previously had to pass some native key, and the placeholder the
