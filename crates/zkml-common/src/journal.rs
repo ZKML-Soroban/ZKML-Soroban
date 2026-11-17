@@ -77,6 +77,12 @@ pub enum JournalError {
     UnsupportedVersion(u16),
     /// The model kind byte is not a known [`ModelKind`].
     UnknownModelKind(u8),
+    /// A reserved byte (offset 7, or 88 to 95) is not zero.
+    ///
+    /// The guest always writes zeros there. Refusing anything else keeps the
+    /// encoding unique, and means a future field has to come with a new
+    /// journal version rather than reusing these bytes silently.
+    NonZeroReserved,
 }
 
 impl core::fmt::Display for JournalError {
@@ -88,6 +94,7 @@ impl core::fmt::Display for JournalError {
             JournalError::BadMagic => write!(f, "journal magic is not ZKML"),
             JournalError::UnsupportedVersion(v) => write!(f, "unsupported journal version {v}"),
             JournalError::UnknownModelKind(k) => write!(f, "unknown model kind {k}"),
+            JournalError::NonZeroReserved => write!(f, "journal reserved bytes must be zero"),
         }
     }
 }
@@ -139,6 +146,9 @@ impl JournalV1 {
             return Err(JournalError::UnsupportedVersion(version));
         }
         let model_kind = ModelKind::from_byte(bytes[6])?;
+        if bytes[7] != 0 || bytes[88..96].iter().any(|b| *b != 0) {
+            return Err(JournalError::NonZeroReserved);
+        }
 
         let mut model_hash = [0u8; 32];
         model_hash.copy_from_slice(&bytes[8..40]);
@@ -236,6 +246,19 @@ mod tests {
             JournalV1::decode(&bytes),
             Err(JournalError::UnknownModelKind(42))
         );
+    }
+
+    #[test]
+    fn rejects_non_zero_reserved_bytes() {
+        for pos in [7usize, 88, 91, 95] {
+            let mut bytes = sample().encode();
+            bytes[pos] = 1;
+            assert_eq!(
+                JournalV1::decode(&bytes),
+                Err(JournalError::NonZeroReserved),
+                "reserved byte {pos}"
+            );
+        }
     }
 
     #[test]

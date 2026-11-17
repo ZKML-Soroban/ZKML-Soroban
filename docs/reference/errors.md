@@ -12,20 +12,21 @@ Returned by `verify_inference`, `verify_receipt` and `claim_digest` as a Soroban
 | ---- | ------------------------------- | ------------------------------------------------------------ |
 | 1    | `ContractNotInitialized`        | The contract has no stored state (the constructor did not run) |
 | 2    | `PublicInputsTooShort`          | Public inputs end before a required field                    |
-| 3    | `MalformedProofA`               | `proof_a` is not 64 bytes (also returned for a wrong-length `proof_c`), or, in `verify_receipt`, seal point A is not on the curve |
-| 4    | `MalformedProofB`               | `proof_b` is not 128 bytes, or, in `verify_receipt`, seal point B is not on the curve |
-| 5    | `MalformedProofC`               | In `verify_receipt`, seal point C is not on the curve. In `verify_inference`, a wrong-length `proof_c` still reports code 3 |
+| 3    | `MalformedProofA`               | Point A is not 64 bytes, has a coordinate not below the field modulus, or is not on the curve |
+| 4    | `MalformedProofB`               | Point B is not 128 bytes or is not on the curve              |
+| 5    | `MalformedProofC`               | Point C is not 64 bytes, has a coordinate not below the field modulus, or is not on the curve. Up to `VERSION` 9, `verify_inference` reported a wrong-length `proof_c` as code 3 |
 | 6    | `MalformedVerificationKey`      | A verification key point has the wrong length              |
-| 7    | `VerificationFailed`            | Pairing check failed, `model_hash` mismatch, or contract paused |
+| 7    | `VerificationFailed`            | Pairing check failed or `model_hash` mismatch. Up to `VERSION` 9, also returned while paused |
 | 8    | `InvalidPublicInputLength`      | Extra bytes after the 80-byte layout                         |
 | 9    | `VerificationKeyLengthMismatch` | `vk.ic` does not have exactly 5 points                       |
 | 10   | `ProofAlreadyUsed`              | The nullifier for these public inputs already exists         |
 | 11   | `UnknownSelector`               | The seal was made for a different RISC Zero version          |
 | 12   | `MalformedSeal`                 | The seal is not 260 bytes                                    |
-| 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout, or its magic or version do not match. Also returned by `claim_digest` for a journal that is not 96 bytes |
+| 13   | `MalformedJournal`              | The journal is not the 96-byte `JournalV1` layout: wrong length, magic, version or model kind, or a reserved byte that is not zero. Also returned by `claim_digest` for a journal that is not 96 bytes |
 | 14   | `Risc0NotConfigured`            | `set_risc0_config` or `set_risc0_vk` has not been called     |
 | 15   | `NonCanonicalPublicInput`       | `model_hash` or `input_hash` is not below the BN254 scalar modulus `r`, so it is not the canonical encoding of its scalar |
 | 16   | `NativeKeyNotConfigured`        | `verify_inference` on a contract deployed without a native verification key |
+| 17   | `ContractPaused`                | The admin paused the contract; both verification entry points refuse every call until `set_pause(false)` |
 
 There is no `ImageIdMismatch`. The image id is carried by neither the seal nor
 the journal; it only enters the claim digest, so a receipt from another guest
@@ -92,6 +93,7 @@ Returned by the proving pipeline. Every variant names what to do about it.
 | `JournalError::UnsupportedVersion`   | Journal version this build does not know                  |
 | `JournalError::InvalidLength`            | The journal is not 96 bytes                               |
 | `JournalError::UnknownModelKind`     | Model kind byte outside the known range                   |
+| `JournalError::NonZeroReserved`      | Byte 7 or one of bytes 88 to 95 is not zero               |
 | `BundleError::BadSealLength`         | The seal is not 260 bytes                                 |
 | `BundleError::UnsupportedVersion`    | Bundle version this build does not know                   |
 | `BundleError::UnknownProofSystem`    | Proof system id outside the known range                   |

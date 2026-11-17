@@ -14,10 +14,10 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   instructions on the compiled WASM against a 100 million limit, but the
   contract has not been deployed to testnet and no transaction has carried a
   proof.
-- **`verify_inference` still traps on a corrupted proof point.** `verify_receipt`
-  validates its points and returns a typed error; the native-circuit path does
-  not yet. In both, a G2 point on the curve but outside the subgroup traps,
-  which takes a deliberately crafted point.
+- **A crafted G2 point can still trap.** Both entry points validate their proof
+  points and return a typed error for a corrupted one, but a G2 point on the
+  curve and outside the subgroup traps in the host. Corruption does not
+  produce one; it takes a deliberately crafted point.
 - **Groth16 compression needs x86_64 Linux with Docker.** The Circom witness
   generator image is not published for other platforms (risc0 issue #1749), so
   `prove_groth16` fails fast with `UnsupportedPlatform` elsewhere. The `cuda`
@@ -68,7 +68,6 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   successful verification overwrites; there is no per-subject lookup.
 - **One model per contract.** A contract holds a single model commitment; a
   second model needs a second deployment.
-- **Pause error.** A paused contract returns the generic `VerificationFailed`.
 - **Some getters panic.** `get_risc0_config` and `get_risc0_vk` panic until the
   RISC Zero values are set. `get_admin` panics only on a contract without stored
   state, which the constructor rules out.

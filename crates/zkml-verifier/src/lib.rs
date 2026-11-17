@@ -88,7 +88,10 @@ const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// 9 -> 10: the constructor's native verification key is an `Option`. Without
 /// one, `verify_inference` returns `NativeKeyNotConfigured`, and a native key
 /// is refused unless it has five `ic` points, all on their curves and none at
-/// infinity.
+/// infinity. A paused contract returns `ContractPaused` instead of
+/// `VerificationFailed`. `verify_inference` validates its proof points and
+/// reports a wrong-length `proof_c` as `MalformedProofC`. A journal whose
+/// reserved bytes are not zero is `MalformedJournal`.
 pub const VERSION: u32 = 10;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
@@ -113,8 +116,9 @@ pub enum VerificationError {
     UnknownSelector = 11,
     /// The seal is not [`zkml_common::risc0::SEAL_LEN`] bytes.
     MalformedSeal = 12,
-    /// The journal is not the 96-byte `JournalV1` layout, or its magic or
-    /// version do not match what this contract was built for.
+    /// The journal is not the 96-byte `JournalV1` layout: its magic, version
+    /// or model kind is not one this contract was built for, or a reserved
+    /// byte is not zero.
     MalformedJournal = 13,
     /// `set_risc0_config` or `set_risc0_vk` has not been called, so there is
     /// nothing to verify a receipt against.
@@ -141,6 +145,9 @@ pub enum VerificationError {
     /// for any public input. The native path stays off until an admin registers
     /// a real key with `set_verification_key`.
     NativeKeyNotConfigured = 16,
+    /// The contract is paused. Both verification entry points refuse every
+    /// call until the admin calls `set_pause(false)`.
+    ContractPaused = 17,
 }
 
 /// On-chain representation of BN254 Groth16 verification key.
@@ -349,7 +356,7 @@ impl ZkmlVerifierContract {
         }
         let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
         if paused {
-            return Err(VerificationError::VerificationFailed);
+            return Err(VerificationError::ContractPaused);
         }
 
         let config: Risc0Config = env
@@ -425,9 +432,9 @@ impl ZkmlVerifierContract {
         // The seal carries the points in the layout Soroban reads, so they are
         // passed through unchanged: G1 as be(x) || be(y), G2 as
         // be(x.c1) || be(x.c0) || be(y.c1) || be(y.c0).
-        let proof_a = Self::deserialize_g1(&env, &a_bytes)?;
+        let proof_a = Self::deserialize_g1(&env, &a_bytes, VerificationError::MalformedProofA)?;
         let proof_b = Self::deserialize_g2(&env, &b_bytes)?;
-        let proof_c = Self::deserialize_g1(&env, &c_bytes)?;
+        let proof_c = Self::deserialize_g1(&env, &c_bytes, VerificationError::MalformedProofC)?;
 
         let neg_a = -proof_a;
         let vp1 = vec![&env, neg_a, alpha_g1, l, proof_c];
@@ -528,6 +535,12 @@ impl ZkmlVerifierContract {
     ///
     /// `public_inputs` is the concatenation of the 32-byte model commitment,
     /// the 32-byte input commitment, and N * 8-byte output scalars (for multi-class output).
+    ///
+    /// Checks run cheapest first, as in `verify_receipt`: the proof points'
+    /// lengths, the native key, the public inputs, the model hash and replay.
+    /// Then the three points are validated, so a corrupted one returns
+    /// `MalformedProofA`, `MalformedProofB` or `MalformedProofC` instead of
+    /// trapping in the host, and only then comes the pairing.
     pub fn verify_inference(
         env: Env,
         proof_a: Bytes,
@@ -541,13 +554,14 @@ impl ZkmlVerifierContract {
 
         let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
         if paused {
-            return Err(VerificationError::VerificationFailed);
+            return Err(VerificationError::ContractPaused);
         }
 
-        // Deserialize proof points
-        let proof_a_g1 = Self::deserialize_g1(&env, &proof_a)?;
+        // Deserialize proof points. This only checks their lengths; the points
+        // themselves are validated below, once the cheap checks have passed.
+        let proof_a_g1 = Self::deserialize_g1(&env, &proof_a, VerificationError::MalformedProofA)?;
         let proof_b_g2 = Self::deserialize_g2(&env, &proof_b)?;
-        let proof_c_g1 = Self::deserialize_g1(&env, &proof_c)?;
+        let proof_c_g1 = Self::deserialize_g1(&env, &proof_c, VerificationError::MalformedProofC)?;
 
         // Get verification key
         let vk: VerificationKey = env
@@ -580,6 +594,12 @@ impl ZkmlVerifierContract {
         if env.storage().persistent().has(&nullifier_key) {
             return Err(VerificationError::ProofAlreadyUsed);
         }
+
+        // The proof points, before the host sees them, for the same reason as
+        // in verify_receipt: the host traps on a point it cannot parse.
+        Self::validate_g1(&env, &proof_a, VerificationError::MalformedProofA)?;
+        Self::validate_g2(&proof_b, VerificationError::MalformedProofB)?;
+        Self::validate_g1(&env, &proof_c, VerificationError::MalformedProofC)?;
 
         // Convert public inputs to field elements for L computation
         let bn254 = env.crypto().bn254();
@@ -663,9 +683,13 @@ impl ZkmlVerifierContract {
     }
 
     /// Deserialize a G1 point from 64 bytes (Ethereum-compatible format).
-    fn deserialize_g1(env: &Env, bytes: &Bytes) -> Result<Bn254G1Affine, VerificationError> {
+    fn deserialize_g1(
+        env: &Env,
+        bytes: &Bytes,
+        err: VerificationError,
+    ) -> Result<Bn254G1Affine, VerificationError> {
         if bytes.len() != 64 {
-            return Err(VerificationError::MalformedProofA);
+            return Err(err);
         }
         let mut array = [0u8; 64];
         bytes.copy_into_slice(&mut array);
@@ -1319,8 +1343,7 @@ mod test_guards {
         let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
 
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        // Should fail due to malformed proof_b (wrong length)
-        assert!(result.is_err());
+        assert_eq!(result, Err(Ok(VerificationError::MalformedProofB)));
     }
 
     #[test]
@@ -1339,8 +1362,8 @@ mod test_guards {
         let proof_c = Bytes::from_slice(&env, &[0u8; 8]); // Wrong length
         let public_inputs = Bytes::from_slice(&env, &[7u8; 80]);
         let result = client.try_verify_inference(&proof_a, &proof_b, &proof_c, &public_inputs);
-        // Should fail due to malformed proof_c (wrong length)
-        assert!(result.is_err());
+        // Up to VERSION 9 this was reported as MalformedProofA.
+        assert_eq!(result, Err(Ok(VerificationError::MalformedProofC)));
     }
 
     #[test]
@@ -2209,7 +2232,7 @@ mod test_pause_and_counter {
 
         assert_eq!(
             result,
-            Err(Ok(VerificationError::VerificationFailed)),
+            Err(Ok(VerificationError::ContractPaused)),
             "a paused contract must refuse a proof it would otherwise accept"
         );
         assert_eq!(
@@ -2249,7 +2272,7 @@ mod test_pause_and_counter {
         let (a2, b2, c2) = compute_valid_proof(&env, &vk, 3, 5, 43, 7);
         assert_eq!(
             client.try_verify_inference(&a2, &b2, &c2, &public_inputs(&env, 3, 5, 43, 7)),
-            Err(Ok(VerificationError::VerificationFailed))
+            Err(Ok(VerificationError::ContractPaused))
         );
         assert_eq!(client.get_verification_count(), 1);
 
@@ -2262,6 +2285,60 @@ mod test_pause_and_counter {
             Ok(Ok(()))
         );
         assert_eq!(client.get_verification_count(), 2);
+    }
+
+    /// `verify_inference` checks its proof points before the pairing, as
+    /// `verify_receipt` does, so a corrupted point is a typed error naming the
+    /// point instead of a host trap.
+    #[test]
+    fn each_corrupted_proof_point_reports_its_own_error() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let vk = create_accept_fixture_vk(&env);
+
+        env.mock_all_auths();
+        let contract_id = env.register(
+            ZkmlVerifierContract,
+            (admin.clone(), model_hash(&env, 3), Some(vk.clone())),
+        );
+        let client = ZkmlVerifierContractClient::new(&env, &contract_id);
+        let (a, b, c) = compute_valid_proof(&env, &vk, 3, 5, 42, 7);
+        let inputs = public_inputs(&env, 3, 5, 42, 7);
+
+        let flip = |point: &Bytes, pos: u32, value: Option<u8>| -> Bytes {
+            let mut raw = std::vec![0u8; point.len() as usize];
+            point.copy_into_slice(&mut raw);
+            match value {
+                Some(v) => raw[pos as usize] = v,
+                None => raw[pos as usize] ^= 0x01,
+            }
+            Bytes::from_slice(&env, &raw)
+        };
+
+        // One flipped bit lands off the curve; 0xff in the top byte puts the
+        // coordinate above the field modulus, which the host would trap on.
+        for value in [None, Some(0xff)] {
+            let pos = if value.is_some() { 0 } else { 40 };
+            assert_eq!(
+                client.try_verify_inference(&flip(&a, pos, value), &b, &c, &inputs),
+                Err(Ok(VerificationError::MalformedProofA)),
+                "proof_a, {value:?}"
+            );
+            assert_eq!(
+                client.try_verify_inference(&a, &flip(&b, pos, value), &c, &inputs),
+                Err(Ok(VerificationError::MalformedProofB)),
+                "proof_b, {value:?}"
+            );
+            assert_eq!(
+                client.try_verify_inference(&a, &b, &flip(&c, pos, value), &inputs),
+                Err(Ok(VerificationError::MalformedProofC)),
+                "proof_c, {value:?}"
+            );
+        }
+
+        // Nothing was recorded, and the untouched proof still verifies.
+        assert_eq!(client.get_verification_count(), 0);
+        assert_eq!(client.try_verify_inference(&a, &b, &c, &inputs), Ok(Ok(())));
     }
 
     #[test]
@@ -2578,9 +2655,8 @@ mod test_canonical_public_inputs {
     /// Exactly `r` is the first rejected value, and `r - 1` the last accepted
     /// one, so the comparison is `>=` and not `>`.
     ///
-    /// Both cases use the valid proof, because `verify_inference` deserializes
-    /// the proof before it parses the public inputs: a dummy proof would fail as
-    /// `MalformedProofA` and never reach this check.
+    /// Both cases use the valid proof, so that the canonical one gets past the
+    /// point checks and is refused by the pairing, not by an earlier check.
     #[test]
     fn the_boundary_is_r_itself() {
         let env = Env::default();
@@ -3218,7 +3294,7 @@ mod test_golden_receipt {
         client.set_pause(&true);
         assert_eq!(
             client.try_verify_receipt(&seal, &journal),
-            Err(Ok(VerificationError::VerificationFailed))
+            Err(Ok(VerificationError::ContractPaused))
         );
 
         // And accepts them again once unpaused, so the pause is a switch and
@@ -3255,6 +3331,25 @@ mod test_golden_receipt {
             client.try_verify_receipt(&seal, &Bytes::from_slice(&env, &raw)),
             Err(Ok(VerificationError::MalformedJournal))
         );
+    }
+
+    #[test]
+    fn a_journal_with_a_non_zero_reserved_byte_is_rejected() {
+        let env = Env::default();
+        let (client, seal, journal) = setup(&env);
+
+        // The guest writes zeros there. Anything else is a different encoding
+        // of the same result, and is refused before the pairing.
+        for pos in [7usize, 88, 95] {
+            let mut raw = [0u8; zkml_common::journal::JOURNAL_V1_LEN];
+            journal.copy_into_slice(&mut raw);
+            raw[pos] = 1;
+            assert_eq!(
+                client.try_verify_receipt(&seal, &Bytes::from_slice(&env, &raw)),
+                Err(Ok(VerificationError::MalformedJournal)),
+                "reserved byte {pos}"
+            );
+        }
     }
 
     #[test]
@@ -3444,9 +3539,9 @@ mod test_wasm_budget {
 
     /// Ceiling for each entry point, measured on the compiled WASM.
     ///
-    /// The docs quote 30.2M for `verify_inference` and 29.6M for
+    /// The docs quote 31.0M for `verify_inference` and 29.6M for
     /// `verify_receipt` (README, `docs/reference/benchmarks.md` and the pages
-    /// that link to it). This sits about 6% above the larger of the two, so a
+    /// that link to it). This sits about 3% above the larger of the two, so a
     /// change that moves the cost noticeably fails here and the figures get
     /// re-measured, instead of drifting away from what the docs say. The
     /// network limit is 100M.

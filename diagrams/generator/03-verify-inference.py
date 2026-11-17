@@ -14,7 +14,7 @@ g.attr(**base_graph_attr(
     rankdir="TB",
     nodesep="0.35",
     ranksep="0.45",
-    label=hl("verify_inference", "Checks in execution order (contract VERSION 5)"),
+    label=hl("verify_inference", "Checks in execution order (contract VERSION 10)"),
 ))
 g.attr("node", **base_node_attr())
 g.attr("edge", **base_edge_attr())
@@ -24,20 +24,22 @@ g.node("start", hl("Transaction", "proof_a, proof_b, proof_c, public_inputs"),
 
 checks = [
     ("init", "Initialized?", "ContractNotInitialized (1)"),
-    ("paused", "Not paused?", "VerificationFailed (7)"),
-    ("points", "Proof points well formed?", "MalformedProofA (3, also for proof_c) / MalformedProofB (4)"),
-    ("layout", "Public inputs exactly 80 bytes?", "PublicInputsTooShort (2) / InvalidPublicInputLength (8)"),
+    ("paused", "Not paused?", "ContractPaused (17)"),
+    ("lengths", "Proof points the right length?", "MalformedProofA (3) / B (4) / C (5)"),
+    ("key", "Native key registered?", "NativeKeyNotConfigured (16)"),
+    ("layout", "Public inputs 80 bytes, hashes canonical?", "PublicInputsTooShort (2) / InvalidPublicInputLength (8)\nNonCanonicalPublicInput (15)"),
     ("model", "model_hash matches registered?", "VerificationFailed (7)"),
+    ("nullifier", "Nullifier unused?", "ProofAlreadyUsed (10)"),
+    ("points", "Proof points on their curves?", "MalformedProofA (3) / B (4) / C (5)"),
     ("vk", "Verification key well formed, 5 IC points?", "MalformedVerificationKey (6) / VerificationKeyLengthMismatch (9)"),
     ("pairing", "Groth16 pairing check holds?", "VerificationFailed (7)"),
-    ("nullifier", "Nullifier unused?", "ProofAlreadyUsed (10)"),
 ]
 
 previous = "start"
 for node_id, question, error in checks:
     error_id = f"{node_id}_err"
     g.node(node_id, hl(question), style="filled", fillcolor=F_DECISION, color=B_DECISION)
-    g.node(error_id, hl(error), fillcolor=F_DANGER, color=B_DANGER, fontsize="10")
+    g.node(error_id, hl(*error.split("\n")), fillcolor=F_DANGER, color=B_DANGER, fontsize="10")
     if previous == "start":
         g.edge(previous, node_id)
     else:

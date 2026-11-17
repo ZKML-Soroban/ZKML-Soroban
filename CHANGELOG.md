@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   RISC Zero receipts is deployed without one, and `verify_inference` then
   returns the new error `NativeKeyNotConfigured` (16). With the `stellar` CLI,
   leave out `--vk`; from Rust, pass `Some(vk)` or `None`.
+- `VERSION` 10 also changes three error codes a client may match on. A paused
+  contract returns the new `ContractPaused` (17) from both verification entry
+  points instead of `VerificationFailed`. `verify_inference` reports a
+  wrong-length `proof_c` as `MalformedProofC` instead of `MalformedProofA`. And a
+  journal whose reserved bytes (7 and 88 to 95) are not zero is refused with
+  `MalformedJournal`.
+- `JournalV1::decode` in `zkml-common` refuses a non-zero reserved byte with
+  the new `JournalError::NonZeroReserved`, so a `match` on `JournalError` needs
+  an arm for it. The guest has always written zeros there, so no real journal
+  changes.
 
 ### Added
 - `ZKML_GUEST_DOCKER=1` builds the zkVM guest inside RISC Zero's builder image
@@ -56,6 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lengths are an error instead of an out-of-bounds index.
 - The `wasm_budget` assertion messages printed a run of spaces in the middle of
   the sentence.
+- `verify_inference` validates its three proof points before the pairing, as
+  `verify_receipt` already did, so a corrupted point returns `MalformedProofA`,
+  `MalformedProofB` or `MalformedProofC` instead of trapping in the host. The
+  check runs after the replay check, so a replay still costs no pairing.
+  Measured on the WASM, `verify_inference` now costs 31,006,558 CPU
+  instructions, up from 30,208,647, still under the 32M ceiling CI enforces.
 
 ### Security
 - The zkVM guest lockfile moves `ruint` to 1.20.1, which fixes
