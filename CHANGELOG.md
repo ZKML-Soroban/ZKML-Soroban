@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The zkVM guest lockfile moves `ruint` to 1.20.1, which fixes
   RUSTSEC-2026-0220, and the dependency audit no longer ignores it for the
   guest.
+- The workspace lockfile moves `quinn-udp` to 0.5.16, which fixes
+  RUSTSEC-2026-0538. The audit ignores three new advisories in `zip` 2.3
+  (RUSTSEC-2026-0429, 0545 and 0548), which RISC Zero 3.0.6 pins and only uses
+  to read the recursion circuits embedded in its own crate; the fix is in
+  `zip` 9, a major version RISC Zero has not adopted.
 - The constructor and `set_verification_key` refuse a native key without five
   `ic` points, or with a point off its curve or at infinity. A receipt-only
   deployment previously had to pass some native key, and the placeholder the
