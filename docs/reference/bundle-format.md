@@ -61,12 +61,12 @@ can reject anything it was not compiled for.
 | 0      | 4    | magic         | `ZKML`                                   |
 | 4      | 2    | version       | `1`, little-endian                       |
 | 6      | 1    | `model_kind`  | tree `0`, logistic regression `1`, MLP `2` |
-| 7      | 1    | reserved      | zero                                     |
+| 7      | 1    | reserved      | must be zero                             |
 | 8      | 32   | `model_hash`  | `commitment_hash(model_elements(model))` |
 | 40     | 32   | `input_hash`  | `commitment_hash(input raw values)`      |
 | 72     | 8    | `output`      | raw Q16.16 value, `i64` little-endian     |
 | 80     | 8    | `class_label` | `i64` little-endian                       |
-| 88     | 8    | reserved      | zero                                     |
+| 88     | 8    | reserved      | must be zero                             |
 
 ## Seal
 

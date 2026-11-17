@@ -89,11 +89,11 @@ L = IC[0] + sum(x_i * IC[i + 1])
 | ---- | ------- |
 | 1 | `ContractNotInitialized` |
 | 2 | `PublicInputsTooShort` |
-| 3 | `MalformedProofA` (in `verify_inference`, also returned for a wrong-length `proof_c`) |
+| 3 | `MalformedProofA` |
 | 4 | `MalformedProofB` |
-| 5 | `MalformedProofC` (returned by `verify_receipt`) |
+| 5 | `MalformedProofC` |
 | 6 | `MalformedVerificationKey` |
-| 7 | `VerificationFailed` (also returned while paused) |
+| 7 | `VerificationFailed` |
 | 8 | `InvalidPublicInputLength` |
 | 9 | `VerificationKeyLengthMismatch` |
 | 10 | `ProofAlreadyUsed` |
@@ -103,6 +103,7 @@ L = IC[0] + sum(x_i * IC[i + 1])
 | 14 | `Risc0NotConfigured` |
 | 15 | `NonCanonicalPublicInput` |
 | 16 | `NativeKeyNotConfigured` |
+| 17 | `ContractPaused` |
 
 Causes for each code are in [docs/reference/errors.md](https://github.com/ZKML-Soroban/ZKML-Soroban/blob/main/docs/reference/errors.md).
 
@@ -116,18 +117,17 @@ Causes for each code are in [docs/reference/errors.md](https://github.com/ZKML-S
 
 ## Cost
 
-Measured on the compiled WASM, `verify_inference` (4 scalar multiplications plus a
-4-pair pairing check) costs 30.2M CPU instructions and `verify_receipt` 29.6M,
-against a 100M limit per transaction. Measure on the WASM rather than natively:
-the native test environment meters only host calls. See the `wasm_budget` tests.
+Measured on the compiled WASM, `verify_inference` (point checks, 4 scalar
+multiplications and a 4-pair pairing check) costs 31.0M CPU instructions and
+`verify_receipt` 29.6M, against a 100M limit per transaction. Measure on the
+WASM rather than natively: the native test environment meters only host calls.
+See the `wasm_budget` tests.
 
 ## Known limitations
 
 - RISC Zero receipts go through `verify_receipt`, which derives the claim digest from the
   journal on-chain. Neither entrypoint has been exercised by a deployed contract on a live
   network yet.
-- `verify_inference` does not validate its proof points, so a corrupted one traps in the
-  host there. `verify_receipt` does.
 - A given `(model, input, output, class_label)` tuple can be verified only once.
 - `get_result` returns a single global slot that the next successful verification overwrites.
 

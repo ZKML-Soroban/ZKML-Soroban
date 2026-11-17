@@ -82,7 +82,8 @@ Checks run cheapest first, and everything that can fail without cryptography
 does:
 
 1. The seal's length (`MalformedSeal`) and selector (`UnknownSelector`).
-2. The journal's length, magic and version (`MalformedJournal`).
+2. The journal's length, magic, version, model kind and reserved bytes
+   (`MalformedJournal`).
 3. The registered model hash (`VerificationFailed`).
 4. Replay (`ProofAlreadyUsed`). The nullifier depends only on the journal, so a
    used receipt is refused before it costs a pairing.
@@ -193,8 +194,9 @@ Length errors:
 </Frame>
 
 1. Fail with `ContractNotInitialized` if not initialized.
-2. Fail with `VerificationFailed` if paused.
-3. Deserialize `proof_a`, `proof_b`, `proof_c` (length-checked).
+2. Fail with `ContractPaused` if paused.
+3. Check the lengths of `proof_a`, `proof_b` and `proof_c` (`MalformedProofA`,
+   `MalformedProofB`, `MalformedProofC`).
 4. Fail with `NativeKeyNotConfigured` if the contract has no native key.
 5. Parse the 80-byte public inputs. Fail with `NonCanonicalPublicInput` if
    `model_hash` or `input_hash`, read as a little-endian integer, is not below
@@ -205,12 +207,16 @@ Length errors:
 7. Derive `nullifier = sha256(public_inputs)`; fail with `ProofAlreadyUsed` if
    it exists. This runs before the pairing, so a replay is refused without
    paying for it.
-8. Deserialize the verification key.
-9. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
-   `VerificationKeyLengthMismatch` if `ic.len() != 5`.
-10. Run `pairing_check([-A, alpha, L, C], [B, beta, gamma, delta])`; fail with
+8. Validate the three proof points, as `verify_receipt` does: fail with
+   `MalformedProofA`, `MalformedProofB` or `MalformedProofC` for a point off
+   its curve or with a coordinate not below the field modulus, instead of
+   letting the host trap on it.
+9. Deserialize the verification key.
+10. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
+    `VerificationKeyLengthMismatch` if `ic.len() != 5`.
+11. Run `pairing_check([-A, alpha, L, C], [B, beta, gamma, delta])`; fail with
     `VerificationFailed` if it does not hold.
-11. Store the nullifier, the `InferenceRecord`, and the incremented counter;
+12. Store the nullifier, the `InferenceRecord`, and the incremented counter;
     bump instance TTL; emit `verified`.
 
 Failed verifications do not modify state.
@@ -304,17 +310,14 @@ verifications do not bump TTL. Nullifier entries are extended to
 ## Cost
 
 Measured on the compiled WASM, `verify_receipt` costs 29.6M CPU instructions and
-`verify_inference` 30.2M, against a 100M limit per transaction. See
+`verify_inference` 31.0M, against a 100M limit per transaction. See
 [Benchmarks](/reference/benchmarks).
 
 ## Known limitations
 
-- `verify_inference` does not validate its proof points, so a corrupted one
-  traps in the host there. `verify_receipt` does.
 - Neither entry point has been exercised by a deployed contract on a live
   network yet.
 - A `(model, input, output, class_label)` tuple can be recorded only once.
 - `get_result` is a single global slot overwritten by the next verification.
-- Pausing returns the generic `VerificationFailed`.
 
 See [Known limitations](/security/known-limitations).
