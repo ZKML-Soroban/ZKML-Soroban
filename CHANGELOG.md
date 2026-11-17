@@ -56,8 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other admin setters do not. The original TTL tests had been lost in a merge.
 
 ### Changed
-- Documentation: the roadmap is reviewed for October 2026, with the reproducible
-  guest build as the first remaining Phase 1 item. Pages and code comments that
+- Documentation: the roadmap is reviewed for November 2026. The reproducible
+  guest build and the testnet deployment are done; Phase 1 has remote proving,
+  ONNX models in the CLI with the demo runner, and the commitment sponge left.
+  Pages and code comments that
   still told readers to call `initialize` describe the constructor. The known
   limitations, the model serialization in the commitments page, the KYC demo
   status, the order of the `verify_inference` checks and the post-quantum
@@ -65,8 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The golden receipt and RISC Zero parameters in
   `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
   build, and again after the reserved-byte check in `JournalV1::decode` (see
-  Breaking), which moved lines in a file the guest compiles. The guest image id is now
-  `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
+  Breaking), which moved lines in a file the guest compiles. The guest image id
+  is now `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
   configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed
