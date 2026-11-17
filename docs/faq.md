@@ -24,12 +24,12 @@ the optimization for smaller proofs and faster proving.
 
 ## Can I verify a real proof on testnet today?
 
-Not on a live network yet. The full path is implemented and tested off-line:
-the prover produces a Groth16 bundle (STARK-to-Groth16 wrap on x86_64 Linux with
-Docker, plus verification key export), and the contract verifies a real receipt
-in the Soroban test environment. What is missing is a testnet deployment, so no
-real transaction has carried a proof. See
-[Known limitations](/security/known-limitations).
+Yes. The prover produces a Groth16 bundle (STARK-to-Groth16 wrap on x86_64
+Linux with Docker, plus verification key export), and `verify_receipt` has
+verified one in a testnet transaction; the contract and transactions are listed
+in [Live on testnet](/guides/deployment#live-on-testnet).
+`examples/kyc-demo/deploy.sh` repeats the whole run against a contract of your
+own. See also [Known limitations](/security/known-limitations).
 
 ## What model sizes are supported?
 

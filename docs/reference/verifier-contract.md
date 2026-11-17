@@ -56,8 +56,8 @@ stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_co
 stellar contract invoke --id <CONTRACT> --source-account <ADMIN> -- set_risc0_vk --vk '{"alpha":"…","beta":"…","gamma":"…","delta":"…","ic":["…",…]}'
 ```
 
-The function and field names are checked against the contract's own interface,
-but these exact commands have not yet been run against a live network.
+These commands registered the guest on the testnet contract in
+[Live on testnet](/guides/deployment#live-on-testnet).
 
 Those values are pinned to a RISC Zero version **and** to a guest build. Any
 change to the guest or to `zkml-common` changes the image id, so re-export
@@ -315,8 +315,8 @@ Measured on the compiled WASM, `verify_receipt` costs 29.6M CPU instructions and
 
 ## Known limitations
 
-- Neither entry point has been exercised by a deployed contract on a live
-  network yet.
+- `verify_receipt` has run on testnet; `verify_inference` has not, since it
+  needs a native circuit.
 - A `(model, input, output, class_label)` tuple can be recorded only once.
 - `get_result` is a single global slot overwritten by the next verification.
 

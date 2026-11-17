@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes.
 
 ### Added
+- The verifier runs on Stellar testnet. On 2026-11-17 a `VERSION` 10 contract
+  verified the golden receipt, a real Groth16 proof from the reproducible
+  guest, in transaction `06e534c2...`; the contract id and every transaction
+  are listed in the deployment guide, under "Live on testnet".
+- `examples/kyc-demo/deploy.sh` is rewritten for the `stellar` CLI and runs the
+  KYC demo end to end: it creates and funds an identity, deploys with the
+  constructor and no native key, registers the reproducible guest, proves with
+  Groth16, submits the receipt with `verify_receipt` and reads the result.
+  `--bundle` and `--risc0-params` take files made elsewhere, for machines that
+  cannot prove. The old script called the `soroban` CLI and `initialize`, and
+  passed all-zero placeholder keys.
 - `ZKML_GUEST_DOCKER=1` builds the zkVM guest inside RISC Zero's builder image
   (pinned to `r0.1.91.1`, since `risc0-build`'s default image ships a Rust older
   than the workspace MSRV), so the guest image id is the same on every machine.
@@ -45,8 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other admin setters do not. The original TTL tests had been lost in a merge.
 
 ### Changed
-- Documentation: the roadmap is reviewed for October 2026, with the reproducible
-  guest build as the first remaining Phase 1 item. Pages and code comments that
+- Documentation: the roadmap is reviewed for November 2026. The reproducible
+  guest build and the testnet deployment are done; Phase 1 has remote proving,
+  ONNX models in the CLI with the demo runner, and the commitment sponge left.
+  Pages and code comments that
   still told readers to call `initialize` describe the constructor. The known
   limitations, the model serialization in the commitments page, the KYC demo
   status, the order of the `verify_inference` checks and the post-quantum
@@ -54,8 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The golden receipt and RISC Zero parameters in
   `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
   build, and again after the reserved-byte check in `JournalV1::decode` (see
-  Breaking), which moved lines in a file the guest compiles. The guest image id is now
-  `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
+  Breaking), which moved lines in a file the guest compiles. The guest image id
+  is now `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
   configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed

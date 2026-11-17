@@ -102,8 +102,8 @@ Opset floors: core `>= 17`, `ai.onnx.ml >= 1`. See [ONNX import](/guides/onnx-im
    is a placeholder for Boundless or a self-hosted Bento prover.
 6. The contract's `verify_receipt` reconstructs the receipt claim digest from
    the journal with the host's SHA-256 and runs the pairing check against RISC
-   Zero's universal verifying key. A real receipt verifies this way in the
-   Soroban test environment; it has not yet been exercised on a live network.
+   Zero's universal verifying key. A real receipt verifies this way on Stellar
+   testnet; see [Live on testnet](/guides/deployment#live-on-testnet).
 
 CI runs the guest with `RISC0_DEV_MODE=1`.
 
