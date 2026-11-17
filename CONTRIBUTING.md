@@ -123,7 +123,9 @@ never a local change. It changes when any of these change:
   never calls: panic messages carry file and line numbers, so shifting a
   panicking call the guest does use changes the binary;
 - the RISC Zero version, pinned with `=` in the root `Cargo.toml`,
-  `methods/Cargo.toml` and `methods/guest/Cargo.toml`.
+  `methods/Cargo.toml` and `methods/guest/Cargo.toml`;
+- the workspace version, so every release: the guest compiles `zkml-common`,
+  and a crate's version is part of how it is built.
 
 It can also depend on the machine that builds it. By default `methods/build.rs`
 compiles the guest with your own RISC Zero toolchain, which is fast but gives
@@ -178,6 +180,11 @@ Maintainers release by bumping `workspace.package.version` in the root
 `Cargo.toml` and moving the `Unreleased` section of `CHANGELOG.md` under the
 new version. Merging to `main` publishes `zkml-common` and `zkml-verifier` to
 crates.io and creates the `vX.Y.Z` GitHub Release.
+
+The version bump changes the guest image id, so a release pull request also
+regenerates the golden receipt, as described in
+[Changing the zkVM guest](#changing-the-zkvm-guest), and states the new image
+id in the CHANGELOG.
 
 ## Reporting Issues
 

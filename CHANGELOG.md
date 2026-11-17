@@ -74,10 +74,12 @@ change their leaf values, and `zkml-prover prove` needs `--groth16` or
   migration table describe the current code.
 - The golden receipt and RISC Zero parameters in
   `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
-  build, and again after the reserved-byte check in `JournalV1::decode` (see
-  Breaking), which moved lines in a file the guest compiles. The guest image id
-  is now `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
-  configured with an earlier id needs `set_risc0_config` again.
+  build: after the reserved-byte check in `JournalV1::decode` (see Breaking),
+  which moved lines in a file the guest compiles, and again for this release,
+  since the guest compiles `zkml-common` and its version is part of the build.
+  The guest image id of `0.0.3` is
+  `618662ee2f9615d58b6ac5bacc874da9a1c3f7aec93109a30a820d892744e085`; a
+  verifier configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed
 - 27 contract test snapshots whose tests no longer exist, most of them from

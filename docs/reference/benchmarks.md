@@ -11,7 +11,7 @@ the Soroban cost estimator, each on a proof that genuinely verifies:
 
 | Operation | CPU instructions | Memory (bytes) | Share of the 100M limit |
 | --------- | ---------------- | -------------- | ----------------------- |
-| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,566,793 | 1,802,740 | 30% |
+| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,565,041 | 1,802,740 | 30% |
 | `verify_inference` (point checks + L assembly + pairing) | 31,006,558 | 1,699,995 | 31% |
 
 Verifying a RISC Zero receipt is cheaper than the native-circuit path,

@@ -172,9 +172,11 @@ stellar CLI. `--help` lists the options and environment variables. See
 ## Live on testnet
 
 On 2026-11-17 the script deployed the `VERSION` 10 contract and verified the
-golden receipt in `crates/zkml-verifier/testdata/`: a real Groth16 proof of
+golden receipt of the time: a real Groth16 proof of
 `examples/models/credit_lr.json` on input `0.5,0.2,0.9,0.1`, from the
-reproducible guest.
+reproducible guest just before the `0.0.3` version bump. The bump changed the
+image id to `618662ee...`, so this contract accepts new receipts only after
+`set_risc0_config` registers it.
 
 | Item | Value |
 | ---- | ----- |
