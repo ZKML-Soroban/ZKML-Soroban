@@ -1503,7 +1503,7 @@ dependencies = [
 
 [[package]]
 name = "zkml-common"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "ark-bn254",
  "ark-ff",

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-11-20
+
+Security release. Model and input commitments become hiding, fixing
+GHSA-x4pc-c7xq-p474: every model has to be registered again under a private
+opening, and the guest image id changes. See Breaking and Security.
+
 ### Breaking
 - Model and input commitments are hiding. `commit_model(model, opening)` and
   `commit_inputs(features, opening)` in `zkml-common` take an `Opening`, 32
@@ -399,7 +405,8 @@ June 2026 Phase 1 off-chain milestone and was never published.
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.4
 [0.0.3]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.3
 [0.0.2]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.1
