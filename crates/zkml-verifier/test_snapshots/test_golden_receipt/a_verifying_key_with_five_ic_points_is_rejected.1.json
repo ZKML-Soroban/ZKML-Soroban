@@ -18,7 +18,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "bytes": "c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521"
+                  "bytes": "94cb7274a18de435f81a13cf4a330e15cb378db4e6a07c4cbbb22b6fb48f6f0c"
                 },
                 "void"
               ]
@@ -60,7 +60,7 @@
                         "symbol": "image_id"
                       },
                       "val": {
-                        "bytes": "618662ee2f9615d58b6ac5bacc874da9a1c3f7aec93109a30a820d892744e085"
+                        "bytes": "49a1c07fd245cf761ea47f64cd36634b70b41cc3aff5c73da4d0dbb7779fdc32"
                       }
                     },
                     {
@@ -267,7 +267,7 @@
                         "symbol": "mdl_hash"
                       },
                       "val": {
-                        "bytes": "c78a5f2e102455f2b84cc0903435f26c87fe7b198119ac84322874b12409b521"
+                        "bytes": "94cb7274a18de435f81a13cf4a330e15cb378db4e6a07c4cbbb22b6fb48f6f0c"
                       }
                     },
                     {
@@ -305,7 +305,7 @@
                               "symbol": "image_id"
                             },
                             "val": {
-                              "bytes": "618662ee2f9615d58b6ac5bacc874da9a1c3f7aec93109a30a820d892744e085"
+                              "bytes": "49a1c07fd245cf761ea47f64cd36634b70b41cc3aff5c73da4d0dbb7779fdc32"
                             }
                           },
                           {

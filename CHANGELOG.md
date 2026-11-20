@@ -20,7 +20,11 @@ opening, and the guest image id changes. See Breaking and Security.
   chain from `Poseidon(domain, opening)`, with new domain tags `3` and `4`. The
   zkVM guest reads the opening as a private input and never writes it to the
   journal. Every model commitment changes, so models have to be registered
-  again, and the guest image id changes.
+  again, and the guest image id changes to
+  `49a1c07fd245cf761ea47f64cd36634b70b41cc3aff5c73da4d0dbb7779fdc32`: a verifier
+  needs `set_risc0_config` with it. The golden receipt in
+  `crates/zkml-verifier/testdata/` is regenerated from that guest, under a
+  fixed public test opening.
 - `zkml-prover commit` and `prove` need `--opening FILE` (64 hex characters;
   all-zero is refused), and `infer` and `inspect` no longer print a commitment.
   In the prover library, `model_commitment`, `input_commitment`, `journal_for`,
