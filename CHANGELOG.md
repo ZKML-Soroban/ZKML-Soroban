@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.0.3] - 2026-11-17
+## [0.0.3] - 2026-11-20
 
 Third crates.io release (`zkml-common`, `zkml-verifier`), and the first whose
 contract has verified a real proof on Stellar testnet. The contract interface
@@ -43,7 +43,9 @@ change their leaf values, and `zkml-prover prove` needs `--groth16` or
 ### Added
 - The verifier runs on Stellar testnet. On 2026-11-17 a `VERSION` 10 contract
   verified the golden receipt, a real Groth16 proof from the reproducible
-  guest, in transaction `06e534c2...`; the contract id and every transaction
+  guest, in transaction `06e534c2...`. On 2026-11-20 the KYC demo ran end to
+  end: the KYC tree, proved with the `0.0.3` guest, verified on a second
+  contract in transaction `f96d7203...`. The contract ids and every transaction
   are listed in the deployment guide, under "Live on testnet".
 - `examples/kyc-demo/deploy.sh` is rewritten for the `stellar` CLI and runs the
   KYC demo end to end: it creates and funds an identity, deploys with the

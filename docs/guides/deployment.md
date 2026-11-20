@@ -171,7 +171,35 @@ stellar CLI. `--help` lists the options and environment variables. See
 
 ## Live on testnet
 
-On 2026-11-17 the script deployed the `VERSION` 10 contract and verified the
+### KYC tree, 2026-11-20
+
+The script ran end to end with its defaults: the KYC tree
+(`examples/models/kyc_tree.json`) on input `0.6,0.4,0.0`, proved with the
+reproducible guest of release `0.0.3` and verified by a new `VERSION` 10
+contract.
+
+| Item | Value |
+| ---- | ----- |
+| Contract | [`CB5QQOVVNKHLJIVBY7YEVGNONFRETNPXHJLKBKOSX62WUBKX2RMYL23Y`](https://stellar.expert/explorer/testnet/contract/CB5QQOVVNKHLJIVBY7YEVGNONFRETNPXHJLKBKOSX62WUBKX2RMYL23Y) |
+| WASM hash | `78553d40232a758e3989b20a944331f90aac97b5f94ca84581aa128836c061db`, already on the network from the first run |
+| Guest image id | `618662ee2f9615d58b6ac5bacc874da9a1c3f7aec93109a30a820d892744e085` |
+| Model hash | `95fb9a46c01fcf360cdaf66fcb1611aaf3111c1dd12a3b5db421b1f8882f4107` |
+
+| Step | Transaction |
+| ---- | ----------- |
+| Deploy and construct | [`b8b6a48d...`](https://stellar.expert/explorer/testnet/tx/b8b6a48d98ed51e7231dcef6dc5642a90af03c7981b3aa52fcc8861fac2c00b7) |
+| `set_risc0_config` | [`4dc912c6...`](https://stellar.expert/explorer/testnet/tx/4dc912c6854da31673f1ca83cf1c1edaca24e66bd8dac2d3bcc4c56a51d8748a) |
+| `set_risc0_vk` | [`5a69226b...`](https://stellar.expert/explorer/testnet/tx/5a69226b14fbe34febf43a57c715a27120f3a108a32157b01497d34e7eaad7bd) |
+| `verify_receipt` | [`f96d7203...`](https://stellar.expert/explorer/testnet/tx/f96d720353778635aaa552f096b7513a30761a053802217a2b5c9f673bd93bbd) |
+
+The verification landed in ledger 5,833,131 and recorded output `65536`, risk
+`1.0` in Q16.16, the high-risk branch, with `class_label` `0` as for every
+tree. It declared 30,940,787 CPU instructions and was charged 778,696 stroops
+(about 0.078 XLM). Proving took 2,727 seconds on a laptop CPU.
+
+### First receipt, 2026-11-17
+
+The script deployed the `VERSION` 10 contract and verified the
 golden receipt of the time: a real Groth16 proof of
 `examples/models/credit_lr.json` on input `0.5,0.2,0.9,0.1`, from the
 reproducible guest just before the `0.0.3` version bump. The bump changed the

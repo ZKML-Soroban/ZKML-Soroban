@@ -19,7 +19,7 @@ Deployment with the `stellar` CLI: [docs/guides/deployment.md](../../docs/guides
 | Contract build and deployment | Works with the `stellar` CLI (`deploy.sh`) |
 | STARK to Groth16 compression | Works on x86_64 Linux with Docker (`zkml-prover prove --groth16`) |
 | RISC Zero parameter export | Works (`zkml-prover export-vk --format soroban-args`) |
-| On-chain verification (`verify_receipt`) | Verified on testnet, see the deployment guide |
+| On-chain verification (`verify_receipt`) | The KYC tree verified on testnet on 2026-11-20, see the deployment guide |
 | Demo runner (`zkml-demo`) | Skeleton only |
 
 ## Prerequisites
