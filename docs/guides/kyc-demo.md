@@ -24,7 +24,7 @@ risk score, and verify it on-chain.
 | On-chain receipt verification (`verify_receipt`) | Verified on testnet ([transactions](/guides/deployment#live-on-testnet)) |
 | Groth16 proof generation                | Works on x86_64 Linux with Docker (`prove --groth16`) |
 | RISC Zero parameter export              | Works (`export-vk --format soroban-args`)           |
-| End-to-end script (`deploy.sh`)         | Works: deploy, register, prove, verify, read        |
+| End-to-end script (`deploy.sh`)         | Works: the KYC tree verified on testnet on 2026-11-20 ([transactions](/guides/deployment#live-on-testnet)) |
 | Demo runner (`zkml-demo`)               | Skeleton only                                       |
 | The trained ONNX model through the CLI  | Not yet: the CLI reads JSON models only             |
 

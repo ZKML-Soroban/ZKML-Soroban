@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-11-20
+
+Third crates.io release (`zkml-common`, `zkml-verifier`), and the first whose
+contract has verified a real proof on Stellar testnet. The contract interface
+moves from `VERSION` 9 to 10, the guest image id changes, ONNX tree imports
+change their leaf values, and `zkml-prover prove` needs `--groth16` or
+`--no-proof`. See Breaking.
+
 ### Breaking
 - ONNX tree imports change value at every leaf that carries one weight per
   class, as skl2onnx writes them: the leaf now holds the predicted class (see
@@ -35,7 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - The verifier runs on Stellar testnet. On 2026-11-17 a `VERSION` 10 contract
   verified the golden receipt, a real Groth16 proof from the reproducible
-  guest, in transaction `06e534c2...`; the contract id and every transaction
+  guest, in transaction `06e534c2...`. On 2026-11-20 the KYC demo ran end to
+  end: the KYC tree, proved with the `0.0.3` guest, verified on a second
+  contract in transaction `f96d7203...`. The contract ids and every transaction
   are listed in the deployment guide, under "Live on testnet".
 - `examples/kyc-demo/deploy.sh` is rewritten for the `stellar` CLI and runs the
   KYC demo end to end: it creates and funds an identity, deploys with the
@@ -66,10 +76,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   migration table describe the current code.
 - The golden receipt and RISC Zero parameters in
   `crates/zkml-verifier/testdata/` are regenerated from the reproducible guest
-  build, and again after the reserved-byte check in `JournalV1::decode` (see
-  Breaking), which moved lines in a file the guest compiles. The guest image id
-  is now `13cb39ca2b0559a9f437ba1a20ed0655c3f475d35b485ab763a56567200dd712`; a verifier
-  configured with an earlier id needs `set_risc0_config` again.
+  build: after the reserved-byte check in `JournalV1::decode` (see Breaking),
+  which moved lines in a file the guest compiles, and again for this release,
+  since the guest compiles `zkml-common` and its version is part of the build.
+  The guest image id of `0.0.3` is
+  `618662ee2f9615d58b6ac5bacc874da9a1c3f7aec93109a30a820d892744e085`; a
+  verifier configured with an earlier id needs `set_risc0_config` again.
 
 ### Removed
 - 27 contract test snapshots whose tests no longer exist, most of them from
@@ -361,7 +373,8 @@ June 2026 Phase 1 off-chain milestone and was never published.
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.3
 [0.0.2]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.2
 [0.0.1]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.1
 [0.2.0]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.2.0

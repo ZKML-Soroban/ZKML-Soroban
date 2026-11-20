@@ -11,7 +11,7 @@ the Soroban cost estimator, each on a proof that genuinely verifies:
 
 | Operation | CPU instructions | Memory (bytes) | Share of the 100M limit |
 | --------- | ---------------- | -------------- | ----------------------- |
-| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,566,793 | 1,802,740 | 30% |
+| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,565,041 | 1,802,740 | 30% |
 | `verify_inference` (point checks + L assembly + pairing) | 31,006,558 | 1,699,995 | 31% |
 
 Verifying a RISC Zero receipt is cheaper than the native-circuit path,
@@ -115,6 +115,10 @@ inference; a decision tree or a small MLP lands in the same range. And a machine
 with more memory and a GPU-enabled prover is much faster. Treat 25 minutes as
 what a laptop does, not as what the design costs.
 
+The KYC decision tree (`examples/models/kyc_tree.json`, three features) took
+21,004,288 guest cycles and 2,727 seconds to prove and compress on the same
+machine, for the receipt verified on testnet on 2026-11-20.
+
 The 260-byte seal meets the Phase 1 target of a proof under 500 bytes.
 
 ## GPU
@@ -139,7 +143,7 @@ Note also that `-arch` matters enormously. With nothing set, nvcc targets
 
 ## Not yet measured
 
-- Proving time per model family (tree, MLP) under real mode
+- Proving time for an MLP under real mode
 - Remote proving latency, once a Boundless client exists
 - End-to-end latency on testnet. The on-chain half is measured: a real receipt
   verified in a testnet transaction declaring 30,944,431 instructions, charged
