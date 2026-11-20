@@ -123,7 +123,7 @@ proptest! {
         let native = try_run_inference(&model, &inputs);
         prop_assert!(native.is_ok(), "try_run_inference returned {native:?}");
         let native_out = native.unwrap();
-        let receipt = generate_receipt(&model, &inputs);
+        let receipt = generate_receipt(&model, &inputs, &[3u8; 32]);
         prop_assert!(
             receipt.is_ok(),
             "generate_receipt failed: {:?}",

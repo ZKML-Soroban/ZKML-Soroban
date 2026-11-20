@@ -37,10 +37,15 @@ ls -l target/wasm32v1-none/contract/zkml_verifier.wasm
 
 ## 3. Compute the model commitment
 
-The commitment is a constructor argument, so compute it before deploying.
+The commitment is a constructor argument, so compute it before deploying. It
+is hiding: it is computed under the model's opening, 32 secret random bytes
+created once for this registration. Keep the opening file private and keep it,
+since every proof for this contract needs it
+([Commitments](/concepts/commitments#openings)).
 
 ```bash
-MODEL_HASH=$(cargo run -q -p zkml-prover -- commit examples/models/kyc_tree.json)
+openssl rand -hex 32 > model.opening
+MODEL_HASH=$(cargo run -q -p zkml-prover -- commit examples/models/kyc_tree.json --opening model.opening)
 echo "$MODEL_HASH"
 ```
 
@@ -118,7 +123,8 @@ then submit the bundle's seal and journal, both hex:
 
 ```bash
 ZKML_GUEST_DOCKER=1 RISC0_DEV_MODE=0 cargo run -q -p zkml-prover --features groth16 -- \
-  prove examples/models/kyc_tree.json -i "0.6,0.4,0.0" --groth16 -o bundle.json
+  prove examples/models/kyc_tree.json -i "0.6,0.4,0.0" --opening model.opening \
+  --groth16 -o bundle.json
 
 stellar contract invoke --id "$CONTRACT_ID" --source-account deployer --network testnet \
   -- verify_receipt \
@@ -156,8 +162,10 @@ admin).
 ## The demo script
 
 `examples/kyc-demo/deploy.sh` runs steps 1 to 7 from the repository root: it
-creates and funds the identity if needed, deploys with the constructor and no
-native key, registers the guest, proves the KYC model and submits the receipt.
+creates and funds the identity if needed, generates the model's opening in
+`target/kyc-demo/model.opening` unless `--opening` names one, deploys with the
+constructor and no native key, registers the guest, proves the KYC model and
+submits the receipt.
 
 ```bash
 examples/kyc-demo/deploy.sh
@@ -170,6 +178,9 @@ stellar CLI. `--help` lists the options and environment variables. See
 [KYC demo](/guides/kyc-demo).
 
 ## Live on testnet
+
+Both runs below predate `0.0.4`, so their model commitments are the earlier,
+deterministic ones; see [Commitments](/concepts/commitments#openings).
 
 ### KYC tree, 2026-11-20
 

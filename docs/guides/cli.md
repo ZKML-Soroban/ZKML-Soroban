@@ -22,9 +22,10 @@ cargo build -p zkml-prover
 ```text
 zkml-prover <COMMAND>
 
-commit        <MODEL>                           Model commitment as 64-char hex
-infer         <MODEL> -i <CSV>                  Commitment + dequantized output + raw Q16.16
-prove         <MODEL> -i <CSV> [-o <FILE>]      Verification bundle JSON (stdout or file)
+commit        <MODEL> --opening <FILE>          Model commitment as 64-char hex
+infer         <MODEL> -i <CSV>                  Dequantized output + raw Q16.16
+prove         <MODEL> -i <CSV> --opening <FILE> Verification bundle JSON (stdout or file)
+                      [-o <FILE>]
                       --groth16                 Produce a real proof (needs the groth16 feature)
                       | --no-proof              Public inputs only, no proof (legacy v1)
                       [--backend local|boundless]
@@ -34,7 +35,7 @@ export-vk     [--format json|soroban-args]      What the contract needs to verif
 validate      <MODEL> [--dataset <FILE>]
                       [--max-input-magnitude <F>]    default 1.0
                       [--min-agreement <F>]          default 0.99
-inspect       <MODEL>                           Kind, features, structure, commitment, validity
+inspect       <MODEL>                           Kind, features, structure, validity
 ```
 
 `<MODEL>` is a file in the [JSON exchange format](/guides/model-format). The CLI
@@ -45,18 +46,30 @@ does not accept `.onnx` files; convert them with the library importer first
 It may start with a negative value: `-i -0.5,0.2` is read as the input, not
 as a flag.
 
+### The opening
+
+`commit` and `prove` take `--opening FILE`, the model's opening: 32 secret
+random bytes as 64 hex characters. It keeps the commitments hiding, so create
+one per registered model, keep it private, and pass the same file to every
+command for that model:
+
+```bash
+openssl rand -hex 32 > model.opening
+```
+
+A proof made under another opening carries another `model_hash`, which the
+contract refuses. See [Commitments](/concepts/commitments#openings).
+
 ### commit
 
 Prints the model commitment, the value passed to the contract constructor at
 deploy.
 
 ```bash
-cargo run -p zkml-prover -- commit examples/models/credit_lr.json
+cargo run -p zkml-prover -- commit examples/models/credit_lr.json --opening model.opening
 ```
 
-```text
-73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710
-```
+The output is 64 hex characters, different for every opening.
 
 ### infer
 
@@ -65,13 +78,13 @@ cargo run -p zkml-prover -- infer examples/models/credit_lr.json -i "0.5,0.2,0.9
 ```
 
 ```text
-model commitment: 73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710
 output: 0.5319976806640625
 output (raw Q16.16): 34865
 ```
 
 The raw value is `FixedPoint::value`, the integer that goes into the public
-inputs. The dequantized value is for humans.
+inputs. The dequantized value is for humans. `infer` prints no commitment,
+since that needs the opening; `commit` prints it.
 
 ### prove
 
@@ -86,7 +99,7 @@ JSON. It is useful for inspecting what would be proven, and for nothing else.
 
 ```bash
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" --no-proof -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --opening model.opening --no-proof -o bundle.json
 ```
 
 ```text
@@ -101,7 +114,7 @@ few minutes:
 
 ```bash
 cargo run -p zkml-prover --features groth16 -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" --groth16 -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --opening model.opening --groth16 -o bundle.json
 ```
 
 ```text
@@ -237,7 +250,6 @@ model: examples/models/kyc_tree.json
 kind: decision_tree
 features: 3
 nodes: 5 (2 split, 3 leaf)
-commitment: 55541e9a9593c81c1531f0067aa7534a8ee8e98e058afa99a0b190a5def23a2f
 structure: valid
 ```
 
@@ -250,7 +262,8 @@ structure: valid
 80-byte public input from the bundle:
 
 ```bash
-cargo run -p zkml-prover -- prove examples/models/credit_lr.json --input="0.5,0.2,0.9,0.1" --no-proof -o bundle.json
+cargo run -p zkml-prover -- prove examples/models/credit_lr.json --input="0.5,0.2,0.9,0.1" \
+  --opening model.opening --no-proof -o bundle.json
 python tools/inspect_bundle.py bundle.json --check
 ```
 

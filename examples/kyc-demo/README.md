@@ -72,7 +72,8 @@ examples/kyc-demo/deploy.sh
 ```
 
 The script creates and funds the `zkml-kyc-demo` identity if it does not exist,
-deploys the verifier with the KYC tree's commitment and no native key, registers
+generates the model's secret opening in `target/kyc-demo/model.opening` (keep
+it: every later proof for this contract needs it), deploys the verifier with the KYC tree's commitment and no native key, registers
 the reproducible guest (`set_risc0_config`, `set_risc0_vk`), proves one risk
 score with Groth16, submits it with `verify_receipt` and reads the result back.
 Each step prints its command, and the stellar CLI prints a link to each

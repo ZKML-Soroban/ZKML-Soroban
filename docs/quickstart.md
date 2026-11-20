@@ -115,16 +115,25 @@ cargo run -p zkml-prover -- infer examples/models/credit_lr.json -i "0.5,0.2,0.9
 ```
 
 ```text
-model commitment: 73e881eda85b98eef6a08eec16e3210330c6bd53a182eab7944c87d9c4fce710
 output: 0.5319976806640625
 output (raw Q16.16): 34865
+```
+
+## Commit to the model
+
+A model commitment is computed under the model's opening, 32 secret random
+bytes that keep it hiding. Create one per model and keep it private:
+
+```bash
+openssl rand -hex 32 > model.opening
+cargo run -p zkml-prover -- commit examples/models/credit_lr.json --opening model.opening
 ```
 
 ## Export a verification bundle
 
 ```bash
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" --no-proof -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --opening model.opening --no-proof -o bundle.json
 ```
 
 > **Warning.** `--no-proof` writes the public inputs without a proof, which is

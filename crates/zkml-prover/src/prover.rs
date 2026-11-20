@@ -27,7 +27,7 @@
 use zkml_common::bundle::VerificationBundleV2;
 #[cfg(feature = "zkvm")]
 use zkml_common::bundle::{BundleMeta, ProofSystemId, ProveTimings};
-use zkml_common::commitment::{commit_i64, commitment_hash, Commitment};
+use zkml_common::commitment::{commit_i64, commit_inputs, commit_model, Commitment};
 use zkml_common::fixed_point::FixedPoint;
 use zkml_common::journal::{JournalV1, ModelKind};
 use zkml_common::models::Model;
@@ -35,6 +35,8 @@ use zkml_common::proof::{Groth16Proof, PublicInputs, VerificationBundle};
 
 /// Flatten model parameters for commitments (shared with the guest).
 pub use zkml_common::commitment::model_elements;
+/// The secret that makes model and input commitments hiding.
+pub use zkml_common::commitment::Opening;
 
 /// Errors from the proving pipeline.
 #[derive(Debug, thiserror::Error)]
@@ -116,27 +118,33 @@ impl ProverBackend {
     }
 }
 
-/// Commit to a model's parameters (the `model_hash` the contract is deployed with).
-pub fn model_commitment(model: &Model) -> Commitment {
-    commitment_hash(&model_elements(model))
+/// Commit to a model's parameters under its opening (the `model_hash` the
+/// contract is deployed with).
+pub fn model_commitment(model: &Model, opening: &Opening) -> Commitment {
+    commit_model(model, opening)
 }
 
-/// Commit to a set of input features (a proof public input).
-pub fn input_commitment(inputs: &[FixedPoint]) -> Commitment {
-    let elements: Vec<i64> = inputs.iter().map(|x| x.value).collect();
-    commitment_hash(&elements)
+/// Commit to a set of input features under the model's opening (a proof
+/// public input).
+pub fn input_commitment(inputs: &[FixedPoint], opening: &Opening) -> Commitment {
+    commit_inputs(inputs, opening)
 }
 
 /// Build the journal for a model and its inputs, using native inference.
 ///
 /// This is the same computation the guest performs; the host uses it to
-/// cross-check what the guest committed.
-pub fn journal_for(model: &Model, inputs: &[FixedPoint]) -> Result<JournalV1, ProveError> {
+/// cross-check what the guest committed. The opening enters the two
+/// commitments only; the journal never carries it.
+pub fn journal_for(
+    model: &Model,
+    inputs: &[FixedPoint],
+    opening: &Opening,
+) -> Result<JournalV1, ProveError> {
     let (output, class_label) = crate::inference::try_run_inference_with_decision(model, inputs)?;
     Ok(JournalV1 {
         model_kind: ModelKind::of(model),
-        model_hash: model_commitment(model),
-        input_hash: input_commitment(inputs),
+        model_hash: model_commitment(model, opening),
+        input_hash: input_commitment(inputs, opening),
         output: output.value,
         class_label,
     })
@@ -147,8 +155,12 @@ pub fn journal_for(model: &Model, inputs: &[FixedPoint]) -> Result<JournalV1, Pr
 /// Kept so existing callers and tests keep working. It carries no
 /// cryptographic evidence; use [`prove_groth16`] for that.
 #[deprecated(note = "v1 bundles carry no proof; use prove_groth16 and VerificationBundleV2")]
-pub fn generate_proof(model: &Model, inputs: &[FixedPoint]) -> Result<VerificationBundle, String> {
-    let journal = journal_for(model, inputs).map_err(|e| e.to_string())?;
+pub fn generate_proof(
+    model: &Model,
+    inputs: &[FixedPoint],
+    opening: &Opening,
+) -> Result<VerificationBundle, String> {
+    let journal = journal_for(model, inputs, opening).map_err(|e| e.to_string())?;
 
     Ok(VerificationBundle {
         proof: Groth16Proof { data: Vec::new() },
@@ -267,13 +279,22 @@ mod zkvm_prove {
         out
     }
 
-    fn build_env(model: &Model, inputs: &[FixedPoint]) -> Result<ExecutorEnv<'static>, ProveError> {
+    /// The guest's private inputs, in the order it reads them: model, inputs,
+    /// opening. None of them reaches the journal except through the
+    /// commitments.
+    fn build_env(
+        model: &Model,
+        inputs: &[FixedPoint],
+        opening: &Opening,
+    ) -> Result<ExecutorEnv<'static>, ProveError> {
         let inputs_owned: Vec<FixedPoint> = inputs.to_vec();
         ExecutorEnv::builder()
             .write(model)
             .map_err(|e| ProveError::Zkvm(format!("writing model: {e}")))?
             .write(&inputs_owned)
             .map_err(|e| ProveError::Zkvm(format!("writing inputs: {e}")))?
+            .write(opening)
+            .map_err(|e| ProveError::Zkvm(format!("writing opening: {e}")))?
             .build()
             .map_err(|e| ProveError::Zkvm(format!("building env: {e}")))
     }
@@ -284,8 +305,9 @@ mod zkvm_prove {
     pub fn generate_receipt(
         model: &Model,
         inputs: &[FixedPoint],
+        opening: &Opening,
     ) -> Result<(Receipt, JournalV1), ProveError> {
-        let env = build_env(model, inputs)?;
+        let env = build_env(model, inputs, opening)?;
         let prove_info = default_prover()
             .prove(env, ZKML_GUEST_ELF)
             .map_err(|e| ProveError::Zkvm(format!("prove failed: {e}")))?;
@@ -294,7 +316,7 @@ mod zkvm_prove {
             .verify(ZKML_GUEST_ID)
             .map_err(|e| ProveError::Zkvm(format!("receipt verification failed: {e}")))?;
         let journal = decode_journal(&receipt)?;
-        cross_check_native(model, inputs, &journal)?;
+        cross_check_native(model, inputs, opening, &journal)?;
         Ok((receipt, journal))
     }
 
@@ -302,6 +324,7 @@ mod zkvm_prove {
     pub fn prove_groth16(
         model: &Model,
         inputs: &[FixedPoint],
+        opening: &Opening,
         backend: &ProverBackend,
     ) -> Result<ProveOutput, ProveError> {
         if let ProverBackend::Remote { endpoint } = backend {
@@ -316,7 +339,7 @@ mod zkvm_prove {
         check_docker()?;
 
         let started = Instant::now();
-        let env = build_env(model, inputs)?;
+        let env = build_env(model, inputs, opening)?;
         let prove_started = Instant::now();
         let prove_info = default_prover()
             .prove_with_opts(env, ZKML_GUEST_ELF, &ProverOpts::groth16())
@@ -329,7 +352,7 @@ mod zkvm_prove {
             .map_err(|e| ProveError::Zkvm(format!("receipt verification failed: {e}")))?;
 
         let journal_v1 = decode_journal(&receipt)?;
-        cross_check_native(model, inputs, &journal_v1)?;
+        cross_check_native(model, inputs, opening, &journal_v1)?;
         let seal = encode_seal(&receipt)?;
 
         Ok(ProveOutput {
@@ -372,9 +395,10 @@ mod zkvm_prove {
     fn cross_check_native(
         model: &Model,
         inputs: &[FixedPoint],
+        opening: &Opening,
         journal: &JournalV1,
     ) -> Result<(), ProveError> {
-        let expected = journal_for(model, inputs)?;
+        let expected = journal_for(model, inputs, opening)?;
         if expected != *journal {
             return Err(ProveError::JournalMismatch(format!(
                 "guest committed {journal:?}, native inference produced {expected:?}"
@@ -498,33 +522,35 @@ mod tests {
         })
     }
 
+    const OPENING: Opening = [9u8; 32];
+
     #[test]
     fn journal_matches_native_inference() {
         let inputs = vec![fp(1.0), fp(2.0)];
-        let journal = journal_for(&model(), &inputs).unwrap();
+        let journal = journal_for(&model(), &inputs, &OPENING).unwrap();
         assert_eq!(journal.model_kind, ModelKind::LogisticRegression);
-        assert_eq!(journal.model_hash, model_commitment(&model()));
-        assert_eq!(journal.input_hash, input_commitment(&inputs));
+        assert_eq!(journal.model_hash, model_commitment(&model(), &OPENING));
+        assert_eq!(journal.input_hash, input_commitment(&inputs, &OPENING));
         // 0.5*1.0 + (-0.25)*2.0 + 0.1 = 0.1 >= 0.0
         assert_eq!(journal.class_label, 1);
     }
 
     #[test]
     fn journal_round_trips_through_bytes() {
-        let journal = journal_for(&model(), &[fp(1.0), fp(2.0)]).unwrap();
+        let journal = journal_for(&model(), &[fp(1.0), fp(2.0)], &OPENING).unwrap();
         assert_eq!(JournalV1::decode(&journal.encode()).unwrap(), journal);
     }
 
     #[test]
     fn journal_errors_on_wrong_feature_count() {
-        let err = journal_for(&model(), &[fp(1.0)]).unwrap_err();
+        let err = journal_for(&model(), &[fp(1.0)], &OPENING).unwrap_err();
         assert!(matches!(err, ProveError::Inference(_)));
     }
 
     #[test]
     #[allow(deprecated)]
     fn legacy_bundle_is_populated() {
-        let bundle = generate_proof(&model(), &[fp(1.0), fp(2.0)]).unwrap();
+        let bundle = generate_proof(&model(), &[fp(1.0), fp(2.0)], &OPENING).unwrap();
         assert_ne!(bundle.public_inputs.model_hash, [0u8; 32]);
         assert_eq!(bundle.public_inputs.output.len(), 8);
         assert_eq!(bundle.public_inputs.class_label, 1);
@@ -533,7 +559,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn legacy_bundle_json_round_trips() {
-        let bundle = generate_proof(&model(), &[fp(1.0), fp(2.0)]).unwrap();
+        let bundle = generate_proof(&model(), &[fp(1.0), fp(2.0)], &OPENING).unwrap();
         let json = bundle_to_json(&bundle).unwrap();
         let restored = bundle_from_json(&json).unwrap();
         assert_eq!(

@@ -21,6 +21,8 @@ g.node("model", hl("Quantized model", "weights, biases, thresholds, topology"), 
 g.node("inputs", hl("Input features", "Q16.16 raw i64 values"), fillcolor=F_DATA, color=B_DATA)
 g.node("elements", hl("Field elements", "negative v maps to r - |v|"), fillcolor=F_OFFCHAIN, color=B_OFFCHAIN)
 g.node("chunks", hl("Chunks of 2", "zero padded"), fillcolor=F_OFFCHAIN, color=B_OFFCHAIN)
+g.node("opening", hl("Opening", "32 secret random bytes, one per model"), fillcolor=F_DANGER, color=B_DANGER)
+g.node("start", hl("Hiding start", "h = P(domain, opening)"), fillcolor=F_ZK, color=B_ZK)
 g.node("chain", hl("Chained Poseidon", "h = P(c0 + h + index, c1)"), fillcolor=F_ZK, color=B_ZK, penwidth="2.2")
 g.node("out", hl("Commitment", "32 bytes, little-endian"), fillcolor=F_SUCCESS, color=B_SUCCESS)
 
@@ -28,6 +30,8 @@ g.edge("model", "elements", label="model_elements()")
 g.edge("inputs", "elements")
 g.edge("elements", "chunks")
 g.edge("chunks", "chain")
+g.edge("opening", "start", label="private guest input")
+g.edge("start", "chain", label="first h")
 g.edge("chain", "chain", label="next chunk", style="dashed")
 g.edge("chain", "out")
 

@@ -1,21 +1,58 @@
 ---
 title: "Commitments"
-description: "Poseidon commitments that bind a proof to a model and an input, plus the nullifier scheme."
+description: "Hiding Poseidon commitments that bind a proof to a model and an input, the opening that keeps them hiding, and the nullifier scheme."
 icon: "fingerprint"
 ---
 
 Every proof is bound to a specific model and a specific input through 32-byte
-Poseidon commitments over the BN254 scalar field.
+Poseidon commitments over the BN254 scalar field. Both are hiding: they are
+computed under a secret **opening**, so they reveal nothing about the model or
+the input to anyone who does not hold it.
 
-- **Model commitment:** Poseidon over the quantized model parameters. Computed
-  once (`zkml-prover commit`) and stored on-chain by the contract constructor
-  at deploy, or later by `set_model_hash`.
-- **Input commitment:** Poseidon over the quantized input features. Carried in
-  the public inputs of every proof.
+- **Model commitment:** Poseidon over the quantized model parameters, under the
+  model's opening. Computed once (`zkml-prover commit --opening FILE`) and
+  stored on-chain by the contract constructor at deploy, or later by
+  `set_model_hash`.
+- **Input commitment:** Poseidon over the quantized input features, under the
+  same opening and a different domain. Carried in the public inputs of every
+  proof.
 
 The contract does not recompute Poseidon on-chain. It checks that the
 `model_hash` public input equals the stored commitment, and the Groth16 proof
 binds all public inputs, including `input_hash`, to the proven computation.
+
+## Openings
+
+A commitment that is only a hash of public-format data is binding but not
+hiding. The parameters of a small model, a tree with a few round thresholds or
+a logistic regression with a handful of weights, can be recovered from its
+public commitment by hashing candidate models until one matches, and so can
+input features drawn from a small range, such as an age or a yes/no flag.
+Commitments made before `0.0.4` work this way.
+
+Since `0.0.4`, both commitments start from a 32-byte opening:
+
+- **One per registration.** Generate it when the model is registered, from a
+  cryptographically secure source, and keep it with the model:
+
+  ```bash
+  openssl rand -hex 32 > model.opening
+  ```
+
+  The CLI reads it as 64 hex characters and refuses an all-zero value.
+  `*.opening` files are ignored by git in this repository.
+- **Needed for every proof.** The zkVM guest takes it as a private input,
+  recomputes both commitments with it, and never writes it to the journal. A
+  proof made with another opening carries another `model_hash` and fails the
+  contract's model check.
+- **Kept private.** Whoever holds the opening can test guesses against the
+  commitments again, so it belongs with the model, not with the proofs. Losing
+  it means registering the model again under a new one.
+
+The same input under the same opening always gives the same input commitment.
+That is what lets the [nullifier](#nullifier-scheme) refuse a second recording
+of one inference, and it also means an observer can tell that two proofs used
+the same input, without learning the input.
 
 ## Parameters
 
@@ -45,11 +82,12 @@ So `+w` and `-w` always produce different field elements.
   <img src="/diagrams/05-commitments.svg" alt="Poseidon commitment construction" />
 </Frame>
 
-`poseidon_commit(elements, domain)` chains fixed-arity Poseidon calls over chunks
-of 2 elements:
+A commitment chains fixed-arity Poseidon calls over chunks of 2 elements. The
+hiding commitments start the chain from a hash of the domain and the opening,
+read as a little-endian integer reduced modulo `r`:
 
 ```text
-state = Fr(domain)
+state = Poseidon_2(Fr(domain), Fr(opening))
 for (i, chunk) in elements.chunks(2):
     x = pad_with_zeros(chunk, 2)
     x[0] = x[0] + state + Fr(i)
@@ -57,25 +95,25 @@ for (i, chunk) in elements.chunks(2):
 commitment = le_bytes(state)
 ```
 
-The chunk index and the previous state are mixed into the first element of each
-chunk, which makes the result order-sensitive.
+Every later state depends on the first, so the commitment cannot be recomputed
+for a guessed model without the opening. The chunk index and the previous state
+are mixed into the first element of each chunk, which makes the result
+order-sensitive. The deterministic functions run the same loop from
+`state = Fr(domain)`.
 
 ### Public functions
 
-| Function          | Domain | Used by                                            |
-| ----------------- | ------ | -------------------------------------------------- |
-| `commitment_hash` | `0`    | `model_commitment`, `input_commitment`, the zkVM guest, the CLI |
-| `commit_i64`      | `0`    | `bundle_id`                                        |
-| `commit_model`    | `1`    | Available, not used by the proving path            |
-| `commit_inputs`   | `2`    | Available, not used by the proving path            |
+| Function          | Domain | Hiding | Used by                                     |
+| ----------------- | ------ | ------ | ------------------------------------------- |
+| `commit_model`    | `3`    | Yes    | `model_commitment`, the zkVM guest, the CLI |
+| `commit_inputs`   | `4`    | Yes    | `input_commitment`, the zkVM guest          |
+| `commitment_hash` | `0`    | No     | Generic hashing                             |
+| `commit_i64`      | `0`    | No     | `bundle_id`, the Merkle tree                |
 
-> **Known limitation.** The proving path (host and guest) uses
-> `commitment_hash` with domain `0` for both models and inputs, so model and
-> input commitments currently share one domain. `commit_model` and
-> `commit_inputs` implement the intended separation but are not wired in, and
-> an empty element list returns the domain value without hashing. Unifying on
-> the domain-separated functions is tracked as follow-up work. See
-> [Known limitations](/security/known-limitations).
+Domains `1` and `2` belonged to the earlier, non-hiding `commit_model` and
+`commit_inputs`; the hiding versions take new tags so the two schemes never
+produce the same value. Up to `0.0.3` the proving path used `commitment_hash`
+for both models and inputs.
 
 ## Model serialization
 
@@ -114,7 +152,8 @@ Every model starts with its kind, the same number the journal carries:
 
 **Inputs:** `features[0..n]` in model feature order, with no length prefix. The
 hash pads the last chunk with zeros, so `[x]` and `[x, 0]` commit to the same
-value; see [Known limitations](/security/known-limitations).
+value; inference refuses an input whose length does not match the model, so
+this cannot change a result. See [Known limitations](/security/known-limitations).
 
 ## Public input byte order
 
@@ -166,9 +205,11 @@ model parameters so a single chunk can be opened later.
 ## Tests
 
 Snapshot tests (`insta`) in `crates/zkml-common/src/commitment.rs` and
-`merkle.rs` pin the digests for representative models, inputs, and trees.
-Any change to the scheme changes the snapshots and must be reviewed as a
-consensus-critical change.
+`merkle.rs` pin the digests for representative models, inputs, and trees, with
+a fixed public opening. Any change to the scheme changes the snapshots and must
+be reviewed as a consensus-critical change. A test also checks that no plain
+hash of a model matches its hiding commitment, which is the property the
+opening exists for.
 
 ## References
 

@@ -8,8 +8,12 @@
 #
 # Run it from the repository root:
 #
-#   examples/kyc-demo/deploy.sh [--bundle FILE] [--risc0-params FILE] [--contract-id ID]
+#   examples/kyc-demo/deploy.sh [--opening FILE] [--bundle FILE] [--risc0-params FILE] [--contract-id ID]
 #
+#   --opening FILE       The model's opening, the secret that keeps its
+#                        commitment hiding. Default target/kyc-demo/model.opening,
+#                        generated from 32 random bytes if it does not exist.
+#                        Keep it: proving again for this registration needs it.
 #   --bundle FILE        Submit this bundle (from `prove --groth16`) instead of
 #                        proving here.
 #   --risc0-params FILE  Register these RISC Zero values (from
@@ -42,12 +46,14 @@ WORK="target/kyc-demo"
 BUNDLE=""
 PARAMS=""
 CONTRACT_ID=""
+OPENING="$WORK/model.opening"
 while [ $# -gt 0 ]; do
     case "$1" in
         --bundle) BUNDLE="$2"; shift 2 ;;
         --risc0-params) PARAMS="$2"; shift 2 ;;
         --contract-id) CONTRACT_ID="$2"; shift 2 ;;
-        -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --opening) OPENING="$2"; shift 2 ;;
+        -h|--help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
     esac
 done
@@ -75,7 +81,13 @@ ADMIN="$(stellar keys address "$IDENTITY" | tr -d '\r')"
 echo "admin: $ADMIN"
 
 step "2. Model commitment"
-MODEL_HASH="$(cargo run -q -p zkml-prover -- commit "$MODEL" | tr -d '\r')"
+if [ ! -f "$OPENING" ]; then
+    # 32 bytes from the operating system's secure random source, readable only
+    # by this user.
+    (umask 077 && "$PYTHON" -c 'import secrets; print(secrets.token_hex(32))' > "$OPENING")
+    echo "generated a new opening in $OPENING: keep it private, and keep it"
+fi
+MODEL_HASH="$(cargo run -q -p zkml-prover -- commit "$MODEL" --opening "$OPENING" | tr -d '\r')"
 echo "$MODEL: $MODEL_HASH"
 
 step "3. RISC Zero values for the reproducible guest"
@@ -91,7 +103,7 @@ step "4. Bundle"
 if [ -z "$BUNDLE" ]; then
     BUNDLE="$WORK/bundle.json"
     run env ZKML_GUEST_DOCKER=1 RISC0_DEV_MODE=0 cargo run -q -p zkml-prover --features groth16 -- \
-        prove "$MODEL" -i "$INPUT" --groth16 -o "$BUNDLE"
+        prove "$MODEL" -i "$INPUT" --opening "$OPENING" --groth16 -o "$BUNDLE"
 fi
 SEAL="$(json_field "$BUNDLE" seal)"
 JOURNAL="$(json_field "$BUNDLE" journal)"
@@ -99,7 +111,7 @@ JOURNAL="$(json_field "$BUNDLE" journal)"
     || die "$BUNDLE was proved by guest $(json_field "$BUNDLE" image_id), not $IMAGE_ID; prove and export with the same ZKML_GUEST_DOCKER=1 build"
 # Journal bytes 8..40 are the model hash: refuse here what the contract would.
 [ "${JOURNAL:16:64}" = "$MODEL_HASH" ] \
-    || die "$BUNDLE is for model ${JOURNAL:16:64}, not $MODEL ($MODEL_HASH)"
+    || die "$BUNDLE is for model commitment ${JOURNAL:16:64}, not $MODEL under $OPENING ($MODEL_HASH)"
 echo "seal: ${#SEAL} hex chars, journal: ${#JOURNAL} hex chars"
 
 if [ -z "$CONTRACT_ID" ]; then

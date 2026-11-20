@@ -76,8 +76,9 @@ cd ZKML-Soroban
 
 cargo test --workspace
 
-# Commit to a model and run inference with the prover CLI
-cargo run -p zkml-prover -- commit examples/models/credit_lr.json
+# Commit to a model under a fresh secret opening, and run inference
+openssl rand -hex 32 > model.opening
+cargo run -p zkml-prover -- commit examples/models/credit_lr.json --opening model.opening
 cargo run -p zkml-prover -- infer examples/models/credit_lr.json -i 0.5,0.2,0.1,0.9
 
 # Build the verifier contract

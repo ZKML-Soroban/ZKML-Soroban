@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- Model and input commitments are hiding. `commit_model(model, opening)` and
+  `commit_inputs(features, opening)` in `zkml-common` take an `Opening`, 32
+  secret random bytes chosen when a model is registered, and start the Poseidon
+  chain from `Poseidon(domain, opening)`, with new domain tags `3` and `4`. The
+  zkVM guest reads the opening as a private input and never writes it to the
+  journal. Every model commitment changes, so models have to be registered
+  again, and the guest image id changes.
+- `zkml-prover commit` and `prove` need `--opening FILE` (64 hex characters;
+  all-zero is refused), and `infer` and `inspect` no longer print a commitment.
+  In the prover library, `model_commitment`, `input_commitment`, `journal_for`,
+  `generate_proof`, `generate_receipt` and `prove_groth16` take the opening.
+- `examples/kyc-demo/deploy.sh` takes `--opening`, and otherwise generates one
+  in `target/kyc-demo/model.opening`.
+
+### Security
+- Fixes GHSA-x4pc-c7xq-p474 (medium). Model and input commitments were
+  deterministic hashes, so the parameters of a model with few or predictable
+  values, or a predictable input, could be recovered from the public commitment
+  by hashing candidates until one matched. With the opening mixed in first, a
+  commitment reveals nothing to anyone who does not hold the opening and still
+  binds a proof to one model. Commitments made with `0.0.3` or earlier stay
+  exposed: register models again, and replace a model whose parameters are
+  sensitive. `*.opening` files are ignored by git. Reported privately through
+  GitHub's vulnerability reporting.
+
 ## [0.0.3] - 2026-11-20
 
 Third crates.io release (`zkml-common`, `zkml-verifier`), and the first whose

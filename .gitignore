@@ -20,6 +20,11 @@ Thumbs.db
 .env
 .env.local
 
+# Model openings are secrets: anyone who holds one can test guesses against
+# the public commitments. The test fixture is public on purpose.
+*.opening
+!crates/zkml-prover/tests/fixtures/test.opening
+
 # Coverage and profiling
 *.profraw
 *.profdata
