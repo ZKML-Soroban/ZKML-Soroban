@@ -13,6 +13,9 @@ use zkml_common::fixed_point::FixedPoint;
 use zkml_prover::model_io::JsonModel;
 use zkml_prover::prover::{generate_receipt, input_commitment, model_commitment};
 
+/// A fixed opening for the test receipts; any value works.
+const OPENING: [u8; 32] = [0x11; 32];
+
 #[derive(Debug, Deserialize)]
 struct VectorFile {
     cases: Vec<VectorCase>,
@@ -56,16 +59,16 @@ fn dev_mode_receipt_matches_native_for_all_tree_vectors() {
     let file = load_tree_vectors();
     for case in &file.cases {
         let (model, inputs) = case_to_model_inputs(case);
-        let (_receipt, journal) =
-            generate_receipt(&model, &inputs).unwrap_or_else(|e| panic!("case {}: {e}", case.name));
+        let (_receipt, journal) = generate_receipt(&model, &inputs, &OPENING)
+            .unwrap_or_else(|e| panic!("case {}: {e}", case.name));
 
         assert_eq!(
             journal.output, case.expected_output_raw,
             "case {} journal output",
             case.name
         );
-        assert_eq!(journal.model_hash, model_commitment(&model));
-        assert_eq!(journal.input_hash, input_commitment(&inputs));
+        assert_eq!(journal.model_hash, model_commitment(&model, &OPENING));
+        assert_eq!(journal.input_hash, input_commitment(&inputs, &OPENING));
     }
 }
 
@@ -88,6 +91,6 @@ fn real_proof_decision_tree_stump() {
         .find(|c| c.name == "depth1_left_branch")
         .expect("depth1_left_branch vector");
     let (model, inputs) = case_to_model_inputs(case);
-    let (_receipt, journal) = generate_receipt(&model, &inputs).expect("real prove");
+    let (_receipt, journal) = generate_receipt(&model, &inputs, &OPENING).expect("real prove");
     assert_eq!(journal.output, case.expected_output_raw);
 }

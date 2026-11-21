@@ -65,7 +65,8 @@ milliseconds with a clear error rather than minutes later.
 ```bash
 # Real bundle (minutes, ~10 GB of RAM, x86_64 Linux with Docker)
 cargo run -p zkml-prover --features groth16 -- \
-  prove examples/models/credit_lr.json -i 0.5,0.2,0.9,0.1 --groth16 -o bundle.json
+  prove examples/models/credit_lr.json -i 0.5,0.2,0.9,0.1 --opening model.opening \
+  --groth16 -o bundle.json
 
 # Verify it with RISC Zero's own verifier
 cargo run -p zkml-prover --features zkvm -- verify-bundle bundle.json

@@ -23,6 +23,11 @@ use zkml_prover::prover::{
 
 const CREDIT: &str = "../../examples/models/credit_lr.json";
 
+/// The opening the golden receipt is proved with. Public on purpose: the
+/// receipt is a test vector, not a registration whose model has to stay
+/// private.
+const OPENING: [u8; 32] = [0x2a; 32];
+
 fn credit_model() -> (Model, Vec<FixedPoint>) {
     let model = import_json(&std::fs::read(CREDIT).expect("credit_lr.json is readable"))
         .expect("credit_lr.json parses");
@@ -40,7 +45,7 @@ fn dev_mode_is_refused_because_it_produces_no_seal() {
     std::env::set_var("RISC0_DEV_MODE", "1");
     let (model, inputs) = credit_model();
 
-    match prove_groth16(&model, &inputs, &ProverBackend::Local) {
+    match prove_groth16(&model, &inputs, &OPENING, &ProverBackend::Local) {
         Err(ProveError::DevModeHasNoSeal) => {}
         other => panic!(
             "dev mode must be refused, got {other:?}",
@@ -54,7 +59,7 @@ fn the_boundless_backend_reports_that_it_is_not_implemented() {
     let (model, inputs) = credit_model();
     let backend = ProverBackend::parse("boundless").expect("boundless is a known backend name");
 
-    match prove_groth16(&model, &inputs, &backend) {
+    match prove_groth16(&model, &inputs, &OPENING, &backend) {
         Err(ProveError::RemoteBackend(message)) => {
             assert!(message.contains("not implemented"), "got: {message}");
         }
@@ -172,7 +177,8 @@ fn real_groth16_bundle_verifies() {
     std::env::set_var("RISC0_DEV_MODE", "0");
     let (model, inputs) = credit_model();
 
-    let output = prove_groth16(&model, &inputs, &ProverBackend::Local).expect("groth16 prove");
+    let output =
+        prove_groth16(&model, &inputs, &OPENING, &ProverBackend::Local).expect("groth16 prove");
     assert_eq!(output.seal.len(), SEAL_LEN, "seal is selector + proof");
     assert_eq!(output.image_id, image_id());
     println!(

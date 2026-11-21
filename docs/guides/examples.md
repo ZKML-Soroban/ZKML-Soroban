@@ -20,8 +20,9 @@ The score is compared with `decision_threshold` (`0.0`) to produce
 Export a verification bundle for the same evaluation:
 
 ```bash
+openssl rand -hex 32 > model.opening
 cargo run -p zkml-prover -- prove examples/models/credit_lr.json \
-  -i "0.5,0.2,0.9,0.1" --no-proof -o bundle.json
+  -i "0.5,0.2,0.9,0.1" --opening model.opening --no-proof -o bundle.json
 ```
 
 `--no-proof` writes the public inputs only. Use `--groth16` instead for a

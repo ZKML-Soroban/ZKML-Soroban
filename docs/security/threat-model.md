@@ -8,10 +8,11 @@ icon: "user-shield"
 
 - **Result integrity:** a recorded result must come from the committed model
   evaluated on the committed input.
-- **Model confidentiality:** weights are not published on-chain; only their
-  commitment is.
-- **Input confidentiality:** input features are not published on-chain; only
-  their commitment is.
+- **Model confidentiality:** weights are not published on-chain; only a hiding
+  commitment under the model's private opening is (since `0.0.4`; see
+  [Commitments](/concepts/commitments#openings)).
+- **Input confidentiality:** input features are not published on-chain; only a
+  hiding commitment under the same opening is.
 - **Contract control:** only the admin can change the key, the model, the admin,
   or the pause flag.
 
@@ -20,6 +21,9 @@ icon: "user-shield"
 - Groth16 over BN254 is sound and the verification key was generated honestly.
 - The prover operator sees model and inputs in the clear (zkVM proving is not
   confidential computing).
+- The model's opening is generated from a secure random source and kept
+  private by whoever proves with the model. Anyone who holds it can test
+  guesses against the commitments.
 - The admin key is held securely; the admin can replace the model commitment and
   verification key at any time.
 
@@ -29,6 +33,7 @@ icon: "user-shield"
 | ------ | ---------- | ------ |
 | Forged inference result | Groth16 pairing check with BN254 host functions | Implemented (contract side; no production proofs yet) |
 | Proof for a different model | `model_hash` public input must equal the stored commitment | Implemented |
+| Recovering a predictable model or input from its public commitment | Commitments are hiding: the guest starts both from a private 32-byte opening, which never reaches the journal | Implemented in `0.0.4`; commitments made with `0.0.3` or earlier stay recoverable for predictable models (GHSA-x4pc-c7xq-p474) |
 | Input substitution | `input_hash` is a public input bound by the proof | Implemented (contract side; no production proofs yet) |
 | Replay of an accepted proof | SHA-256 nullifier over the public inputs in persistent storage | Implemented |
 | Malformed or oversized public inputs | Exact 80-byte layout, per-field length checks | Implemented |

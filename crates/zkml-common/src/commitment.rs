@@ -7,6 +7,22 @@
 //!
 //! This implementation uses Poseidon with circomlib-compatible parameters over
 //! the BN254 scalar field, matching the Soroban host function configuration.
+//!
+//! # Hiding
+//!
+//! [`commit_model`] and [`commit_inputs`] are hiding: each takes an [`Opening`],
+//! 32 secret random bytes chosen when the model is registered and kept by
+//! whoever proves with it. A plain hash of the parameters would not be: a model
+//! with few or predictable parameters, like a small tree with round
+//! thresholds, can be recovered from its public commitment by trying candidate
+//! models until one matches, and the same goes for input features. With the
+//! opening mixed in first, a commitment says nothing about the model to anyone
+//! who does not hold the opening, and it still binds the proof to exactly one
+//! model.
+//!
+//! [`commitment_hash`] and [`commit_i64`] stay deterministic. They are generic
+//! hashes, used for Merkle trees and identifiers, and must not be used to hide
+//! parameters or inputs.
 
 use crate::journal::ModelKind;
 use crate::models::{Model, TreeNode};
@@ -23,11 +39,23 @@ use alloc::vec::Vec;
 /// A 32-byte commitment value.
 pub use crate::Commitment;
 
-/// Domain tag for model commitments (capacity element initialization).
-const MODEL_DOMAIN: u64 = 1;
+/// The secret that makes [`commit_model`] and [`commit_inputs`] hiding.
+///
+/// 32 bytes from a cryptographically secure random source, generated once
+/// when a model is registered, and kept private by whoever proves with that
+/// model: it is needed again for every proof, and anyone who holds it can test
+/// guesses against the public commitments. It is read as a little-endian
+/// integer reduced modulo the BN254 scalar field, so it keeps more than 250
+/// bits of entropy.
+pub type Opening = [u8; 32];
 
-/// Domain tag for input commitments (capacity element initialization).
-const INPUT_DOMAIN: u64 = 2;
+/// Domain tag for hiding model commitments. Tags 1 and 2 belonged to the
+/// earlier, non-hiding model and input commitments; new tags keep the two
+/// schemes from ever producing the same value.
+const MODEL_DOMAIN: u64 = 3;
+
+/// Domain tag for hiding input commitments.
+const INPUT_DOMAIN: u64 = 4;
 
 /// State size for Poseidon (t=3: rate=2, capacity=1).
 /// This matches the circomlib implementation and CAP-0075 defaults.
@@ -45,11 +73,31 @@ const STATE_SIZE: usize = 3;
 /// For inputs exceeding the rate, we use iterative hashing (Merkle-Damgard style):
 /// each chunk is hashed with the previous hash as input, chaining the results.
 ///
+/// Deterministic, so not hiding; see [`poseidon_commit_hiding`].
+///
 /// # Arguments
 ///
 /// * `elements` - Sequence of i64 values to hash
-/// * `domain` - Domain tag (1 for model, 2 for input)
+/// * `domain` - Domain tag
 fn poseidon_commit(elements: &[i64], domain: u64) -> Commitment {
+    poseidon_chain(Fr::from(domain), elements)
+}
+
+/// A hiding Poseidon commitment: the chain of [`poseidon_commit`], started from
+/// `Poseidon(domain, opening)` instead of the bare domain tag.
+///
+/// Every later step depends on that first hash, so without the opening the
+/// commitment cannot be recomputed for a guessed model or input.
+fn poseidon_commit_hiding(elements: &[i64], domain: u64, opening: &Opening) -> Commitment {
+    let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
+    let blinding = Fr::from_le_bytes_mod_order(opening);
+    let start = poseidon.hash(&[Fr::from(domain), blinding]).unwrap();
+    poseidon_chain(start, elements)
+}
+
+/// Hash `elements` in chunks of the rate, chaining each chunk's hash into the
+/// next, starting from `start`.
+fn poseidon_chain(start: Fr, elements: &[i64]) -> Commitment {
     let rate = STATE_SIZE - 1; // rate = 2 for t=3
 
     // Convert i64 elements to Fr field elements with sign preservation
@@ -73,8 +121,7 @@ fn poseidon_commit(elements: &[i64], domain: u64) -> Commitment {
     let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
 
     // Iterative hashing: chain hashes for inputs exceeding rate
-    // Start with domain tag as initial hash
-    let mut current_hash = Fr::from(domain);
+    let mut current_hash = start;
 
     for (chunk_index, chunk) in fr_elements.chunks(rate).enumerate() {
         let mut inputs: Vec<Fr> = chunk.to_vec();
@@ -95,10 +142,11 @@ fn poseidon_commit(elements: &[i64], domain: u64) -> Commitment {
     result
 }
 
-/// Canonical commitment over little-endian `i64` field elements.
+/// Deterministic hash over little-endian `i64` field elements.
 ///
-/// Host and zkVM guest must call this same function so journal public inputs
-/// match native cross-checks.
+/// Not hiding: anyone can recompute it for a guessed sequence. Model and input
+/// commitments use [`commit_model`] and [`commit_inputs`], which take an
+/// [`Opening`].
 ///
 /// This is implemented using Poseidon with circomlib-compatible parameters
 /// over BN254, matching the Soroban host function configuration from CAP-0075.
@@ -116,11 +164,10 @@ pub fn commitment_hash(elements: &[i64]) -> Commitment {
     poseidon_commit(elements, 0)
 }
 
-/// Flatten model parameters into the element stream used by
-/// [`commitment_hash`] for model binding.
+/// Flatten model parameters into the element stream [`commit_model`] hashes.
 ///
 /// Shared by the host prover and the zkVM guest so journal `model_hash`
-/// cannot drift from native `model_commitment`.
+/// cannot drift from the native commitment.
 ///
 /// The stream is injective: it starts with the model kind and length-prefixes
 /// every variable-length part, so two models of different shape cannot flatten
@@ -178,37 +225,26 @@ pub fn model_elements(model: &Model) -> Vec<i64> {
     out
 }
 
-/// Compute a Poseidon commitment to a model.
+/// Hiding Poseidon commitment to a model: the `model_hash` a verifier is
+/// registered with and a proof's journal carries.
 ///
-/// This hashes all quantized model parameters using the serialization order
-/// specified in docs/concepts/commitments.md, with domain separation tag 1.
-///
-/// # Arguments
-///
-/// * `model` - The model to commit to
-///
-/// # Returns
-///
-/// 32-byte Poseidon commitment
-pub fn commit_model(model: &Model) -> Commitment {
+/// Hashes [`model_elements`] under `opening`, with its own domain tag. The same
+/// model under two openings gives unrelated commitments, so the value says
+/// nothing about the parameters to anyone without the opening.
+pub fn commit_model(model: &Model, opening: &Opening) -> Commitment {
     let elements = model_elements(model);
-    poseidon_commit(&elements, MODEL_DOMAIN)
+    poseidon_commit_hiding(&elements, MODEL_DOMAIN, opening)
 }
 
-/// Compute a Poseidon commitment to input features.
+/// Hiding Poseidon commitment to input features: a proof's `input_hash`.
 ///
-/// This hashes the input feature vector with domain separation tag 2.
-///
-/// # Arguments
-///
-/// * `features` - Slice of FixedPoint input features
-///
-/// # Returns
-///
-/// 32-byte Poseidon commitment
-pub fn commit_inputs(features: &[crate::fixed_point::FixedPoint]) -> Commitment {
+/// Uses the model's opening under a different domain tag, so the prover needs
+/// one secret per registered model. The same input under the same opening
+/// gives the same commitment, which is what lets the verifier's nullifier
+/// refuse a second recording of the same inference.
+pub fn commit_inputs(features: &[crate::fixed_point::FixedPoint], opening: &Opening) -> Commitment {
     let elements: Vec<i64> = features.iter().map(|f| f.value).collect();
-    poseidon_commit(&elements, INPUT_DOMAIN)
+    poseidon_commit_hiding(&elements, INPUT_DOMAIN, opening)
 }
 
 /// Fold a sequence of little-endian `i64` field elements into a commitment.
@@ -299,6 +335,95 @@ mod tests_stability {
 }
 
 #[cfg(test)]
+mod tests_hiding {
+    use super::*;
+    use crate::fixed_point::FixedPoint;
+    use crate::models::{LogisticRegression, Model};
+
+    const OPENING: Opening = [7u8; 32];
+
+    fn model(weight: i64) -> Model {
+        Model::LogisticRegression(LogisticRegression {
+            weights: vec![
+                FixedPoint::from_raw(weight, 16),
+                FixedPoint::from_raw(2, 16),
+            ],
+            bias: FixedPoint::from_raw(3, 16),
+            decision_threshold: FixedPoint::from_raw(0, 16),
+        })
+    }
+
+    #[test]
+    fn the_same_model_and_opening_give_the_same_commitment() {
+        assert_eq!(
+            commit_model(&model(1), &OPENING),
+            commit_model(&model(1), &OPENING)
+        );
+    }
+
+    #[test]
+    fn another_opening_gives_an_unrelated_commitment() {
+        let mut other = OPENING;
+        other[0] ^= 1;
+        assert_ne!(
+            commit_model(&model(1), &OPENING),
+            commit_model(&model(1), &other)
+        );
+        let inputs = [FixedPoint::from_raw(5, 16)];
+        assert_ne!(
+            commit_inputs(&inputs, &OPENING),
+            commit_inputs(&inputs, &other)
+        );
+    }
+
+    /// The vulnerability this scheme closes: with only public data, an
+    /// attacker who enumerates candidate models finds the one whose plain hash
+    /// matches. Without the opening, no candidate's plain hash matches.
+    #[test]
+    fn a_plain_hash_of_the_right_model_does_not_match() {
+        let committed = commit_model(&model(1), &OPENING);
+        for weight in -100..=100 {
+            let elements = model_elements(&model(weight));
+            assert_ne!(commitment_hash(&elements), committed, "weight {weight}");
+            assert_ne!(
+                poseidon_commit(&elements, MODEL_DOMAIN),
+                committed,
+                "weight {weight}"
+            );
+        }
+    }
+
+    #[test]
+    fn model_and_input_commitments_use_separate_domains() {
+        let elements = [1i64, 2, 3];
+        assert_ne!(
+            poseidon_commit_hiding(&elements, MODEL_DOMAIN, &OPENING),
+            poseidon_commit_hiding(&elements, INPUT_DOMAIN, &OPENING)
+        );
+    }
+
+    #[test]
+    fn a_hiding_commitment_differs_from_the_plain_chain() {
+        let elements = [1i64, 2, 3];
+        assert_ne!(
+            poseidon_commit_hiding(&elements, MODEL_DOMAIN, &OPENING),
+            poseidon_commit(&elements, MODEL_DOMAIN)
+        );
+    }
+
+    #[test]
+    fn the_plain_chain_is_unchanged() {
+        // The refactor that added the hiding start must not move the
+        // deterministic hashes the Merkle tree and identifiers rely on.
+        assert_eq!(commit_i64(&[1, 2, 3]), poseidon_commit(&[1, 2, 3], 0));
+        assert_eq!(
+            poseidon_chain(Fr::from(0u64), &[1, 2, 3]),
+            commit_i64(&[1, 2, 3])
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests_model_elements {
     use super::*;
     use crate::fixed_point::FixedPoint;
@@ -350,8 +475,8 @@ mod tests_model_elements {
             bias: FixedPoint::from_raw(3, 16),
             decision_threshold: FixedPoint::from_raw(0, 16),
         });
-        let hash1 = commit_model(&model);
-        let hash2 = commit_model(&model);
+        let hash1 = commit_model(&model, &[1; 32]);
+        let hash2 = commit_model(&model, &[1; 32]);
         assert_eq!(hash1, hash2);
     }
 
@@ -389,8 +514,8 @@ mod tests_model_elements {
             "different model shapes must not flatten to the same stream"
         );
         assert_ne!(
-            commit_model(&lr),
-            commit_model(&tree),
+            commit_model(&lr, &[1; 32]),
+            commit_model(&tree, &[1; 32]),
             "different model shapes must not share a commitment"
         );
     }
@@ -402,8 +527,8 @@ mod tests_model_elements {
             FixedPoint::from_raw(2, 16),
             FixedPoint::from_raw(3, 16),
         ];
-        let hash1 = commit_inputs(&features);
-        let hash2 = commit_inputs(&features);
+        let hash1 = commit_inputs(&features, &[1; 32]);
+        let hash2 = commit_inputs(&features, &[1; 32]);
         assert_eq!(hash1, hash2);
     }
 
@@ -419,14 +544,20 @@ mod tests_model_elements {
             bias: FixedPoint::from_raw(3, 16),
             decision_threshold: FixedPoint::from_raw(0, 16),
         });
-        assert_ne!(commit_model(&model1), commit_model(&model2));
+        assert_ne!(
+            commit_model(&model1, &[1; 32]),
+            commit_model(&model2, &[1; 32])
+        );
     }
 
     #[test]
     fn changing_input_changes_commitment() {
         let features1 = vec![FixedPoint::from_raw(1, 16), FixedPoint::from_raw(2, 16)];
         let features2 = vec![FixedPoint::from_raw(1, 16), FixedPoint::from_raw(99, 16)]; // Changed input
-        assert_ne!(commit_inputs(&features1), commit_inputs(&features2));
+        assert_ne!(
+            commit_inputs(&features1, &[1; 32]),
+            commit_inputs(&features2, &[1; 32])
+        );
     }
 }
 
@@ -436,6 +567,9 @@ mod tests_snapshot {
     use crate::fixed_point::FixedPoint;
     use crate::models::{DecisionTree, DenseLayer, LogisticRegression, Model, TinyMLP, TreeNode};
     use insta::assert_debug_snapshot;
+
+    /// A fixed, public opening: these snapshots pin the scheme, not a secret.
+    const SNAPSHOT_OPENING: Opening = [0x5a; 32];
 
     #[test]
     fn snapshot_logistic_regression_commitment() {
@@ -448,7 +582,7 @@ mod tests_snapshot {
             bias: FixedPoint::from_raw(50, 16),
             decision_threshold: FixedPoint::from_raw(0, 16),
         });
-        let hash = commit_model(&model);
+        let hash = commit_model(&model, &SNAPSHOT_OPENING);
         assert_debug_snapshot!(hash);
     }
 
@@ -480,7 +614,7 @@ mod tests_snapshot {
                 },
             ],
         });
-        let hash = commit_model(&model);
+        let hash = commit_model(&model, &SNAPSHOT_OPENING);
         assert_debug_snapshot!(hash);
     }
 
@@ -494,7 +628,7 @@ mod tests_snapshot {
                 output_size: 1,
             }],
         });
-        let hash = commit_model(&model);
+        let hash = commit_model(&model, &SNAPSHOT_OPENING);
         assert_debug_snapshot!(hash);
     }
 
@@ -505,14 +639,14 @@ mod tests_snapshot {
             FixedPoint::from_raw(200, 16),
             FixedPoint::from_raw(300, 16),
         ];
-        let hash = commit_inputs(&features);
+        let hash = commit_inputs(&features, &SNAPSHOT_OPENING);
         assert_debug_snapshot!(hash);
     }
 
     #[test]
     fn snapshot_empty_input_commitment() {
         let features: Vec<FixedPoint> = vec![];
-        let hash = commit_inputs(&features);
+        let hash = commit_inputs(&features, &SNAPSHOT_OPENING);
         assert_debug_snapshot!(hash);
     }
 }

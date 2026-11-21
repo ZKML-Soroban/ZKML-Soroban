@@ -70,8 +70,9 @@ From the repository root, on x86_64 Linux with Docker and the stellar CLI:
 examples/kyc-demo/deploy.sh
 ```
 
-It creates and funds a testnet identity if needed, deploys the verifier with
-the KYC tree's commitment, registers the reproducible guest, proves one risk
+It creates and funds a testnet identity if needed, generates the model's
+secret opening in `target/kyc-demo/model.opening`, deploys the verifier with
+the KYC tree's hiding commitment, registers the reproducible guest, proves one risk
 score with Groth16 (about 25 minutes of CPU) and records it with
 `verify_receipt`, then reads the result back. The step-by-step commands are in
 [Testnet deployment](/guides/deployment), which also lists the transactions

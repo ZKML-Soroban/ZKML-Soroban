@@ -11,12 +11,18 @@
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcCommand;
 
+use zkml_common::commitment::from_hex;
 use zkml_prover::cli::{cmd_prove, cmd_validate, CliError};
 use zkml_prover::model_io::import_json;
 use zkml_prover::prover::{bundle_from_json, model_commitment};
 use zkml_prover::quantization::QuantizationConfig;
 
 const CREDIT: &str = "../../examples/models/credit_lr.json";
+const OPENING: &str = "tests/fixtures/test.opening";
+
+fn opening() -> [u8; 32] {
+    from_hex(std::fs::read_to_string(OPENING).unwrap().trim()).expect("the fixture is 64 hex")
+}
 
 /// Per-test scratch directory under the target dir, so parallel tests and
 /// repeated runs never collide on a fixed filename.
@@ -40,6 +46,7 @@ fn prove_output_round_trips_and_binds_the_model() {
         Path::new(CREDIT),
         "0.5,0.2,0.9,0.1",
         None,
+        Path::new(OPENING),
         false,
         "local",
         false,
@@ -52,7 +59,7 @@ fn prove_output_round_trips_and_binds_the_model() {
     let model = import_json(&std::fs::read(CREDIT).unwrap()).unwrap();
     assert_eq!(
         bundle.public_inputs.model_hash,
-        model_commitment(&model),
+        model_commitment(&model, &opening()),
         "bundle model_hash must equal the model commitment registered on-chain"
     );
     // Phase 1: proof bytes are a placeholder until issue #11.
@@ -67,6 +74,7 @@ fn prove_to_file_round_trips() {
         Path::new(CREDIT),
         "0.5,0.2,0.9,0.1",
         Some(&path),
+        Path::new(OPENING),
         false,
         "local",
         false,
@@ -80,7 +88,14 @@ fn prove_to_file_round_trips() {
 
 #[test]
 fn prove_without_a_proof_mode_exits_two_and_names_both_flags() {
-    let out = run_bin(&["prove", CREDIT, "-i", "0.5,0.2,0.9,0.1"]);
+    let out = run_bin(&[
+        "prove",
+        CREDIT,
+        "-i",
+        "0.5,0.2,0.9,0.1",
+        "--opening",
+        OPENING,
+    ]);
     assert_eq!(out.status.code(), Some(2));
     assert!(
         out.stdout.is_empty(),
@@ -93,7 +108,15 @@ fn prove_without_a_proof_mode_exits_two_and_names_both_flags() {
 
 #[test]
 fn prove_no_proof_warns_on_stderr_and_prints_only_json() {
-    let out = run_bin(&["prove", CREDIT, "-i", "0.5,0.2,0.9,0.1", "--no-proof"]);
+    let out = run_bin(&[
+        "prove",
+        CREDIT,
+        "-i",
+        "0.5,0.2,0.9,0.1",
+        "--no-proof",
+        "--opening",
+        OPENING,
+    ]);
     assert!(
         out.status.success(),
         "{}",
@@ -203,10 +226,17 @@ fn wrong_feature_count_exits_one_without_panicking() {
 
 #[test]
 fn commit_succeeds_and_prints_hex() {
-    let out = run_bin(&["commit", CREDIT]);
+    let out = run_bin(&["commit", CREDIT, "--opening", OPENING]);
     assert_eq!(out.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(stdout.trim().len(), 64);
+}
+
+#[test]
+fn commit_without_an_opening_exits_two() {
+    let out = run_bin(&["commit", CREDIT]);
+    assert_eq!(out.status.code(), Some(2), "clap's missing-argument code");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--opening"));
 }
 
 #[test]
@@ -217,6 +247,6 @@ fn unknown_subcommand_exits_two() {
 
 #[test]
 fn missing_model_exits_one() {
-    let out = run_bin(&["commit", "/nonexistent/model.json"]);
+    let out = run_bin(&["commit", "/nonexistent/model.json", "--opening", OPENING]);
     assert_eq!(out.status.code(), Some(1));
 }

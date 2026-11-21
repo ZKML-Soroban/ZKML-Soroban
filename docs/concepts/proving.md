@@ -199,7 +199,8 @@ in `risc0-zkvm` (`ProverOpts::groth16()`), so there is no separate pin for it.
 ```bash
 # Real proof, written to disk.
 cargo run -p zkml-prover --features groth16 -- \
-  prove examples/models/credit_lr.json -i 0.5,0.2,0.9,0.1 --groth16 -o bundle.json
+  prove examples/models/credit_lr.json -i 0.5,0.2,0.9,0.1 --opening model.opening \
+  --groth16 -o bundle.json
 
 # Verify it locally, with RISC Zero's own verifier.
 cargo run -p zkml-prover --features zkvm -- verify-bundle bundle.json

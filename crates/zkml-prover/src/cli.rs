@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
-use zkml_common::commitment::to_hex;
+use zkml_common::commitment::{from_hex, to_hex, Opening};
 use zkml_common::error::ZkmlError;
 use zkml_common::fixed_point::{FixedPoint, DEFAULT_SCALE};
 use zkml_common::inference::try_run_inference;
@@ -59,15 +59,23 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Print the model commitment (the value registered on-chain at deploy).
+    ///
+    /// The commitment is hiding: it is computed under the model's opening, so
+    /// the same opening has to be passed to `prove`.
     Commit {
         /// Path to a JSON model.
         model: PathBuf,
+        /// File holding the model's opening: 64 hex characters (32 random
+        /// bytes), created once per registration, for example with
+        /// `openssl rand -hex 32 > model.opening`, and kept private.
+        #[arg(long)]
+        opening: PathBuf,
         /// Commit even if the model fails the range and overflow-bounds checks.
         #[arg(long)]
         skip_safety_check: bool,
     },
 
-    /// Run inference and print the commitment, dequantized output, and raw Q16.16 value.
+    /// Run inference and print the dequantized output and the raw Q16.16 value.
     Infer {
         /// Path to a JSON model.
         model: PathBuf,
@@ -96,6 +104,11 @@ pub enum Command {
         /// Write the bundle here instead of stdout.
         #[arg(short, long)]
         out: Option<PathBuf>,
+        /// File holding the model's opening: 64 hex characters (32 random
+        /// bytes), created once per registration, for example with
+        /// `openssl rand -hex 32 > model.opening`, and kept private.
+        #[arg(long)]
+        opening: PathBuf,
         /// Prove in the zkVM and compress to Groth16 (requires the `groth16`
         /// feature, x86_64 Linux and Docker).
         #[arg(long)]
@@ -151,7 +164,7 @@ pub enum Command {
         min_agreement: f64,
     },
 
-    /// Print a model's kind, feature count, structure, commitment, and validity.
+    /// Print a model's kind, feature count, structure and validity.
     Inspect {
         /// Path to a JSON model.
         model: PathBuf,
@@ -204,6 +217,8 @@ pub enum CliError {
     Prove(ProveError),
     /// The command needs a feature this binary was not built with.
     FeatureDisabled { command: String, feature: String },
+    /// The opening file does not hold a usable opening.
+    Opening { path: String, message: String },
 }
 
 impl CliError {
@@ -260,6 +275,7 @@ impl core::fmt::Display for CliError {
             CliError::Validation(e) => write!(f, "validation failed: {e}"),
             CliError::Serialization(m) => write!(f, "failed to serialize bundle: {m}"),
             CliError::Prove(e) => write!(f, "{e}"),
+            CliError::Opening { path, message } => write!(f, "opening {path}: {message}"),
             CliError::FeatureDisabled { command, feature } => write!(
                 f,
                 "`{command}` needs the `{feature}` feature: rebuild with `cargo build -p zkml-prover --features {feature}`"
@@ -529,13 +545,15 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
     match &cli.command {
         Command::Commit {
             model,
+            opening,
             skip_safety_check,
-        } => cmd_commit(model, *skip_safety_check, out),
+        } => cmd_commit(model, opening, *skip_safety_check, out),
         Command::Infer { model, input } => cmd_infer(model, input, out),
         Command::Prove {
             model,
             input,
             out: dest,
+            opening,
             groth16,
             no_proof: _,
             backend,
@@ -544,6 +562,7 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
             model,
             input,
             dest.as_deref(),
+            opening,
             *groth16,
             backend,
             *skip_safety_check,
@@ -569,15 +588,46 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
     }
 }
 
-/// `commit <MODEL>`: print the model commitment as 64-char hex.
+/// `commit <MODEL> --opening <FILE>`: print the model commitment as 64-char hex.
 pub fn cmd_commit(
     model_path: &Path,
+    opening_path: &Path,
     skip_safety_check: bool,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let model = load_model(model_path)?;
     ensure_safe(&model, skip_safety_check)?;
-    writeln!(out, "{}", to_hex(&model_commitment(&model))).map_err(|e| io_err("<stdout>", e))
+    let opening = read_opening(opening_path)?;
+    writeln!(out, "{}", to_hex(&model_commitment(&model, &opening)))
+        .map_err(|e| io_err("<stdout>", e))
+}
+
+/// Read a model's opening: 64 hex characters, surrounding whitespace ignored.
+///
+/// An all-zero opening is refused. It hides nothing, and it is what a
+/// placeholder file is most likely to hold. The opening is never echoed, in
+/// output or in an error.
+pub fn read_opening(path: &Path) -> Result<Opening, CliError> {
+    let display = path.display().to_string();
+    let text = std::fs::read_to_string(path).map_err(|e| io_err(&display, e))?;
+    let hex = text.trim();
+    let malformed = || CliError::Opening {
+        path: display.clone(),
+        message: "expected 64 hex characters (32 bytes); create one with \
+                  `openssl rand -hex 32`"
+            .into(),
+    };
+    if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(malformed());
+    }
+    let opening = from_hex(hex).ok_or_else(malformed)?;
+    if opening == [0u8; 32] {
+        return Err(CliError::Opening {
+            path: display,
+            message: "an all-zero opening hides nothing; generate a random one".into(),
+        });
+    }
+    Ok(opening)
 }
 
 /// Refuse to commit to or prove a model the range and overflow-bounds passes
@@ -592,30 +642,30 @@ fn ensure_safe(model: &Model, skip: bool) -> Result<(), CliError> {
         .map_err(CliError::Validation)
 }
 
-/// `infer <MODEL> -i <CSV>`: commitment, dequantized output, raw Q16.16 value.
+/// `infer <MODEL> -i <CSV>`: dequantized output and raw Q16.16 value.
+///
+/// No commitment: it is computed under the model's opening, which inference
+/// does not need. `commit` prints it.
 pub fn cmd_infer(model_path: &Path, raw: &str, out: &mut impl Write) -> Result<(), CliError> {
     let model = load_model(model_path)?;
     let inputs = inputs_for(&model, model_path, raw)?;
     let output = try_run_inference(&model, &inputs).map_err(CliError::Inference)?;
 
-    writeln!(
-        out,
-        "model commitment: {}",
-        to_hex(&model_commitment(&model))
-    )
-    .and_then(|()| writeln!(out, "output: {}", output.dequantize()))
-    .and_then(|()| writeln!(out, "output (raw Q16.16): {}", output.value))
-    .map_err(|e| io_err("<stdout>", e))
+    writeln!(out, "output: {}", output.dequantize())
+        .and_then(|()| writeln!(out, "output (raw Q16.16): {}", output.value))
+        .map_err(|e| io_err("<stdout>", e))
 }
 
-/// `prove <MODEL> -i <CSV> (--groth16 | --no-proof) [--backend B] [-o <FILE>]`.
+/// `prove <MODEL> -i <CSV> --opening <FILE> (--groth16 | --no-proof) [--backend B] [-o <FILE>]`.
 ///
 /// `groth16: false` is `--no-proof`: clap refuses a call with neither flag, so
 /// the legacy bundle is only written when it was asked for.
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_prove(
     model_path: &Path,
     raw: &str,
     dest: Option<&Path>,
+    opening_path: &Path,
     groth16: bool,
     backend: &str,
     skip_safety_check: bool,
@@ -624,13 +674,14 @@ pub fn cmd_prove(
     let model = load_model(model_path)?;
     ensure_safe(&model, skip_safety_check)?;
     let inputs = inputs_for(&model, model_path, raw)?;
+    let opening = read_opening(opening_path)?;
 
     if groth16 {
-        return cmd_prove_groth16(&model, &inputs, dest, backend, out);
+        return cmd_prove_groth16(&model, &inputs, &opening, dest, backend, out);
     }
 
     #[allow(deprecated)]
-    let bundle = crate::prover::generate_proof(&model, &inputs)
+    let bundle = crate::prover::generate_proof(&model, &inputs, &opening)
         .map_err(|message| CliError::Inference(ZkmlError::InvalidModel(message)))?;
     let json = bundle_to_json(&bundle).map_err(CliError::Serialization)?;
 
@@ -663,6 +714,7 @@ fn write_or_print(
 fn cmd_prove_groth16(
     model: &Model,
     inputs: &[FixedPoint],
+    opening: &Opening,
     dest: Option<&Path>,
     backend: &str,
     out: &mut impl Write,
@@ -681,7 +733,7 @@ fn cmd_prove_groth16(
     )
     .map_err(|e| io_err("<stdout>", e))?;
 
-    let output = prove_groth16(model, inputs, &backend)?;
+    let output = prove_groth16(model, inputs, opening, &backend)?;
     let bundle = bundle_from_output(&output)?;
     let json = bundle_v2_to_json(&bundle)?;
 
@@ -697,6 +749,7 @@ fn cmd_prove_groth16(
 fn cmd_prove_groth16(
     _model: &Model,
     _inputs: &[FixedPoint],
+    _opening: &Opening,
     _dest: Option<&Path>,
     _backend: &str,
     _out: &mut impl Write,
@@ -894,7 +947,7 @@ pub fn cmd_validate(
         .map_err(|e| io_err("<stdout>", e))
 }
 
-/// `inspect <MODEL>`: kind, feature count, structure, commitment, validity.
+/// `inspect <MODEL>`: kind, feature count, structure, validity.
 pub fn cmd_inspect(model_path: &Path, out: &mut impl Write) -> Result<(), CliError> {
     let model = load_model(model_path)?;
 
@@ -935,9 +988,6 @@ pub fn cmd_inspect(model_path: &Path, out: &mut impl Write) -> Result<(), CliErr
     }
     .map_err(|e| io_err("<stdout>", e))?;
 
-    writeln!(out, "commitment: {}", to_hex(&model_commitment(&model)))
-        .map_err(|e| io_err("<stdout>", e))?;
-
     // Report validity rather than failing: `inspect` is a diagnostic, and a
     // broken model is exactly when you want to run it.
     let structure = match check_structure(&model, model_path) {
@@ -953,6 +1003,16 @@ mod tests_commands {
 
     const CREDIT: &str = "../../examples/models/credit_lr.json";
     const KYC: &str = "../../examples/models/kyc_tree.json";
+    const OPENING: &str = "tests/fixtures/test.opening";
+
+    /// Write `contents` to a fresh opening file and return its path.
+    fn opening_file(name: &str, contents: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join("zkml_cli_openings");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, contents).unwrap();
+        path
+    }
 
     fn capture(f: impl FnOnce(&mut Vec<u8>) -> Result<(), CliError>) -> Result<String, CliError> {
         let mut buf = Vec::new();
@@ -962,10 +1022,61 @@ mod tests_commands {
 
     #[test]
     fn commit_prints_64_hex_chars() {
-        let out = capture(|w| cmd_commit(Path::new(CREDIT), false, w)).unwrap();
+        let out = capture(|w| cmd_commit(Path::new(CREDIT), Path::new(OPENING), false, w)).unwrap();
         let hex = out.trim();
         assert_eq!(hex.len(), 64);
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn another_opening_gives_another_commitment() {
+        let other = opening_file("other.opening", &"ab".repeat(32));
+        let first = capture(|w| cmd_commit(Path::new(CREDIT), Path::new(OPENING), false, w));
+        let second = capture(|w| cmd_commit(Path::new(CREDIT), &other, false, w));
+        assert_ne!(first.unwrap(), second.unwrap());
+    }
+
+    #[test]
+    fn an_opening_with_a_trailing_newline_is_read() {
+        let path = opening_file("newline.opening", &format!("{}\n", "cd".repeat(32)));
+        assert_eq!(read_opening(&path).unwrap(), [0xcd; 32]);
+    }
+
+    #[test]
+    fn a_malformed_opening_is_refused_without_echoing_it() {
+        for (name, contents) in [
+            ("short.opening", "abcd".to_string()),
+            ("long.opening", "ab".repeat(33)),
+            ("not-hex.opening", "zz".repeat(32)),
+            ("signs.opening", "+1".repeat(32)),
+            ("multibyte.opening", "é".repeat(32)),
+        ] {
+            let path = opening_file(name, &contents);
+            match read_opening(&path) {
+                Err(e @ CliError::Opening { .. }) => {
+                    assert!(!e.to_string().contains(&contents), "{name}: {e}");
+                }
+                other => panic!("{name}: expected an opening error, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn an_all_zero_opening_is_refused() {
+        let path = opening_file("zero.opening", &"00".repeat(32));
+        assert!(matches!(read_opening(&path), Err(CliError::Opening { .. })));
+    }
+
+    #[test]
+    fn a_missing_opening_file_is_an_io_error() {
+        let err = cmd_commit(
+            Path::new(CREDIT),
+            Path::new("/nonexistent/model.opening"),
+            false,
+            &mut Vec::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, CliError::Io { .. }));
     }
 
     /// `commit` refuses a model the overflow-bounds pass rejects, so the tool
@@ -987,22 +1098,22 @@ mod tests_commands {
         std::fs::write(&path, model).unwrap();
 
         // Default: refused with a validation error, no commitment printed.
-        match cmd_commit(&path, false, &mut Vec::new()) {
+        match cmd_commit(&path, Path::new(OPENING), false, &mut Vec::new()) {
             Err(CliError::Validation(_)) => {}
             other => panic!("commit must refuse an overflowing model, got {other:?}"),
         }
 
         // With the opt-out, it commits anyway.
-        let out = capture(|w| cmd_commit(&path, true, w)).unwrap();
+        let out = capture(|w| cmd_commit(&path, Path::new(OPENING), true, w)).unwrap();
         assert_eq!(out.trim().len(), 64, "--skip-safety-check commits anyway");
 
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
-    fn infer_reports_commitment_and_both_output_forms() {
+    fn infer_reports_both_output_forms_and_no_commitment() {
         let out = capture(|w| cmd_infer(Path::new(CREDIT), "0.5,0.2,0.9,0.1", w)).unwrap();
-        assert!(out.contains("model commitment: "));
+        assert!(!out.contains("commitment"), "infer has no opening: {out}");
         assert!(out.contains("output: "));
         assert!(out.contains("output (raw Q16.16): "));
     }
@@ -1024,6 +1135,7 @@ mod tests_commands {
                 Path::new(CREDIT),
                 "0.5,0.2,0.9,0.1",
                 None,
+                Path::new(OPENING),
                 false,
                 "local",
                 false,
@@ -1038,8 +1150,16 @@ mod tests_commands {
 
     #[test]
     fn prove_needs_groth16_or_no_proof() {
-        let err = Cli::try_parse_from(["zkml-prover", "prove", "model.json", "-i", "0.5"])
-            .expect_err("prove without a proof mode must be refused");
+        let err = Cli::try_parse_from([
+            "zkml-prover",
+            "prove",
+            "model.json",
+            "-i",
+            "0.5",
+            "--opening",
+            "model.opening",
+        ])
+        .expect_err("prove without a proof mode must be refused");
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
         let text = err.to_string();
         assert!(text.contains("--groth16"), "got: {text}");
@@ -1056,6 +1176,8 @@ mod tests_commands {
             "0.5",
             "--groth16",
             "--no-proof",
+            "--opening",
+            "model.opening",
         ])
         .expect_err("--groth16 and --no-proof contradict each other");
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
@@ -1071,6 +1193,7 @@ mod tests_commands {
                 Path::new(KYC),
                 "0.6,0.1,0.0",
                 Some(&path),
+                Path::new(OPENING),
                 false,
                 "local",
                 false,
@@ -1099,6 +1222,7 @@ mod tests_commands {
         assert!(out.contains("features: 3"));
         assert!(out.contains("nodes: 5 (2 split, 3 leaf)"));
         assert!(out.contains("structure: valid"));
+        assert!(!out.contains("commitment"), "inspect has no opening: {out}");
     }
 
     #[test]
@@ -1110,8 +1234,13 @@ mod tests_commands {
 
     #[test]
     fn missing_model_file_is_an_io_error() {
-        let err =
-            cmd_commit(Path::new("/nonexistent/model.json"), false, &mut Vec::new()).unwrap_err();
+        let err = cmd_commit(
+            Path::new("/nonexistent/model.json"),
+            Path::new(OPENING),
+            false,
+            &mut Vec::new(),
+        )
+        .unwrap_err();
         assert!(matches!(err, CliError::Io { .. }));
         assert_eq!(err.exit_code(), 1);
     }
@@ -1178,6 +1307,8 @@ mod tests_args {
             "-i",
             "-1,-2",
             "--no-proof",
+            "--opening",
+            "model.opening",
         ])
         .unwrap();
         match cli.command {
@@ -1198,6 +1329,8 @@ mod tests_args {
             "-o",
             "bundle.json",
             "--no-proof",
+            "--opening",
+            "model.opening",
         ])
         .unwrap();
         match cli.command {

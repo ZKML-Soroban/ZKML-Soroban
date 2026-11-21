@@ -45,9 +45,14 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 
 ## Commitments
 
-- The proving path uses `commitment_hash` (domain `0`) for both model and input
-  commitments; the domain-separated `commit_model` (1) and `commit_inputs` (2)
-  are not wired in.
+- Commitments made with `0.0.3` or earlier are deterministic hashes. For a
+  model with few or predictable parameters, or a predictable input, the value
+  can be recovered from such a commitment by trying candidates, and a
+  commitment already published stays exposed. Register the model again under
+  an opening with `0.0.4`, and replace it too if its parameters are sensitive.
+- One opening covers a model and all its inputs, so an observer can tell that
+  two proofs used the same input under the same model, without learning the
+  input. That is also what keeps one inference from being recorded twice.
 - The input commitment does not absorb the input length: inputs are padded
   with zeros to the hash rate, so `[x]` and `[x, 0]` commit to the same value.
   The model commitment is length-prefixed since `0.0.2`.
