@@ -18,7 +18,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
+                  "bytes": "0300000000000000000000000000000000000000000000000000000000000000"
                 },
                 {
                   "map": [
@@ -88,6 +88,8 @@
       ]
     ],
     [],
+    [],
+    [],
     []
   ],
   "ledger": {
@@ -127,6 +129,60 @@
             "contract_data": {
               "ext": "v0",
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "nullifier"
+                  },
+                  {
+                    "bytes": "67985913f79eea97c8d4297de67d9c7a224965d3290f27128e253d30198951c4"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "bool": true
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "nullifier"
+                  },
+                  {
+                    "bytes": "96a8097e31c1a1ca033b780925d744a6e20e71d6a91e228aabf86e1ab8fca5c3"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "bool": true
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
               "key": "ledger_key_contract_instance",
               "durability": "persistent",
               "val": {
@@ -153,10 +209,51 @@
                     },
                     {
                       "key": {
+                        "symbol": "lst_res"
+                      },
+                      "val": {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "class_label"
+                            },
+                            "val": {
+                              "i64": "7"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "model_hash"
+                            },
+                            "val": {
+                              "bytes": "0300000000000000000000000000000000000000000000000000000000000000"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "output"
+                            },
+                            "val": {
+                              "bytes": "2b00000000000000"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "verified_at"
+                            },
+                            "val": {
+                              "u32": 0
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "mdl_hash"
                       },
                       "val": {
-                        "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
+                        "bytes": "0300000000000000000000000000000000000000000000000000000000000000"
                       }
                     },
                     {
@@ -237,7 +334,7 @@
                         "symbol": "vrf_cnt"
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 2
                       }
                     }
                   ]
