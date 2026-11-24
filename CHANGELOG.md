@@ -39,6 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arithmetic, commitments, inference) and `cargo bench -p zkml-prover --bench
   onnx` (ONNX import). `docs/reference/benchmarks.md` reports measured numbers
   instead of the old estimates.
+- Remote proving on the Boundless market: `prove --groth16 --backend boundless`
+  with the new `boundless` feature (`boundless-market` 2.0.1). It asks for a
+  standalone Groth16 proof, needs neither Docker nor x86_64, and reads its
+  configuration, private key included, from the environment. The request
+  lifecycle lives in `remote::prove_remote` behind a `Market` trait, which
+  refuses a seal of the wrong length or selector and a journal that disagrees
+  with native inference, and runs `verify_bundle` before returning; it is
+  tested against a mock market. `ProverBackend::Remote { endpoint }` becomes
+  `ProverBackend::Boundless`, and `ProveError` gains `RemoteUnfulfilled`,
+  `RemoteTimeout` and `RemoteWrongProofType`. No run against the live market
+  is recorded yet.
 - `zkml-demo` runs the demo end to end instead of printing a plan: it loads
   the model (`.onnx` or JSON) and runs it natively, proves it (`groth16`
   feature) or takes a pre-built `--bundle`, checks the bundle against the native

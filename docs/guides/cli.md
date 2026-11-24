@@ -127,9 +127,35 @@ proving time: 214731 ms
 wrote verification bundle (v2) to bundle.json
 ```
 
-`--backend` selects where proving happens. `local` is the default; `boundless`
-is reserved for remote proving and currently returns an error, because Bonsai
-was shut down in December 2025 and the Boundless client is not written yet.
+`--backend` selects where proving happens. `local`, the default, compresses on
+this machine (x86_64 Linux with Docker).
+
+`--backend boundless` (the `boundless` feature) asks the Boundless market for a
+standalone Groth16 proof instead: it needs neither Docker nor x86_64, so it
+works from Windows and macOS. The guest runs locally first, without proving,
+for the cycle count and the journal native inference predicts; the request id
+is printed as soon as it is submitted. Nothing the market returns is trusted:
+the seal must be 260 bytes with this RISC Zero version's selector, the journal
+must equal native inference, and the bundle must pass `verify_bundle`.
+Configuration comes from the environment only, so the key never reaches a
+command line:
+
+| Variable | Meaning |
+| -------- | ------- |
+| `BOUNDLESS_RPC_URL` | RPC of the market's chain: Base, Base Sepolia or Ethereum Sepolia |
+| `BOUNDLESS_PRIVATE_KEY` | Requestor key that pays for the proof, `0x`-prefixed hex |
+| `BOUNDLESS_PROGRAM_URL` | Public URL of the guest ELF, which provers download |
+| `BOUNDLESS_MAX_PRICE` | Offer ceiling, default `0.0005 ETH` |
+| `BOUNDLESS_TIMEOUT_SECS` | Give up after this, default 1800 |
+
+```bash
+cargo run -p zkml-prover --features boundless -- prove examples/models/kyc_tree.json   -i "0.6,0.4,0.0" --opening model.opening --groth16 --backend boundless -o bundle.json
+```
+
+The program URL has to serve the same guest that `export-vk` reports, so use the
+reproducible build (`ZKML_GUEST_DOCKER=1`) and publish its ELF. A run against
+the live market has not been recorded yet; the request lifecycle and every
+check on the result are tested against a mock market.
 
 The journal in the bundle binds the model commitment, the input commitment, the
 raw output and the decision label, so `model_hash` still equals

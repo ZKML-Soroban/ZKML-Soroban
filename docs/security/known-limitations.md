@@ -30,9 +30,11 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   machines, and a contract only accepts receipts from the id its admin
   registered. Build with `ZKML_GUEST_DOCKER=1` (RISC Zero's pinned builder
   image) to get the reproducible id, and prove with that same build.
-- **No remote proving.** RISC Zero shut down Bonsai in December 2025.
-  `--backend boundless` returns `ProveError::RemoteBackend` until a Boundless or
-  self-hosted Bento client is written.
+- **Remote proving is not measured yet.** `--backend boundless` requests the
+  proof on the Boundless market and checks everything it returns, but it has
+  only run against a mock market; price and latency on the live market are
+  unrecorded. It needs the guest ELF at a public URL and a funded requestor
+  key.
 - **Dev mode produces no proof.** `RISC0_DEV_MODE=1` makes receipts fake, so
   `prove_groth16` refuses to run under it rather than emitting a bundle that
   looks real.

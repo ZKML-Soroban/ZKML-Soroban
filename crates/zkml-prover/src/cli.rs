@@ -763,6 +763,10 @@ fn cmd_prove_groth16(
         )))
     })?;
 
+    if backend == ProverBackend::Boundless {
+        return cmd_prove_boundless(model, inputs, opening, dest, out);
+    }
+
     writeln!(
         out,
         "proving in the zkVM and compressing to Groth16, this takes minutes"
@@ -779,6 +783,60 @@ fn cmd_prove_groth16(
         .map_err(|e| io_err("<stdout>", e))?;
 
     write_or_print(json, dest, "verification bundle (v2)", out)
+}
+
+/// `prove --groth16 --backend boundless`: the proof comes from the Boundless
+/// market; configuration from the environment (see `zkml_prover::boundless`).
+#[cfg(feature = "boundless")]
+fn cmd_prove_boundless(
+    model: &Model,
+    inputs: &[FixedPoint],
+    opening: &Opening,
+    dest: Option<&Path>,
+    out: &mut impl Write,
+) -> Result<(), CliError> {
+    use crate::boundless::{BoundlessConfig, BoundlessMarket};
+    use crate::prover::{bundle_v2_to_json, image_id};
+
+    let timeout_secs = std::env::var("BOUNDLESS_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1800);
+    let market = BoundlessMarket::new(BoundlessConfig::from_env()?)?;
+    writeln!(out, "requesting a Groth16 proof on the Boundless market")
+        .map_err(|e| io_err("<stdout>", e))?;
+    let bundle = crate::remote::prove_remote(
+        model,
+        inputs,
+        opening,
+        image_id(),
+        &market,
+        std::time::Duration::from_secs(timeout_secs),
+    )?;
+    writeln!(out, "seal: {} bytes", bundle.seal.len())
+        .and_then(|()| writeln!(out, "cycles: {}", bundle.meta.cycles))
+        .and_then(|()| writeln!(out, "proving time: {} ms", bundle.meta.timings.total_ms))
+        .map_err(|e| io_err("<stdout>", e))?;
+    write_or_print(
+        bundle_v2_to_json(&bundle)?,
+        dest,
+        "verification bundle (v2)",
+        out,
+    )
+}
+
+#[cfg(all(feature = "groth16", not(feature = "boundless")))]
+fn cmd_prove_boundless(
+    _model: &Model,
+    _inputs: &[FixedPoint],
+    _opening: &Opening,
+    _dest: Option<&Path>,
+    _out: &mut impl Write,
+) -> Result<(), CliError> {
+    Err(CliError::FeatureDisabled {
+        command: "prove --backend boundless".into(),
+        feature: "boundless".into(),
+    })
 }
 
 #[cfg(not(feature = "groth16"))]

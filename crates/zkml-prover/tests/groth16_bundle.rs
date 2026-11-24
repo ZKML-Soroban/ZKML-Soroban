@@ -54,14 +54,16 @@ fn dev_mode_is_refused_because_it_produces_no_seal() {
     }
 }
 
+/// `prove_groth16` proves locally only; the Boundless backend goes through
+/// `remote::prove_remote` (see `tests/remote_proving.rs`).
 #[test]
-fn the_boundless_backend_reports_that_it_is_not_implemented() {
+fn prove_groth16_points_the_boundless_backend_at_prove_remote() {
     let (model, inputs) = credit_model();
     let backend = ProverBackend::parse("boundless").expect("boundless is a known backend name");
 
     match prove_groth16(&model, &inputs, &OPENING, &backend) {
         Err(ProveError::RemoteBackend(message)) => {
-            assert!(message.contains("not implemented"), "got: {message}");
+            assert!(message.contains("prove_remote"), "got: {message}");
         }
         other => panic!("expected RemoteBackend, got {other:?}", other = other.err()),
     }
