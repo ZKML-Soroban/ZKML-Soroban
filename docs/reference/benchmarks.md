@@ -11,16 +11,22 @@ the Soroban cost estimator, each on a proof that genuinely verifies:
 
 | Operation | CPU instructions | Memory (bytes) | Share of the 100M limit |
 | --------- | ---------------- | -------------- | ----------------------- |
-| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,565,041 | 1,802,740 | 30% |
-| `verify_inference` (point checks + L assembly + pairing) | 31,006,558 | 1,699,995 | 31% |
+| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,578,818 | 1,817,254 | 30% |
+| `verify_inference` (point checks + L assembly + pairing) | 28,956,777 | 1,795,390 | 29% |
+| `set_risc0_vk` (point checks + G2 subgroup check) | 22,743,662 | | 23% |
 
-Verifying a RISC Zero receipt is cheaper than the native-circuit path,
-although it does more: it rebuilds the claim digest (seven SHA-256 host calls)
-and has five public inputs to the other's four. Both check the three proof
-points. The difference is how L is assembled. `verify_receipt` uses one
-multi-scalar multiplication, `g1_msm`; `verify_inference` still makes one host
-call per multiplication and per addition. Moving it to `g1_msm` is an easy
-saving that has not been made yet.
+Both entry points check the three proof points and assemble L with one
+multi-scalar multiplication, `g1_msm`. Verifying a RISC Zero receipt costs a
+little more than the native-circuit path: it also rebuilds the claim digest
+(seven SHA-256 host calls) and has five public inputs to the other's four.
+Up to contract `VERSION` 10 `verify_inference` made one host call per
+multiplication and per addition instead; moving it to `g1_msm` in `VERSION` 11
+saved 2,049,781 instructions.
+
+Registering a verifying key is an admin call, run once per key. Since
+`VERSION` 11 it pairs the key's three G2 points so the host checks they are in
+the prime-order subgroup, which no host function does on its own; that pairing
+is most of its cost.
 
 The receipt figure uses the golden fixture in `crates/zkml-verifier/testdata/`.
 
@@ -31,9 +37,10 @@ cargo build -p zkml-verifier --target wasm32v1-none --profile contract
 cargo test -p zkml-verifier wasm_budget -- --ignored --nocapture
 ```
 
-CI runs the same two commands in the `Verifier WASM` job. Each test fails above
-32M instructions, about 3% over the larger figure here, so a change that moves
-the cost noticeably has to come with re-measured numbers.
+CI runs the same two commands in the `Verifier WASM` job. Each verification
+test fails above 30.5M instructions, about 3% over the larger figure here, and
+the key registration above 23.5M, so a change that moves the cost noticeably
+has to come with re-measured numbers.
 
 <Note>
 Measure on the WASM, not natively. The ordinary contract tests run it as native
@@ -49,7 +56,8 @@ Both entry points validate A, B and C before the pairing, so a corrupted proof
 returns a typed error instead of aborting the transaction in the host. Measured
 on the WASM when the checks were added to `verify_receipt`, they cost 776,552
 instructions. Adding them to `verify_inference` in contract `VERSION` 10 moved
-it from 30,208,647 to 31,006,558, 797,911 more.
+it from 30,208,647 to 31,006,558, 797,911 more. Refusing points at infinity in
+`VERSION` 11 added 14,653 to `verify_receipt`.
 
 A first version checked G2 with double-and-add multiplication and cost
 24,855,241 instructions, a 76% increase, which is why it uses Montgomery
@@ -57,8 +65,8 @@ multiplication now. The native tests reported that version as costing 7,355.
 
 Breakdown:
 
-- **`verify_inference`:** point validation, 4 G1 scalar multiplications and
-  4 G1 additions for `L = IC[0] + sum(x_i * IC[i + 1])`, then one 4-pair BN254
+- **`verify_inference`:** point validation, one 4-point `g1_msm` and one G1
+  addition for `L = IC[0] + sum(x_i * IC[i + 1])`, then one 4-pair BN254
   pairing. Its fixture
   uses non-degenerate G2 points from the soroban-env-host test suite, the G1
   generator for every IC entry, and `C = -L` so the product of pairings is 1.

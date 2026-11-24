@@ -138,11 +138,14 @@ fn admin_transfer_is_two_step() {
 }
 
 #[test]
-#[should_panic(expected = "no pending admin transfer")]
 fn accept_admin_without_a_proposal_fails() {
+    // Up to VERSION 10 this panicked with "no pending admin transfer".
     let env = Env::default();
     let (client, _admin) = setup_with_admin(&env);
-    client.accept_admin();
+    assert_eq!(
+        client.try_accept_admin(),
+        Err(Ok(VerificationError::PendingAdminMismatch))
+    );
 }
 
 #[test]

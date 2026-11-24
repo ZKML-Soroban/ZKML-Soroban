@@ -14,7 +14,7 @@ g.attr(**base_graph_attr(
     rankdir="TB",
     nodesep="0.35",
     ranksep="0.45",
-    label=hl("verify_inference", "Checks in execution order (contract VERSION 10)"),
+    label=hl("verify_inference", "Checks in execution order (contract VERSION 11)"),
 ))
 g.attr("node", **base_node_attr())
 g.attr("edge", **base_edge_attr())
@@ -30,7 +30,7 @@ checks = [
     ("layout", "Public inputs 80 bytes, hashes canonical?", "PublicInputsTooShort (2) / InvalidPublicInputLength (8)\nNonCanonicalPublicInput (15)"),
     ("model", "model_hash matches registered?", "VerificationFailed (7)"),
     ("nullifier", "Nullifier unused?", "ProofAlreadyUsed (10)"),
-    ("points", "Proof points on their curves?", "MalformedProofA (3) / B (4) / C (5)"),
+    ("points", "Proof points on their curves, none at infinity?", "MalformedProofA (3) / B (4) / C (5)"),
     ("vk", "Verification key well formed, 5 IC points?", "MalformedVerificationKey (6) / VerificationKeyLengthMismatch (9)"),
     ("pairing", "Groth16 pairing check holds?", "VerificationFailed (7)"),
 ]

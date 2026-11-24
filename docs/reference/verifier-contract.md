@@ -9,7 +9,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Property                  | Value                                   |
 | ------------------------- | --------------------------------------- |
-| Interface `VERSION`       | `10`                                    |
+| Interface `VERSION`       | `11`                                    |
 | `MIN_PROTOCOL_VERSION`    | `25` (X-Ray)                            |
 | Build                     | `cargo build -p zkml-verifier --target wasm32v1-none --profile contract` |
 | Artifact                  | `target/wasm32v1-none/contract/zkml_verifier.wasm` |
@@ -18,7 +18,7 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 
 | Function | Auth | Returns | Description |
 | -------- | ---- | ------- | ----------- |
-| `__constructor(admin: Address, model_hash: Bytes, vk: Option<VerificationKey>)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and the native verification key if one is given; sets counter to 0 and pause to false; bumps instance TTL. Pass no `vk` for a contract that only verifies RISC Zero receipts: `verify_inference` then returns `NativeKeyNotConfigured`. A key that is passed must have five `ic` points, all on their curves and none at infinity. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
+| `__constructor(admin: Address, model_hash: Bytes, vk: Option<VerificationKey>)` | `admin` | `()` | Runs once, atomically with deploy. Stores admin, model commitment, and the native verification key if one is given; sets counter to 0 and pause to false; bumps instance TTL. Pass no `vk` for a contract that only verifies RISC Zero receipts: `verify_inference` then returns `NativeKeyNotConfigured`. A key that is passed must have five `ic` points, all on their curves, none at infinity, and its G2 points in the prime-order subgroup. `model_hash` must be 32 bytes below the BN254 scalar modulus, read little-endian. There is no separate `initialize` entrypoint: a public one let a third party initialize first and seize the admin role. |
 | `verify_inference(proof_a: Bytes, proof_b: Bytes, proof_c: Bytes, public_inputs: Bytes)` | none | `Result<(), VerificationError>` | Verifies the proof, enforces the nullifier, records the result, emits `verified`. |
 | `get_result()` | none | `Option<InferenceRecord>` | Last verified record. Returns `None` if none has been recorded. |
 | `get_model_hash()` | none | `Option<Bytes>` | Registered model commitment. Returns `None` before initialization. |
@@ -26,16 +26,18 @@ proofs of ML inference with the BN254 host functions from CAP-0074.
 | `get_admin()` | none | `Address` | Current admin. Panics before initialization. |
 | `is_paused()` | none | `bool` | Pause flag. |
 | `version()` | none | `u32` | Interface version. |
-| `set_verification_key(vk: VerificationKey)` | admin | `()` | Sets or replaces the native verification key. Refuses a key without five `ic` points, or with any point off its curve or at infinity. Emits `cfg_upd`. |
-| `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. |
-| `propose_admin(new_admin: Address)` | admin | `()` | Records a pending admin. The transfer is not effective until the pending admin accepts. |
-| `accept_admin()` | pending admin | `()` | Completes the transfer started by `propose_admin`. Two-step, so a mistyped address cannot orphan the contract. |
+| `set_verification_key(vk: VerificationKey)` | admin | `()` | Sets or replaces the native verification key. Refuses a key without five `ic` points, with any point off its curve or at infinity, or with a G2 point outside the subgroup. Emits `cfg_upd`. |
+| `set_model_hash(model_hash: Bytes)` | admin | `()` | Replaces the model commitment. Refuses one that is not 32 bytes below the BN254 scalar modulus. Emits `cfg_upd`. |
+| `propose_admin(new_admin: Address)` | admin | `()` | Records a pending admin, replacing any earlier proposal. The transfer is not effective until the pending admin accepts, and the proposal expires after `ADMIN_PROPOSAL_LEDGERS` (7 days). |
+| `accept_admin()` | pending admin | `Result<(), VerificationError>` | Completes the transfer started by `propose_admin`. Two-step, so a mistyped address cannot orphan the contract. Returns `PendingAdminMismatch` when no live proposal exists. |
+| `cancel_admin_proposal()` | admin | `()` | Withdraws the pending proposal, if any, and emits `cfg_upd`. |
+| `get_pending_admin()` | none | `Option<PendingAdmin>` | The live proposal, or `None` when there is none or it expired. |
 | `set_pause(paused: bool)` | admin | `()` | Pauses or resumes verification. |
 | `verify_receipt(seal: Bytes, journal: Bytes)` | none | `Result<InferenceRecord, VerificationError>` | Verifies a RISC Zero Groth16 receipt, enforces the nullifier, records the result, emits `verified`, and returns the record. |
 | `set_risc0_config(config: Risc0Config)` | admin | `()` | Registers the guest image id, control root, BN254 control id and seal selector. Refuses a control id that is not a valid BN254 scalar. Emits `cfg_upd`. |
-| `get_risc0_config()` | none | `Risc0Config` | The registered configuration. Panics if never set. |
-| `set_risc0_vk(vk: VerificationKey)` | admin | `()` | Registers RISC Zero's universal verifying key. Refuses a key without six `ic` points, or with any point off its curve or at infinity. Emits `cfg_upd`. |
-| `get_risc0_vk()` | none | `VerificationKey` | The registered key, so anyone can check it is RISC Zero's. Panics if never set. |
+| `get_risc0_config()` | none | `Option<Risc0Config>` | The registered configuration, or `None` if never set. |
+| `set_risc0_vk(vk: VerificationKey)` | admin | `()` | Registers RISC Zero's universal verifying key. Refuses a key without six `ic` points, with any point off its curve or at infinity, or with a G2 point outside the subgroup. Emits `cfg_upd`. |
+| `get_risc0_vk()` | none | `Option<VerificationKey>` | The registered key, so anyone can check it is RISC Zero's, or `None` if never set. |
 | `claim_digest(image_id: BytesN<32>, journal: Bytes)` | none | `Result<BytesN<32>, VerificationError>` | Recomputes the digest a receipt commits to, so off-chain tools can check agreement. Returns `MalformedJournal` for a journal that is not 96 bytes. |
 
 ### Verifying a RISC Zero receipt
@@ -102,7 +104,9 @@ than any cheaper check.
 The three proof points are validated before the host sees them, because the
 BN254 host functions trap on a point they cannot parse, which aborts the
 transaction without saying why. A corrupted A, B or C returns
-`MalformedProofA`, `MalformedProofB` or `MalformedProofC` instead. A test flips
+`MalformedProofA`, `MalformedProofB` or `MalformedProofC` instead, and so does
+a point at infinity, Soroban's all-zero encoding, which the curve checks accept
+but no honest proof holds. A test flips
 each of the 356 bytes of the seal and the journal in turn and requires a typed
 error for every one. The checks cost about 776,000 instructions.
 
@@ -112,10 +116,14 @@ equation is checked in plain Rust by `zkml_common::bn254`, tested against
 `ark-bn254` on thousands of points.
 
 <Note>
-The G2 check does not test subgroup membership. A point on the curve but
-outside the subgroup still traps in the pairing, so it is still rejected, only
-without a typed error. Corruption does not produce such a point: a changed byte
-lands back on the curve with probability about `1/p`. It takes a crafted one.
+The G2 check on a proof's B does not test subgroup membership. A point on the
+curve but outside the subgroup still traps in the pairing, so it is still
+rejected, only without a typed error. Corruption does not produce such a point:
+a changed byte lands back on the curve with probability about `1/p`. It takes a
+crafted one. A key is different, since it is stored and used for every proof:
+since `VERSION` 11, registering one pairs its three G2 points, so the host
+checks their subgroup and a bad key is never stored. That costs about 22.7M
+instructions, once per key.
 </Note>
 
 <Warning>
@@ -145,6 +153,11 @@ pub struct Risc0Config {
     pub control_root: BytesN<32>,      // RISC Zero's recursion control root
     pub bn254_control_id: BytesN<32>,  // must be a valid BN254 scalar, reversed
     pub selector: BytesN<4>,           // what a seal must start with
+}
+
+pub struct PendingAdmin {
+    pub address: Address,          // becomes admin on accept_admin
+    pub expires_at_ledger: u32,    // last ledger accept_admin succeeds
 }
 
 pub struct InferenceRecord {
@@ -208,11 +221,11 @@ Length errors:
    it exists. This runs before the pairing, so a replay is refused without
    paying for it.
 8. Validate the three proof points, as `verify_receipt` does: fail with
-   `MalformedProofA`, `MalformedProofB` or `MalformedProofC` for a point off
-   its curve or with a coordinate not below the field modulus, instead of
-   letting the host trap on it.
+   `MalformedProofA`, `MalformedProofB` or `MalformedProofC` for a point at
+   infinity, off its curve or with a coordinate not below the field modulus,
+   instead of letting the host trap on it.
 9. Deserialize the verification key.
-10. Compute `L = IC[0] + sum(x_i * IC[i + 1])`; fail with
+10. Compute `L = IC[0] + sum(x_i * IC[i + 1])` with one `g1_msm`; fail with
     `VerificationKeyLengthMismatch` if `ic.len() != 5`.
 11. Run `pairing_check([-A, alpha, L, C], [B, beta, gamma, delta])`; fail with
     `VerificationFailed` if it does not hold.
@@ -250,6 +263,7 @@ when the admin changes what verifies:
 | `set_verification_key` | `VerificationKeyUpdated` | `("cfg_upd", "vk")` | `()` |
 | `set_model_hash` | `ModelHashUpdated` | `("cfg_upd", "mdl_hash")` | the new `model_hash` |
 | `propose_admin` | `AdminProposed` | `("cfg_upd", "adm_prop")` | the proposed admin `Address` |
+| `cancel_admin_proposal` | `AdminProposalCancelled` | `("cfg_upd", "adm_cncl")` | the withdrawn admin `Address` |
 | `accept_admin` | `AdminChanged` | `("cfg_upd", "admin")` | the new admin `Address` |
 | `set_pause` | `PauseSet` | `("cfg_upd", "pause")` | the new flag, a `bool` |
 
@@ -274,6 +288,7 @@ record that survives.
 | `lst_res`  | Last `InferenceRecord`     |
 | `vrf_cnt`  | Verification counter       |
 | `paused`   | Pause flag                 |
+| `pend_adm` | `PendingAdmin`, while a proposal exists |
 
 **Persistent storage**
 
@@ -293,6 +308,7 @@ the contract code, from these entrypoints:
 | `verify_inference`, `verify_receipt` | After a successful verification        |
 | `set_risc0_config`, `set_risc0_vk`   | After the new value is stored          |
 | `propose_admin`, `accept_admin`      | After each step of the admin transfer  |
+| `cancel_admin_proposal`              | When a proposal is withdrawn           |
 
 `set_verification_key`, `set_model_hash` and `set_pause` do not bump TTL, and
 neither do the read-only getters. With these constants:
@@ -310,7 +326,8 @@ verifications do not bump TTL. Nullifier entries are extended to
 ## Cost
 
 Measured on the compiled WASM, `verify_receipt` costs 29.6M CPU instructions and
-`verify_inference` 31.0M, against a 100M limit per transaction. See
+`verify_inference` 29.0M, against a 100M limit per transaction. Registering
+RISC Zero's key with `set_risc0_vk` costs 22.7M. See
 [Benchmarks](/reference/benchmarks).
 
 ## Known limitations

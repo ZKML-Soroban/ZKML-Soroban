@@ -1,0 +1,35 @@
+[package]
+name = "zkml-verifier-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace: cargo-fuzz builds with nightly and sanitizers, which the
+# main workspace never does.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+soroban-sdk = { version = "27", features = ["testutils"] }
+serde_json = "1"
+zkml-verifier = { path = ".." }
+
+[[bin]]
+name = "verify_inference"
+path = "fuzz_targets/verify_inference.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "verify_receipt"
+path = "fuzz_targets/verify_receipt.rs"
+test = false
+doc = false
+bench = false

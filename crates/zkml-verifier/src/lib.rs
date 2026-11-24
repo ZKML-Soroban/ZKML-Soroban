@@ -69,6 +69,19 @@ const PAUSED: Symbol = symbol_short!("paused");
 /// Ledgers per day on Stellar (~5s per ledger).
 const DAY_IN_LEDGERS: u32 = 17_280;
 
+/// How long a proposed admin has to accept: 7 days. After that the proposal
+/// is dead and `accept_admin` refuses it, so a forgotten proposal cannot be
+/// picked up months later by whoever ends up holding that key.
+pub const ADMIN_PROPOSAL_LEDGERS: u32 = 7 * DAY_IN_LEDGERS;
+
+/// The BN254 G1 generator (1, 2), Soroban's encoding: be(x) || be(y).
+const G1_GENERATOR: [u8; 64] = {
+    let mut point = [0u8; 64];
+    point[31] = 1;
+    point[63] = 2;
+    point
+};
+
 /// Renew instance TTL when remaining lifetime falls below 30 days.
 /// A verifier used at least monthly stays live without an external keeper.
 const INSTANCE_TTL_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
@@ -92,7 +105,15 @@ const INSTANCE_TTL_EXTEND_TO: u32 = 120 * DAY_IN_LEDGERS;
 /// `VerificationFailed`. `verify_inference` validates its proof points and
 /// reports a wrong-length `proof_c` as `MalformedProofC`. A journal whose
 /// reserved bytes are not zero is `MalformedJournal`.
-pub const VERSION: u32 = 10;
+/// 10 -> 11: a proof point at infinity is `MalformedProofA`, `B` or `C` on both
+/// paths. The constructor and `set_model_hash` refuse a model hash that is not
+/// 32 bytes below the BN254 scalar modulus. Registering a key whose G2 points
+/// are outside the prime-order subgroup fails. `accept_admin` returns
+/// `PendingAdminMismatch` instead of panicking, proposals expire after
+/// [`ADMIN_PROPOSAL_LEDGERS`], and `cancel_admin_proposal` and
+/// `get_pending_admin` are new. `get_risc0_config` and `get_risc0_vk` return
+/// `Option`.
+pub const VERSION: u32 = 11;
 
 /// Minimum protocol version required for BN254 host functions (CAP-0074).
 pub const MIN_PROTOCOL_VERSION: u32 = 25;
@@ -148,6 +169,19 @@ pub enum VerificationError {
     /// The contract is paused. Both verification entry points refuse every
     /// call until the admin calls `set_pause(false)`.
     ContractPaused = 17,
+    /// `accept_admin` found no live proposal: none was made, it was cancelled,
+    /// or it expired after [`ADMIN_PROPOSAL_LEDGERS`].
+    PendingAdminMismatch = 18,
+}
+
+/// An admin transfer waiting for the proposed address to accept it.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingAdmin {
+    /// The address that becomes admin when it calls `accept_admin`.
+    pub address: Address,
+    /// The last ledger at which `accept_admin` still succeeds.
+    pub expires_at_ledger: u32,
 }
 
 /// On-chain representation of BN254 Groth16 verification key.
@@ -236,6 +270,13 @@ pub struct AdminProposed {
     pub new_admin: Address,
 }
 
+/// `cancel_admin_proposal`: topics `("cfg_upd", "adm_cncl")`, data the address
+/// whose proposal was withdrawn.
+#[contractevent(topics = ["cfg_upd", "adm_cncl"], data_format = "single-value")]
+pub struct AdminProposalCancelled {
+    pub address: Address,
+}
+
 /// `accept_admin`: topics `("cfg_upd", "admin")`, data the new admin.
 #[contractevent(topics = ["cfg_upd", "admin"], data_format = "single-value")]
 pub struct AdminChanged {
@@ -285,12 +326,10 @@ impl ZkmlVerifierContract {
         .publish(&env);
     }
 
-    /// The registered RISC Zero configuration.
-    pub fn get_risc0_config(env: Env) -> Risc0Config {
-        env.storage()
-            .instance()
-            .get(&RISC0_CFG)
-            .expect("risc0 config has not been set")
+    /// The registered RISC Zero configuration, or `None` before
+    /// `set_risc0_config` has been called.
+    pub fn get_risc0_config(env: Env) -> Option<Risc0Config> {
+        env.storage().instance().get(&RISC0_CFG)
     }
 
     /// Register RISC Zero's universal Groth16 verifying key.
@@ -319,18 +358,16 @@ impl ZkmlVerifierContract {
                 "the RISC Zero verifying key holds a point that is off the curve or at infinity"
             );
         }
+        Self::require_g2_in_subgroup(&env, &vk);
         env.storage().instance().set(&RISC0_VK, &vk);
         Self::bump_instance_ttl(&env);
         Risc0VkUpdated {}.publish(&env);
     }
 
     /// The registered RISC Zero verifying key, so anyone can check it is the
-    /// one RISC Zero publishes. Panics if never set.
-    pub fn get_risc0_vk(env: Env) -> VerificationKey {
-        env.storage()
-            .instance()
-            .get(&RISC0_VK)
-            .expect("risc0 verifying key has not been set")
+    /// one RISC Zero publishes, or `None` before `set_risc0_vk`.
+    pub fn get_risc0_vk(env: Env) -> Option<VerificationKey> {
+        env.storage().instance().get(&RISC0_VK)
     }
 
     /// Verify a Groth16 receipt produced by `zkml-prover prove --groth16`, and
@@ -406,13 +443,11 @@ impl ZkmlVerifierContract {
         //    transaction without saying why. A G2 point on the curve but
         //    outside the subgroup would still trap, but corruption does not
         //    produce one: a changed byte lands back on the curve with
-        //    probability about 1/p.
+        //    probability about 1/p. A point at infinity is refused too.
         let a_bytes = seal.slice(4..68);
         let b_bytes = seal.slice(68..196);
         let c_bytes = seal.slice(196..260);
-        Self::validate_g1(&env, &a_bytes, VerificationError::MalformedProofA)?;
-        Self::validate_g2(&b_bytes, VerificationError::MalformedProofB)?;
-        Self::validate_g1(&env, &c_bytes, VerificationError::MalformedProofC)?;
+        Self::validate_proof_points(&env, &a_bytes, &b_bytes, &c_bytes)?;
 
         // 6. Rebuild what the proof commits to, and check the pairing.
         let claim = Self::claim_digest_inner(&env, &config.image_id.to_array(), &journal_raw);
@@ -511,10 +546,17 @@ impl ZkmlVerifierContract {
     /// `None` when there is no native circuit, which is the case for a contract
     /// that verifies RISC Zero receipts: the native path then refuses every call
     /// with `NativeKeyNotConfigured` instead of trusting a placeholder key. A key
-    /// that is passed must have five `ic` points, all on their curves and none
-    /// at infinity, or the deploy fails.
+    /// that is passed must have five `ic` points, all on their curves, none at
+    /// infinity and its G2 points in the prime-order subgroup, or the deploy
+    /// fails.
+    ///
+    /// `model_hash` must be 32 bytes below the BN254 scalar modulus, read
+    /// little-endian, which every Poseidon commitment is. Anything else could
+    /// never equal a proof's model hash and would disable verification without
+    /// a word.
     pub fn __constructor(env: Env, admin: Address, model_hash: Bytes, vk: Option<VerificationKey>) {
         admin.require_auth();
+        Self::require_valid_model_hash(&model_hash);
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         if let Some(vk) = vk {
@@ -597,9 +639,7 @@ impl ZkmlVerifierContract {
 
         // The proof points, before the host sees them, for the same reason as
         // in verify_receipt: the host traps on a point it cannot parse.
-        Self::validate_g1(&env, &proof_a, VerificationError::MalformedProofA)?;
-        Self::validate_g2(&proof_b, VerificationError::MalformedProofB)?;
-        Self::validate_g1(&env, &proof_c, VerificationError::MalformedProofC)?;
+        Self::validate_proof_points(&env, &proof_a, &proof_b, &proof_c)?;
 
         // Convert public inputs to field elements for L computation
         let bn254 = env.crypto().bn254();
@@ -610,9 +650,7 @@ impl ZkmlVerifierContract {
         let gamma_g2 = Self::deserialize_vk_g2(&env, &vk.gamma)?;
         let delta_g2 = Self::deserialize_vk_g2(&env, &vk.delta)?;
 
-        // L = sum(public_input_i * vk_ic_i)
-        // Note: In Groth16, IC[0] is the constant term, and public inputs start at index 1
-        // Compute L = ic[0] + sum(scalar_i * ic[i]) using generic loop
+        // L = ic[0] + sum(input_i * ic[i + 1]): ic[0] is the constant term.
         let l = Self::compute_l(&env, &vk, &parsed_inputs)?;
 
         // Pairing check: e(A, B) == e(alpha, beta) * e(L, gamma) * e(C, delta)
@@ -739,6 +777,61 @@ impl ZkmlVerifierContract {
         Ok(())
     }
 
+    /// Validate a proof's three points: none at infinity, each on its curve
+    /// with coordinates below the field modulus.
+    ///
+    /// Infinity is Soroban's all-zero encoding, which the curve checks accept.
+    /// An honest Groth16 proof never holds it, and a proof that does drops a
+    /// term from the pairing, so it is refused before anything is computed.
+    fn validate_proof_points(
+        env: &Env,
+        a: &Bytes,
+        b: &Bytes,
+        c: &Bytes,
+    ) -> Result<(), VerificationError> {
+        use VerificationError::{MalformedProofA, MalformedProofB, MalformedProofC};
+        if Self::is_point_at_infinity(a) {
+            return Err(MalformedProofA);
+        }
+        Self::validate_g1(env, a, MalformedProofA)?;
+        if Self::is_point_at_infinity(b) {
+            return Err(MalformedProofB);
+        }
+        Self::validate_g2(b, MalformedProofB)?;
+        if Self::is_point_at_infinity(c) {
+            return Err(MalformedProofC);
+        }
+        Self::validate_g1(env, c, MalformedProofC)
+    }
+
+    /// Refuse a model hash that no proof could ever match.
+    fn require_valid_model_hash(model_hash: &Bytes) {
+        if model_hash.len() != 32 || Self::require_canonical_scalar(model_hash).is_err() {
+            panic!("model_hash must be 32 bytes below the BN254 scalar modulus");
+        }
+    }
+
+    /// Have the host check that a key's G2 points are in the prime-order
+    /// subgroup, so a key that would trap every verification is never stored.
+    ///
+    /// The curve check in `validate_g2` accepts points outside the subgroup,
+    /// and Soroban has no host function to test membership, but its pairing
+    /// does: it traps with "bn254 G2: point not in the correct subgroup". So
+    /// this pairs the G1 generator with beta, gamma and delta and ignores the
+    /// result; for a valid key the call simply returns. It runs once per key
+    /// registration, never on a verification.
+    fn require_g2_in_subgroup(env: &Env, vk: &VerificationKey) {
+        let bad = |_| panic!("the verifying key holds a malformed G2 point");
+        let g1 = Bn254G1Affine::from_array(env, &G1_GENERATOR);
+        let beta = Self::deserialize_vk_g2(env, &vk.beta).unwrap_or_else(bad);
+        let gamma = Self::deserialize_vk_g2(env, &vk.gamma).unwrap_or_else(bad);
+        let delta = Self::deserialize_vk_g2(env, &vk.delta).unwrap_or_else(bad);
+        let _ = env.crypto().bn254().pairing_check(
+            vec![env, g1.clone(), g1.clone(), g1],
+            vec![env, beta, gamma, delta],
+        );
+    }
+
     /// A big-endian 32-byte value as a field element.
     ///
     /// Deliberately not [`Self::bytes_to_fr`], which reads little-endian. The
@@ -850,6 +943,7 @@ impl ZkmlVerifierContract {
         if !Self::key_points_are_valid(env, vk) {
             panic!("the native verifying key holds a point that is off the curve or at infinity");
         }
+        Self::require_g2_in_subgroup(env, vk);
     }
 
     /// Check a seal's length and that it was made for the registered verifying
@@ -1031,43 +1125,36 @@ impl ZkmlVerifierContract {
         Ok(parsed)
     }
 
-    /// Compute L = ic[0] + sum(scalar_i * ic[i]) for i from 1 to n.
+    /// `L = ic[0] + sum(input_i * ic[i + 1])` over the little-endian public
+    /// inputs, as one multi-scalar multiplication, like [`Self::compute_l_be`].
     ///
-    /// Validates that vk.ic.len() == n + 1 where n is the number of public input scalars.
+    /// Validates that `vk.ic.len() == n + 1` for `n` public input scalars.
     fn compute_l(
         env: &Env,
         vk: &VerificationKey,
         public_input_scalars: &Vec<Bytes>,
     ) -> Result<Bn254G1Affine, VerificationError> {
-        let bn254 = env.crypto().bn254();
-        let num_scalars = public_input_scalars.len();
-
-        // Validate VK IC length matches number of scalars + 1 (for ic[0])
-        if vk.ic.len() != num_scalars + 1 {
+        if vk.ic.len() != public_input_scalars.len() + 1 {
             return Err(VerificationError::VerificationKeyLengthMismatch);
         }
-
-        // Start with ic[0]
-        let ic0_bytes = vk
+        let bn254 = env.crypto().bn254();
+        let ic0 = vk
             .ic
             .get(0)
             .ok_or(VerificationError::MalformedVerificationKey)?;
-        let mut l = Self::deserialize_vk_ic(env, &ic0_bytes)?;
+        let ic0 = Self::deserialize_vk_ic(env, &ic0)?;
 
-        // Add each scalar * ic[i] term
-        for i in 0..num_scalars {
-            let scalar_bytes = public_input_scalars.get(i).unwrap();
-            let scalar = Self::bytes_to_fr(env, &scalar_bytes);
+        let mut points = Vec::new(env);
+        let mut scalars = Vec::new(env);
+        for (i, field) in public_input_scalars.iter().enumerate() {
             let ic_bytes = vk
                 .ic
-                .get(i + 1)
+                .get(i as u32 + 1)
                 .ok_or(VerificationError::MalformedVerificationKey)?;
-            let ic_point = Self::deserialize_vk_ic(env, &ic_bytes)?;
-            let term = bn254.g1_mul(&ic_point, &scalar);
-            l = bn254.g1_add(&l, &term);
+            points.push_back(Self::deserialize_vk_ic(env, &ic_bytes)?);
+            scalars.push_back(Self::bytes_to_fr(env, &field));
         }
-
-        Ok(l)
+        Ok(bn254.g1_add(&ic0, &bn254.g1_msm(points, scalars)))
     }
 
     /// Derive a nullifier from the public inputs to prevent proof replay attacks.
@@ -1127,6 +1214,9 @@ impl ZkmlVerifierContract {
     }
 
     /// Set a new model hash. Only callable by admin.
+    ///
+    /// The same rule as the constructor: 32 bytes below the BN254 scalar
+    /// modulus, or the call panics.
     pub fn set_model_hash(env: Env, model_hash: Bytes) {
         let admin: Address = env
             .storage()
@@ -1134,6 +1224,7 @@ impl ZkmlVerifierContract {
             .get(&ADMIN)
             .expect("contract is not initialized");
         admin.require_auth();
+        Self::require_valid_model_hash(&model_hash);
         env.storage().instance().set(&MODEL_HASH, &model_hash);
         log!(&env, "Model hash updated by admin");
         // The commitment every proof is checked against, so publish the new one.
@@ -1151,6 +1242,9 @@ impl ZkmlVerifierContract {
     /// that no one controls, leaving it with no admin forever: no one could
     /// pause it, rotate the key or change the model. Requiring the new admin to
     /// accept makes a wrong address a no-op instead of a loss.
+    ///
+    /// The proposal expires after [`ADMIN_PROPOSAL_LEDGERS`]. A new proposal
+    /// replaces the previous one.
     pub fn propose_admin(env: Env, new_admin: Address) {
         let admin: Address = env
             .storage()
@@ -1158,35 +1252,71 @@ impl ZkmlVerifierContract {
             .get(&ADMIN)
             .expect("contract is not initialized");
         admin.require_auth();
-        env.storage().instance().set(&PENDING_ADMIN, &new_admin);
+        let pending = PendingAdmin {
+            address: new_admin.clone(),
+            expires_at_ledger: env
+                .ledger()
+                .sequence()
+                .saturating_add(ADMIN_PROPOSAL_LEDGERS),
+        };
+        env.storage().instance().set(&PENDING_ADMIN, &pending);
         Self::bump_instance_ttl(&env);
         log!(&env, "Admin transfer proposed");
-        AdminProposed {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&env);
+        AdminProposed { new_admin }.publish(&env);
     }
 
     /// Accept a pending admin transfer. Only callable by the proposed admin.
     ///
     /// Completes the two-step transfer started by [`propose_admin`]. Requiring
     /// the proposed admin's own authorization proves the address is controlled
-    /// before it becomes the admin.
-    pub fn accept_admin(env: Env) {
-        let pending: Address = env
-            .storage()
-            .instance()
-            .get(&PENDING_ADMIN)
-            .expect("no pending admin transfer");
-        pending.require_auth();
-        env.storage().instance().set(&ADMIN, &pending);
+    /// before it becomes the admin. Returns `PendingAdminMismatch` when there
+    /// is no live proposal: none was made, it was cancelled, or it expired.
+    pub fn accept_admin(env: Env) -> Result<(), VerificationError> {
+        let pending =
+            Self::live_pending_admin(&env).ok_or(VerificationError::PendingAdminMismatch)?;
+        pending.address.require_auth();
+        env.storage().instance().set(&ADMIN, &pending.address);
         env.storage().instance().remove(&PENDING_ADMIN);
         Self::bump_instance_ttl(&env);
         log!(&env, "Admin transfer accepted");
         AdminChanged {
-            admin: pending.clone(),
+            admin: pending.address,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    /// Withdraw a pending admin proposal. Only callable by the current admin.
+    ///
+    /// Does nothing when there is no proposal; publishes an event when there
+    /// was one, expired or not.
+    pub fn cancel_admin_proposal(env: Env) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN)
+            .expect("contract is not initialized");
+        admin.require_auth();
+        let pending: Option<PendingAdmin> = env.storage().instance().get(&PENDING_ADMIN);
+        if let Some(pending) = pending {
+            env.storage().instance().remove(&PENDING_ADMIN);
+            Self::bump_instance_ttl(&env);
+            AdminProposalCancelled {
+                address: pending.address,
+            }
+            .publish(&env);
+        }
+    }
+
+    /// The pending admin proposal, or `None` when there is no live one.
+    pub fn get_pending_admin(env: Env) -> Option<PendingAdmin> {
+        Self::live_pending_admin(&env)
+    }
+
+    /// The stored proposal if it has not expired.
+    fn live_pending_admin(env: &Env) -> Option<PendingAdmin> {
+        let pending: PendingAdmin = env.storage().instance().get(&PENDING_ADMIN)?;
+        (env.ledger().sequence() <= pending.expires_at_ledger).then_some(pending)
     }
 
     /// Set the pause flag. Only callable by admin.
@@ -1279,3 +1409,19 @@ mod test_wasm_budget;
 #[cfg(test)]
 #[path = "tests/ttl.rs"]
 mod test_ttl;
+
+#[cfg(test)]
+#[path = "tests/admin_proposals.rs"]
+mod test_admin_proposals;
+#[cfg(test)]
+#[path = "tests/g2_subgroup.rs"]
+mod test_g2_subgroup;
+#[cfg(test)]
+#[path = "tests/identity_points.rs"]
+mod test_identity_points;
+#[cfg(test)]
+#[path = "tests/model_hash_validation.rs"]
+mod test_model_hash_validation;
+#[cfg(test)]
+#[path = "tests/no_trap.rs"]
+mod test_no_trap;

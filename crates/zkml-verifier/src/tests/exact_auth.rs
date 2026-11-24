@@ -135,7 +135,7 @@ fn set_risc0_config_needs_the_admin() {
 
     authorize(&env, &client, &admin, "set_risc0_config", args);
     client.set_risc0_config(&config);
-    assert_eq!(client.get_risc0_config().image_id, config.image_id);
+    assert_eq!(client.get_risc0_config().unwrap().image_id, config.image_id);
 }
 
 #[test]
@@ -207,10 +207,16 @@ fn accept_admin_needs_the_proposed_admin() {
     client.propose_admin(&proposed);
     let no_args = soroban_sdk::Vec::<Val>::new(&env);
 
-    assert_auth_error!(client.try_accept_admin());
+    // accept_admin returns Result<(), VerificationError>, and a failed
+    // authorization is not one of its errors, so it surfaces as an invoke
+    // error rather than through the contract's error type.
+    let refused = |result: Result<_, Result<VerificationError, soroban_sdk::InvokeError>>| {
+        matches!(result, Err(Err(_)))
+    };
+    assert!(refused(client.try_accept_admin()));
     // Not even the current admin can accept on the proposed admin's behalf.
     authorize(&env, &client, &admin, "accept_admin", no_args.clone());
-    assert_auth_error!(client.try_accept_admin());
+    assert!(refused(client.try_accept_admin()));
     assert_eq!(client.get_admin(), admin);
 
     authorize(&env, &client, &proposed, "accept_admin", no_args);

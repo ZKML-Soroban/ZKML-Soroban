@@ -1,0 +1,41 @@
+name: Fuzz
+
+# Weekly fuzzing of the verifier's two entry points, 5 minutes each: every
+# input must verify or return a VerificationError, never trap in the host.
+# The same properties run in every CI build as deterministic cases
+# (crates/zkml-verifier/src/tests/no_trap.rs); this explores far further.
+# A finding fails the job and uploads the crashing input.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [verify_inference, verify_receipt]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/zkml-verifier/fuzz
+      - name: Fuzz ${{ matrix.target }} for 5 minutes
+        working-directory: crates/zkml-verifier
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=300 -max_len=4096
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: crates/zkml-verifier/fuzz/artifacts

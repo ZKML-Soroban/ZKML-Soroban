@@ -106,7 +106,6 @@
         }
       ]
     ],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
@@ -126,7 +125,7 @@
   ],
   "ledger": {
     "protocol_version": 27,
-    "sequence_number": 1555210,
+    "sequence_number": 120960,
     "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
@@ -301,7 +300,7 @@
           },
           "ext": "v0"
         },
-        "live_until": 3628810
+        "live_until": 2073600
       },
       {
         "entry": {
@@ -321,7 +320,7 @@
           },
           "ext": "v0"
         },
-        "live_until": 7867209
+        "live_until": 6432959
       },
       {
         "entry": {
@@ -335,7 +334,7 @@
           },
           "ext": "v0"
         },
-        "live_until": 3628810
+        "live_until": 2073600
       }
     ]
   },

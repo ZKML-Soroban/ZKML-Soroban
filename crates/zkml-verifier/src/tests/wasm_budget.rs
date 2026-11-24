@@ -29,15 +29,67 @@ fn hex_to_vec(hex: &str) -> std::vec::Vec<u8> {
         .collect()
 }
 
-/// Ceiling for each entry point, measured on the compiled WASM.
+/// The measured figures in `budget-baseline.json`, next to `Cargo.toml`.
 ///
-/// The docs quote 31.0M for `verify_inference` and 29.6M for
-/// `verify_receipt` (README, `docs/reference/benchmarks.md` and the pages
-/// that link to it). This sits about 3% above the larger of the two, so a
-/// change that moves the cost noticeably fails here and the figures get
-/// re-measured, instead of drifting away from what the docs say. The
-/// network limit is 100M.
-const DOCUMENTED_CPU_CEILING: u64 = 32_000_000;
+/// Each test fails when its figure moves above the baseline by more than the
+/// file's tolerance, so a change that moves the cost noticeably re-measures it
+/// and updates the file and `docs/reference/benchmarks.md` together, instead of
+/// the docs drifting away from the contract. The size test also checks the
+/// network's limit.
+fn baseline(key: &str) -> u64 {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("budget-baseline.json");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    json[key]
+        .as_u64()
+        .unwrap_or_else(|| panic!("{key} missing from budget-baseline.json"))
+}
+
+/// Fail if `measured` is above the baseline for `key` plus the tolerance.
+fn check_against_baseline(key: &str, measured: u64) {
+    let base = baseline(key);
+    let ceiling = base + base * baseline("tolerance_percent") / 100;
+    println!("{key}: {measured} (baseline {base}, ceiling {ceiling})");
+    assert!(
+        measured <= ceiling,
+        "{key} is {measured}, above its baseline {base} plus {}%; re-measure and update          budget-baseline.json and docs/reference/benchmarks.md",
+        baseline("tolerance_percent")
+    );
+    assert!(measured < baseline("network_cpu_limit") || key == "wasm_bytes");
+}
+
+fn wasm_path() -> std::string::String {
+    std::env::var("ZKML_VERIFIER_WASM").unwrap_or_else(|_| {
+        std::format!(
+            "{}/../../target/wasm32v1-none/contract/zkml_verifier.wasm",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    })
+}
+
+fn read_wasm() -> std::vec::Vec<u8> {
+    let path = wasm_path();
+    std::fs::read(&path).unwrap_or_else(|e| panic!("reading {path}: {e}; build the contract first"))
+}
+
+/// The WASM must fit the network's `contract_max_size_bytes` and stay near its
+/// baseline. Replaces CI's old size report, which printed the size and
+/// checked nothing.
+#[test]
+#[ignore = "needs the WASM built first; see the module docs"]
+fn wasm_budget_size() {
+    let size = read_wasm().len() as u64;
+    let limit = baseline("network_contract_max_size_bytes");
+    println!(
+        "
+=== WASM size: {size} bytes, network limit {limit}"
+    );
+    assert!(
+        size <= limit,
+        "{size} bytes does not fit the network limit of {limit}"
+    );
+    check_against_baseline("wasm_bytes", size);
+}
 
 fn read(name: &str) -> serde_json::Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -49,14 +101,8 @@ fn read(name: &str) -> serde_json::Value {
 #[test]
 #[ignore = "needs the WASM built first; see the module docs"]
 fn wasm_budget() {
-    let wasm_path = std::env::var("ZKML_VERIFIER_WASM").unwrap_or_else(|_| {
-        std::format!(
-            "{}/../../target/wasm32v1-none/contract/zkml_verifier.wasm",
-            env!("CARGO_MANIFEST_DIR")
-        )
-    });
-    let wasm = std::fs::read(&wasm_path)
-        .unwrap_or_else(|e| panic!("reading {wasm_path}: {e}; build the contract first"));
+    let wasm_path = wasm_path();
+    let wasm = read_wasm();
 
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
@@ -97,6 +143,9 @@ fn wasm_budget() {
     for point in vk["ic"].as_array().unwrap() {
         ic.push_back(b(point.as_str().unwrap()));
     }
+    // Registering the key runs a pairing on its G2 points (the subgroup
+    // check), so it is measured too: it has to fit in one transaction.
+    env.cost_estimate().budget().reset_unlimited();
     client.set_risc0_vk(&VerificationKey {
         alpha: b(vk["alpha"].as_str().unwrap()),
         beta: b(vk["beta"].as_str().unwrap()),
@@ -104,6 +153,9 @@ fn wasm_budget() {
         delta: b(vk["delta"].as_str().unwrap()),
         ic,
     });
+    let register_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+    println!("\n=== set_risc0_vk CPU instructions: {register_cpu}");
+    check_against_baseline("set_risc0_vk_cpu", register_cpu);
 
     let seal = b(bundle["seal"].as_str().unwrap());
     let journal = b(bundle["journal"].as_str().unwrap());
@@ -118,11 +170,7 @@ fn wasm_budget() {
     println!("CPU instructions : {cpu}");
     println!("Memory bytes     : {mem}");
 
-    assert!(
-        cpu < DOCUMENTED_CPU_CEILING,
-        "{cpu} instructions is above the documented ceiling of {DOCUMENTED_CPU_CEILING}; \
-         re-measure and update the docs"
-    );
+    check_against_baseline("verify_receipt_cpu", cpu);
 }
 
 /// `verify_inference` on the same WASM, so the two entry points can be
@@ -131,14 +179,8 @@ fn wasm_budget() {
 #[test]
 #[ignore = "needs the WASM built first; see the module docs"]
 fn wasm_budget_verify_inference() {
-    let wasm_path = std::env::var("ZKML_VERIFIER_WASM").unwrap_or_else(|_| {
-        std::format!(
-            "{}/../../target/wasm32v1-none/contract/zkml_verifier.wasm",
-            env!("CARGO_MANIFEST_DIR")
-        )
-    });
-    let wasm = std::fs::read(&wasm_path)
-        .unwrap_or_else(|e| panic!("reading {wasm_path}: {e}; build the contract first"));
+    let wasm_path = wasm_path();
+    let wasm = read_wasm();
 
     let env = Env::default();
     env.mock_all_auths_allowing_non_root_auth();
@@ -169,9 +211,5 @@ fn wasm_budget_verify_inference() {
     println!("CPU instructions : {cpu}");
     println!("Memory bytes     : {mem}");
 
-    assert!(
-        cpu < DOCUMENTED_CPU_CEILING,
-        "{cpu} instructions is above the documented ceiling of {DOCUMENTED_CPU_CEILING}; \
-         re-measure and update the docs"
-    );
+    check_against_baseline("verify_inference_cpu", cpu);
 }

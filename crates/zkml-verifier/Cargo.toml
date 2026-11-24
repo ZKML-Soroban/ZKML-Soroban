@@ -39,3 +39,9 @@ zkml-common = { workspace = true, default-features = false, features = ["sha2", 
 # Reading the golden fixture in `testdata/`, which is a real bundle and a real
 # verifying key rather than values made up to make a test pass.
 serde_json = { workspace = true }
+# Building a G2 point that is on the curve but outside the prime-order
+# subgroup, which no honest key or proof contains, to test that registration
+# refuses it. Already in the lockfile through soroban-env-host.
+ark-bn254 = "0.5"
+ark-ec = "0.5"
+ark-ff = "0.5"
