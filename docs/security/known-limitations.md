@@ -62,7 +62,6 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 
 ## Models
 
-- Decision trees always produce `class_label = 0`; the prediction is in `output`.
 - ONNX: single trees only (no ensembles), binary linear classifiers only.
 - ONNX trees with text class labels are refused; export the classifier with
   integer labels.

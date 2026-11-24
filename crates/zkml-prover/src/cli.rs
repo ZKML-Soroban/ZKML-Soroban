@@ -416,6 +416,17 @@ mod tests_parse_inputs {
 pub fn load_model(path: &Path) -> Result<Model, CliError> {
     let display = path.display().to_string();
     let bytes = std::fs::read(path).map_err(|e| io_err(&display, e))?;
+    // An `.onnx` file goes through the ONNX importer (opset checks, operator
+    // allowlist, quantization); anything else is the JSON model format.
+    let is_onnx = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("onnx"));
+    if is_onnx {
+        return crate::onnx::import_onnx(&bytes).map_err(|e| CliError::ModelImport {
+            path: display,
+            message: e.to_string(),
+        });
+    }
     import_json(&bytes).map_err(|message| CliError::ModelImport {
         path: display,
         message,

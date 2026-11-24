@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can withdraw one with `cancel_admin_proposal` (event `("cfg_upd", "adm_cncl")`).
   `get_pending_admin` reads the live proposal.
 
+### Added
+- The CLI reads ONNX models: any subcommand given a `.onnx` file runs it
+  through the ONNX importer, so the trained KYC model is proved directly
+  instead of being converted to JSON first.
+
 ### Changed
 - `verify_inference` assembles L with one `g1_msm` instead of four
   multiplications and four additions: 28,956,777 CPU instructions on the WASM,
@@ -37,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `crates/zkml-verifier/src/tests/`, one file per module. Module names are kept,
   so test paths and `test_snapshots/` do not move. The contract WASM is byte for
   byte the same.
+- A decision tree's `class_label` is its leaf value rounded down, instead of
+  always `0`. A classifier tree's leaf holds the predicted class (the ONNX
+  importer and `tools/sklearn_to_json.py` write it that way), so the KYC risk
+  tier now arrives in `class_label` as well as in `output`. The guest compiles
+  this, so the reproducible image id changes to
+  `fcf4b6b101f93c6bb7b6b89e778c494d113e55c0e6a34129de6b30257617f557`, and the
+  golden receipt and RISC Zero parameters in `crates/zkml-verifier/testdata/`
+  are regenerated from it.
 
 ### Fixed
 - Verifier tests that could not fail now test what their names say:

@@ -250,3 +250,37 @@ fn missing_model_exits_one() {
     let out = run_bin(&["commit", "/nonexistent/model.json", "--opening", OPENING]);
     assert_eq!(out.status.code(), Some(1));
 }
+
+/// An `.onnx` model goes through the ONNX importer, so `inspect` and `infer`
+/// work on it directly; up to 0.0.5 the CLI read JSON only. A classifier tree
+/// reports its predicted class as the leaf value.
+#[test]
+fn the_cli_reads_onnx_models() {
+    let model = "tests/fixtures/skl2onnx_real_tree.onnx";
+    let inspect = run_bin(&["inspect", model]);
+    assert!(
+        inspect.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
+    let text = String::from_utf8_lossy(&inspect.stdout);
+    assert!(text.contains("kind: decision_tree"), "{text}");
+
+    let library = zkml_prover::onnx::import_onnx(&std::fs::read(model).unwrap()).unwrap();
+    let from_cli = zkml_prover::cli::load_model(Path::new(model)).unwrap();
+    assert_eq!(
+        serde_json::to_string(&library).unwrap(),
+        serde_json::to_string(&from_cli).unwrap(),
+        "the CLI must load exactly what the library importer produces"
+    );
+}
+
+/// An `.onnx` file that is not valid ONNX is a model import error naming the
+/// file, not a JSON parse error.
+#[test]
+fn a_broken_onnx_file_is_reported_as_an_onnx_import_error() {
+    let path = scratch("onnx").join("broken.onnx");
+    std::fs::write(&path, b"not a protobuf").unwrap();
+    let err = zkml_prover::cli::load_model(&path).unwrap_err();
+    assert!(matches!(err, CliError::ModelImport { .. }), "{err:?}");
+}
