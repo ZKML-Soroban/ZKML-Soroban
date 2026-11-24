@@ -164,6 +164,25 @@ pub enum Command {
         min_agreement: f64,
     },
 
+    /// Execute the guest on a model and input, without proving, and print its
+    /// zkVM cycles: what the guest ran, what proving pays for (each segment
+    /// padded to a power of two) and the segment count. Takes seconds.
+    /// Requires the `zkvm` feature.
+    Cycles {
+        /// Path to a model: `.onnx` or the JSON format.
+        model: PathBuf,
+        /// Comma-separated feature vector, as for `infer`.
+        #[arg(short, long, allow_hyphen_values = true)]
+        input: String,
+        /// The model's opening, as for `prove`. Cycles do not depend on its
+        /// value, but the guest reads one.
+        #[arg(long)]
+        opening: PathBuf,
+        /// `json` for a machine-readable line, `text` for people.
+        #[arg(long, default_value = "text", value_parser = ["text", "json"])]
+        format: String,
+    },
+
     /// Print a model's kind, feature count, structure and validity.
     Inspect {
         /// Path to a JSON model.
@@ -595,6 +614,12 @@ pub fn run(cli: &Cli, out: &mut impl Write) -> Result<(), CliError> {
             },
             out,
         ),
+        Command::Cycles {
+            model,
+            input,
+            opening,
+            format,
+        } => cmd_cycles(model, input, opening, format, out),
         Command::Inspect { model } => cmd_inspect(model, out),
     }
 }
@@ -861,6 +886,47 @@ pub fn cmd_export_vk(
     };
 
     write_or_print(payload, dest, "verification key", out)
+}
+
+/// `cycles`: execute the guest without proving and print its cycle counts.
+#[cfg(feature = "zkvm")]
+pub fn cmd_cycles(
+    model_path: &Path,
+    raw: &str,
+    opening_path: &Path,
+    format: &str,
+    out: &mut impl Write,
+) -> Result<(), CliError> {
+    let model = load_model(model_path)?;
+    let inputs = parse_inputs(raw)?;
+    let opening = read_opening(opening_path)?;
+    let count = crate::prover::count_cycles(&model, &inputs, &opening).map_err(CliError::Prove)?;
+    let text = if format == "json" {
+        serde_json::to_string(&count)
+            .map_err(|e| CliError::Prove(ProveError::Zkvm(e.to_string())))?
+    } else {
+        format!(
+            "user cycles: {}
+padded cycles: {}
+segments: {}",
+            count.user_cycles, count.padded_cycles, count.segments
+        )
+    };
+    writeln!(out, "{text}").map_err(|e| io_err("stdout", e))
+}
+
+#[cfg(not(feature = "zkvm"))]
+pub fn cmd_cycles(
+    _model_path: &Path,
+    _raw: &str,
+    _opening_path: &Path,
+    _format: &str,
+    _out: &mut impl Write,
+) -> Result<(), CliError> {
+    Err(CliError::FeatureDisabled {
+        command: "cycles".into(),
+        feature: "zkvm".into(),
+    })
 }
 
 #[cfg(not(feature = "zkvm"))]

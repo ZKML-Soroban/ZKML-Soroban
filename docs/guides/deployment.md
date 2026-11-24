@@ -192,6 +192,22 @@ back, equal to the native prediction:
 | Guest image id | `fcf4b6b101f93c6bb7b6b89e778c494d113e55c0e6a34129de6b30257617f557` |
 | `verify_receipt` | [`ba878e8d...`](https://stellar.expert/explorer/testnet/tx/ba878e8d651dc953079891a7fe3d349f2c2646d085d249f4b12f091838c50713), fee 784,460 stroops (0.078 XLM) |
 | Recorded | `class_label` 1, `output` 34865 (0.532) |
+### KYC tree with real proving, 2026-11-24
+
+`zkml-demo` with the `groth16` feature proved the KYC tree
+(`examples/models/kyc_tree.json`, input `0.6,0.4,0.0`, a fresh opening) on the
+machine in [Benchmarks](/reference/benchmarks#proving), deployed a new verifier
+and verified it. The recorded `class_label` is the risk tier, equal to native
+inference.
+
+| Item | Value |
+| ---- | ----- |
+| Contract | [`CDGMEKFBWWEYYCX6SPSZFVGE6PDVRKYCFLNQAJVIQUEWHMPURQ3PB4NC`](https://stellar.expert/explorer/testnet/contract/CDGMEKFBWWEYYCX6SPSZFVGE6PDVRKYCFLNQAJVIQUEWHMPURQ3PB4NC) |
+| `verify_receipt` | [`6fec43d7...`](https://stellar.expert/explorer/testnet/tx/6fec43d7d53b1dd5075009333e51a7fd5fb9b87c7b1351ac2ef81ceb9310f766), fee 782,540 stroops (0.078 XLM) |
+| Recorded | `class_label` 1, `output` 65536 (tier 1) |
+| Stages | prove 3,354.8 s, deploy 16.6 s, submit 4.4 s |
+| Criteria | proof 356 bytes: pass; on-chain result equals native: pass; under 60 s end to end: fail |
+
 ### Earlier runs, paused
 
 <Warning>

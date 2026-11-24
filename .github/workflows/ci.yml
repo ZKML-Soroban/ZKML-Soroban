@@ -158,7 +158,8 @@ jobs:
         run: cargo check -p zkml-prover --features metal
       - name: Reproducible guest build
         # Builds the guest in RISC Zero's pinned builder image, prints its image
-        # id, and checks that the committed golden receipt was proved by it.
+        # id, checks that the committed golden receipt was proved by it, and
+        # that the guest's cycles stay within 5% of cycles-baseline.json.
         if: runner.os == 'Linux'
         env:
           ZKML_GUEST_DOCKER: "1"
@@ -166,6 +167,7 @@ jobs:
           cargo run -q -p zkml-prover --features zkvm -- export-vk --format json > vk.json
           python3 -c "import json; print('reproducible image id:', json.load(open('vk.json'))['image_id'])"
           RISC0_DEV_MODE=1 cargo test -p zkml-prover --features zkvm --test verifier_fixtures
+          cargo test -p zkml-prover --features zkvm --test cycles_baseline -- --nocapture
       - name: Clippy with the zkVM and Groth16 features
         # The Clippy job builds default features only, so code behind `zkvm`
         # and `groth16` was never linted there. It needs the RISC Zero

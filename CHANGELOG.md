@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `get_pending_admin` reads the live proposal.
 
 ### Added
+- `zkml-prover cycles <MODEL> -i <CSV> --opening <FILE>` executes the guest
+  without proving and prints its user cycles, padded cycles and segments in
+  seconds (`zkvm` feature); the library function is `prover::count_cycles`.
+- CI fails when the reproducible guest's cycles for `credit_lr.json` or
+  `kyc_tree.json` grow more than 5% over `crates/zkml-prover/cycles-baseline.json`
+  (13,836,264 and 23,268,536 user cycles).
+- Criterion benchmarks: `cargo bench -p zkml-common --bench core` (fixed-point
+  arithmetic, commitments, inference) and `cargo bench -p zkml-prover --bench
+  onnx` (ONNX import). `docs/reference/benchmarks.md` reports measured numbers
+  instead of the old estimates.
 - `zkml-demo` runs the demo end to end instead of printing a plan: it loads
   the model (`.onnx` or JSON) and runs it natively, proves it (`groth16`
   feature) or takes a pre-built `--bundle`, checks the bundle against the native

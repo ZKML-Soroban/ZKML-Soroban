@@ -81,15 +81,40 @@ regressions:
 cargo test -p zkml-verifier test_verifier_accept_path_and_resource_budget -- --nocapture
 ```
 
-## Native inference
+## zkVM cycles
 
-Sanity baselines measured with the `timing` feature on a developer laptop:
+Proving cost follows the guest's cycle count. `zkml-prover cycles` executes the
+guest without proving and reports it in seconds; CI compares both example
+models with `crates/zkml-prover/cycles-baseline.json` on the reproducible guest
+and fails when one grows by more than 5%. RISC Zero 3.1.0, guest `fcf4b6b1...`:
 
-| Model               | Inputs | Native inference |
-| ------------------- | ------ | ---------------- |
-| Logistic regression | 4      | Under 1 µs       |
-| Decision tree       | 3      | Under 1 µs       |
-| Tiny MLP (8-8-1)    | 8      | A few µs         |
+| Model | Input | User cycles | Padded (what proving pays for) | Segments |
+| ----- | ----- | ----------- | ------------------------------ | -------- |
+| `credit_lr.json` (logistic regression, 4 features) | `0.5,0.2,0.9,0.1` | 13,836,264 | 14,680,064 | 14 |
+| `kyc_tree.json` (decision tree, 3 features) | `0.6,0.4,0.0` | 23,268,536 | 24,641,536 | 24 |
+
+## Native
+
+`cargo bench -p zkml-common --bench core` and `cargo bench -p zkml-prover
+--bench onnx` (criterion), on the machine in the proving table below, under
+WSL2. Medians:
+
+| Operation | Time |
+| --------- | ---- |
+| `FixedPoint::checked_mul` / `checked_div` | 1.05 ns / 3.82 ns |
+| `dot`, 16 / 128 / 1024 elements | 4.78 ns / 30.6 ns / 241 ns |
+| Model commitment: logistic regression (4 weights) | 89.7 µs |
+| Model commitment: tree, depth 5 / depth 12 | 1.95 ms / 251 ms |
+| Model commitment: MLP 8-8-1 / 64-64-10 | 814 µs / 41.9 ms |
+| Input commitment: 10 / 100 / 1000 features | 107 µs / 882 µs / 8.73 ms |
+| Inference, one row: logistic regression / tree depth 5 / tree depth 12 / MLP 8-8-1 | 9.2 ns / 10.5 ns / 27.4 ns / 113 ns |
+| Inference, 100 rows: logistic regression / tree depth 5 / tree depth 12 / MLP 8-8-1 | 781 ns / 1.03 µs / 2.86 µs / 11.2 µs |
+| ONNX import: linear classifier / skl2onnx tree / MLP | 589 ns / 3.62 µs / 1.55 µs |
+
+Poseidon dominates the host side: a commitment costs tens of microseconds per
+pair of elements, inference a few nanoseconds per feature. Native numbers on
+shared CI runners are noisy, so CI only checks that the benchmarks build
+(`clippy --all-targets`); the cycle count is the gated figure.
 
 ## Proving
 
@@ -106,6 +131,11 @@ on `examples/models/credit_lr.json` (logistic regression, 4 features):
 | Seal | 260 bytes (4-byte selector + 256-byte proof) |
 | Journal | 96 bytes |
 | Total on-chain payload | 356 bytes |
+
+The KYC tree (`kyc_tree.json`, 24,641,536 padded cycles) took 3,355 s to prove
+on the same machine in the demo runner's testnet run, about in proportion to
+its cycles. Local proving is far from the roadmap's 60-second end-to-end
+target; remote proving is the way there.
 
 Reproduce it with:
 
