@@ -126,6 +126,11 @@ fn setup(env: &Env) -> (ZkmlVerifierContractClient<'_>, Bytes, Bytes) {
     (client, seal, journal)
 }
 
+/// The same setup for other test modules, such as the property tests.
+pub(crate) fn setup_pub(env: &Env) -> (ZkmlVerifierContractClient<'_>, Bytes, Bytes) {
+    setup(env)
+}
+
 #[test]
 fn a_real_receipt_verifies_on_chain() {
     let env = Env::default();

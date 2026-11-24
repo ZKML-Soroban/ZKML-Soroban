@@ -1,0 +1,10 @@
+{
+  "comment": "Measured on the compiled WASM (wasm32v1-none, contract profile) by the wasm_budget tests, which fail when a figure moves above its baseline by more than tolerance_percent. A change that moves one re-measures it and updates this file and docs/reference/benchmarks.md together. network_contract_max_size_bytes is the contract_max_size_bytes setting read from testnet and mainnet on 2026-11-24.",
+  "tolerance_percent": 3,
+  "wasm_bytes": 57266,
+  "verify_receipt_cpu": 29577642,
+  "verify_inference_cpu": 28956777,
+  "set_risc0_vk_cpu": 22750670,
+  "network_contract_max_size_bytes": 131072,
+  "network_cpu_limit": 100000000
+}

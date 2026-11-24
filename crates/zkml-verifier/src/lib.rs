@@ -1422,3 +1422,6 @@ mod test_identity_points;
 #[cfg(test)]
 #[path = "tests/model_hash_validation.rs"]
 mod test_model_hash_validation;
+#[cfg(test)]
+#[path = "tests/no_trap.rs"]
+mod test_no_trap;
