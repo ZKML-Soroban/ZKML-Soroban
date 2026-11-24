@@ -39,3 +39,6 @@ examples/kyc-demo/kyc_dataset.csv
 examples/kyc-demo/kyc_decision_tree.onnx
 examples/kyc-demo/validation_dataset.json
 examples/kyc-demo/features_sample.txt
+
+# Python bytecode
+__pycache__/
