@@ -33,3 +33,12 @@ coverage/
 
 # Local-only planning draft, not part of the published repo
 PROJECT-DESCRIPTION.md
+
+# Outputs of examples/kyc-demo/generate_dataset.py and train_model.py
+examples/kyc-demo/kyc_dataset.csv
+examples/kyc-demo/kyc_decision_tree.onnx
+examples/kyc-demo/validation_dataset.json
+examples/kyc-demo/features_sample.txt
+
+# Python bytecode
+__pycache__/

@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `get_pending_admin` reads the live proposal.
 
 ### Added
+- `zkml-demo` runs the demo end to end instead of printing a plan: it loads
+  the model (`.onnx` or JSON) and runs it natively, proves it (`groth16`
+  feature) or takes a pre-built `--bundle`, checks the bundle against the native
+  run, deploys the verifier and registers the bundle's guest through the
+  `stellar` CLI unless `--contract` names one, submits `verify_receipt`, reads
+  `get_result` back and reports stage timings, payload size, the fee charged and
+  the roadmap's Phase 1 criteria as pass, fail or not measured. `just demo`
+  runs it on testnet. It drops its unused `soroban-sdk` 21 and `tokio`
+  dependencies.
+- `examples/kyc-demo/train_model.py` also writes `validation_dataset.json`, for
+  `zkml-prover validate` to check the quantized tree against scikit-learn, and
+  one input row in `features_sample.txt`.
 - The CLI reads ONNX models: any subcommand given a `.onnx` file runs it
   through the ONNX importer, so the trained KYC model is proved directly
   instead of being converted to JSON first.

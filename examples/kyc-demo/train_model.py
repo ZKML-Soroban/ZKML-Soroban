@@ -6,6 +6,8 @@ This script trains a decision tree classifier for KYC risk scoring and exports
 it to ONNX format for use with zkml-soroban.
 """
 
+import json
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -81,6 +83,21 @@ def export_to_onnx(model, output_path):
     
     print(f"Exported ONNX model to: {output_path}")
 
+def write_validation_dataset(model, X, path):
+    """Write `[{"inputs": [...], "expected": prediction}]` for `zkml-prover validate`.
+
+    The expected value is the float model's predicted class, which is what the
+    imported tree's leaf holds after quantization.
+    """
+    predictions = model.predict(X)
+    rows = [
+        {"inputs": [float(v) for v in features], "expected": float(label)}
+        for features, label in zip(X, predictions)
+    ]
+    with open(path, "w") as f:
+        json.dump(rows, f)
+
+
 def main():
     """Main training pipeline."""
     output_dir = Path(__file__).parent
@@ -109,13 +126,23 @@ def main():
     # Export to ONNX
     print("\nExporting to ONNX...")
     export_to_onnx(model, onnx_output_path)
-    
+
+    # Parity data for `zkml-prover validate`: the float model's predictions on
+    # the test set, which the quantized Rust model has to reproduce.
+    validation_path = output_dir / "validation_dataset.json"
+    write_validation_dataset(model, X_test, validation_path)
+    sample_path = output_dir / "features_sample.txt"
+    sample_path.write_text(",".join(repr(float(v)) for v in X_test[0]) + "\n")
+
     print("\nTraining complete!")
     print(f"ONNX model saved to: {onnx_output_path}")
-    print("\nNext steps:")
-    print("1. Import the ONNX model using zkml-prover")
-    print("2. Quantize the model for fixed-point inference")
-    print("3. Generate proofs using the prover")
+    print(f"Validation set saved to: {validation_path}")
+    print(f"One input row saved to: {sample_path}")
+    print("\nNext steps, from the repository root:")
+    print("1. cargo run -p zkml-prover -- validate examples/kyc-demo/kyc_decision_tree.onnx "
+          "--dataset examples/kyc-demo/validation_dataset.json")
+    print("2. cargo run -p zkml-demo -- --model examples/kyc-demo/kyc_decision_tree.onnx "
+          "-i \"$(cat examples/kyc-demo/features_sample.txt)\" --opening <file> ...")
 
 if __name__ == "__main__":
     main()

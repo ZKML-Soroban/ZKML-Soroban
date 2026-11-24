@@ -179,8 +179,23 @@ stellar CLI. `--help` lists the options and environment variables. See
 
 ## Live on testnet
 
+### Demo runner, 2026-11-24
+
+`zkml-demo` deployed a contract `VERSION` 11 verifier, registered the RISC
+Zero 3.1.0 parameters and the bundle's guest, submitted the golden receipt
+(`credit_lr`, input `0.5,0.2,0.9,0.1`, hiding commitments) and read the record
+back, equal to the native prediction:
+
+| Item | Value |
+| ---- | ----- |
+| Contract | [`CA4MMQA6B72YP2Z3Y7IPF5GP6NFXYNPS6HC7HA74YN3UEVDJZIWXZWHB`](https://stellar.expert/explorer/testnet/contract/CA4MMQA6B72YP2Z3Y7IPF5GP6NFXYNPS6HC7HA74YN3UEVDJZIWXZWHB) |
+| Guest image id | `fcf4b6b101f93c6bb7b6b89e778c494d113e55c0e6a34129de6b30257617f557` |
+| `verify_receipt` | [`ba878e8d...`](https://stellar.expert/explorer/testnet/tx/ba878e8d651dc953079891a7fe3d349f2c2646d085d249f4b12f091838c50713), fee 784,460 stroops (0.078 XLM) |
+| Recorded | `class_label` 1, `output` 34865 (0.532) |
+### Earlier runs, paused
+
 <Warning>
-Both contracts below are paused since 2026-11-24. They were registered with
+The two contracts below are paused since 2026-11-24. They were registered with
 RISC Zero 3.0.x parameters, which accept forged receipts (RISC Zero
 GHSA-g6qg-9j8p-7j87; ours, GHSA-hmx6-94gg-9r4q). A verifier deployed today
 uses the 3.1.0 parameters `export-vk` prints from `0.0.5` on.
@@ -189,7 +204,7 @@ uses the 3.1.0 parameters `export-vk` prints from `0.0.5` on.
 Both runs below predate `0.0.4`, so their model commitments are the earlier,
 deterministic ones; see [Commitments](/concepts/commitments#openings).
 
-### KYC tree, 2026-11-20
+#### KYC tree, 2026-11-20
 
 The script ran end to end with its defaults: the KYC tree
 (`examples/models/kyc_tree.json`) on input `0.6,0.4,0.0`, proved with the
@@ -215,7 +230,7 @@ The verification landed in ledger 5,833,131 and recorded output `65536`, risk
 tree. It declared 30,940,787 CPU instructions and was charged 778,696 stroops
 (about 0.078 XLM). Proving took 2,727 seconds on a laptop CPU.
 
-### First receipt, 2026-11-17
+#### First receipt, 2026-11-17
 
 The script deployed the `VERSION` 10 contract and verified the
 golden receipt of the time: a real Groth16 proof of

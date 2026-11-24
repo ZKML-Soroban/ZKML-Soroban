@@ -15,12 +15,12 @@ Deployment with the `stellar` CLI: [docs/guides/deployment.md](../../docs/guides
 | Training and ONNX export (`train_model.py`) | Works, exports with `target_opset=17` |
 | ONNX import into `zkml-prover` | Works: a decision tree of 43 nodes over 10 features |
 | Verifier contract with Groth16 (BN254) verification | Implemented |
-| Poseidon model commitment | Implemented (`zkml-prover commit` for JSON models) |
+| Poseidon model commitment | Implemented (`zkml-prover commit`, JSON or ONNX) |
 | Contract build and deployment | Works with the `stellar` CLI (`deploy.sh`) |
 | STARK to Groth16 compression | Works on x86_64 Linux with Docker (`zkml-prover prove --groth16`) |
 | RISC Zero parameter export | Works (`zkml-prover export-vk --format soroban-args`) |
 | On-chain verification (`verify_receipt`) | The KYC tree verified on testnet on 2026-11-20, see the deployment guide |
-| Demo runner (`zkml-demo`) | Skeleton only |
+| Demo runner (`zkml-demo`) | Works: proves or takes `--bundle`, deploys, verifies and reports |
 
 ## Prerequisites
 
@@ -89,24 +89,36 @@ examples/kyc-demo/deploy.sh --bundle bundle.json --risc0-params risc0_params.jso
 
 `--help` lists every option. The model and input default to
 `examples/models/kyc_tree.json` and `0.6,0.4,0.0`; `KYC_MODEL` and `KYC_INPUT`
-change them. The CLI reads JSON models only, so the ONNX model from step 2 has
-to be converted first.
+change them. `KYC_MODEL` can be the ONNX model from step 2 directly.
 
-## 4. Run the demo runner (pending)
+## 4. Run the demo runner
 
 ```bash
-cargo run -p zkml-demo -- --model kyc_decision_tree.onnx --contract-id <CONTRACT_ID>
+# Prove here (x86_64 Linux with Docker), deploy a fresh verifier, verify, report:
+cargo run --release -p zkml-demo --features groth16,zkvm --   --model examples/kyc-demo/kyc_decision_tree.onnx -i "<10 features>"   --opening target/kyc-demo/model.opening --source zkml-demo --report report.json
+
+# Anywhere else: submit a bundle proved on Linux, with the RISC Zero
+# parameters exported next to it:
+cargo run -p zkml-demo -- --model examples/models/kyc_tree.json -i "0.6,0.4,0.0"   --opening model.opening --bundle bundle.json --risc0-params risc0.json
 ```
 
-The runner currently prints the planned steps only; `deploy.sh` is the working
-path.
+The runner checks the bundle against the native run before submitting it: the
+model commitment under the opening, the output and the class must match. Then
+it deploys the verifier with the `stellar` CLI (unless `--contract` names one),
+registers the bundle's guest, submits `verify_receipt`, reads `get_result` back
+and prints a report: stage timings, seal and journal sizes, the fee charged and
+each Phase 1 criterion (proof under 500 bytes, end to end under 60 s, the
+on-chain result equal to the native prediction) marked pass, fail or not
+measured. `--report` also writes it as JSON. Local proving takes about half an
+hour, so the latency criterion fails until remote proving lands; with
+`--bundle` it is not measured.
 
 ## Mapping the result
 
-For decision trees, `class_label` is always `0` and `output` carries the leaf value
-(raw Q16.16). For JSON trees whose leaves store the tier, that is the tier (tier 2
-is `131072`). Multi-class ONNX trees such as `kyc_decision_tree.onnx` import with
-the predicted class in each leaf, so their output is the tier too.
+For decision trees, `class_label` is the tier and `output` carries the leaf value
+(raw Q16.16; tier 2 is `131072`). Multi-class ONNX trees such as
+`kyc_decision_tree.onnx` import with the predicted class in each leaf, so both
+carry the tier. Up to `0.0.5` trees reported `class_label` `0`.
 
 ## Success criteria
 
@@ -131,9 +143,8 @@ the predicted class in each leaf, so their output is the tier too.
 
 ## Next steps
 
-1. Accept ONNX models in the CLI, so the trained model can be proved directly
-2. Implement the `zkml-demo` pipeline with metrics
-3. Remote proving, to bring the 25-minute proof under the latency target
+1. Remote proving, to bring the half-hour proof under the latency target
+2. A local-network job in CI that submits the golden bundle through the runner
 
 ## References
 
