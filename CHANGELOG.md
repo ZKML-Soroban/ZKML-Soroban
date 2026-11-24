@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The verifier's tests moved out of `lib.rs` (from 3,988 lines to 1,281) into
+  `crates/zkml-verifier/src/tests/`, one file per module. Module names are kept,
+  so test paths and `test_snapshots/` do not move. The contract WASM is byte for
+  byte the same.
+
+### Fixed
+- Verifier tests that could not fail now test what their names say:
+  `verify_distinct_inputs_independent` and `verify_distinct_outputs_independent`
+  sent 72-byte inputs that never reached the nullifier, `verify_multi_scalar_output`
+  only checked that one error did not occur, `set_model_hash_unauthorized_fails`
+  never called `set_model_hash`, and `model_commitment_is_reproducible` compared
+  a value with itself. They now use real proofs, and a new cross-check runs
+  commitments from `zkml-common` through the constructor and `verify_inference`.
+  Each was checked to fail against a broken contract (no nullifier check, no
+  admin auth, big-endian public inputs).
+- New `test_exact_auth` covers every admin entry point with `mock_auths`
+  instead of `mock_all_auths`: no authorization, the wrong signer and the
+  right signer. Removed five orphaned snapshots under `test_snapshots/test_verify/`.
+
 ## [0.0.5] - 2026-11-24
 
 Security release. RISC Zero 3.0.x Groth16 receipts can be forged
