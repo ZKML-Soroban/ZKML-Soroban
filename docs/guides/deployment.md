@@ -179,6 +179,13 @@ stellar CLI. `--help` lists the options and environment variables. See
 
 ## Live on testnet
 
+<Warning>
+Both contracts below are paused since 2026-11-24. They were registered with
+RISC Zero 3.0.x parameters, which accept forged receipts (RISC Zero
+GHSA-g6qg-9j8p-7j87; ours, GHSA-hmx6-94gg-9r4q). A verifier deployed today
+uses the 3.1.0 parameters `export-vk` prints from `0.0.5` on.
+</Warning>
+
 Both runs below predate `0.0.4`, so their model commitments are the earlier,
 deterministic ones; see [Commitments](/concepts/commitments#openings).
 

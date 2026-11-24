@@ -18,7 +18,7 @@ cargo test --workspace
 ```
 
 `rust-toolchain.toml` pins the stable channel, `rustfmt`, `clippy`, and the
-`wasm32v1-none` target. The RISC Zero toolchain (`3.0.6`) is needed only for
+`wasm32v1-none` target. The RISC Zero toolchain (`3.1.0`) is needed only for
 the `zkvm` feature.
 
 ## Before opening a pull request

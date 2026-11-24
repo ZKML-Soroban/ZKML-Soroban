@@ -17,8 +17,8 @@ Default workspace builds do **not** require the RISC Zero toolchain.
 
 Pinned versions (exact):
 
-- `risc0-zkvm = 3.0.6`
-- `risc0-build = 3.0.6`
+- `risc0-zkvm = 3.1.0`
+- `risc0-build = 3.0.7`
 
 ### Install toolchain
 
@@ -26,8 +26,8 @@ Pinned versions (exact):
 curl -L https://risczero.com/install | bash
 rzup install
 # pin when needed:
-# rzup install cargo-risczero 3.0.6
-# rzup install r0vm 3.0.6
+# rzup install cargo-risczero 3.1.0
+# rzup install r0vm 3.1.0
 ```
 
 ### Dev-mode tests (CI default)

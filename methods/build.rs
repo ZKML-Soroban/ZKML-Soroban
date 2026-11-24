@@ -20,9 +20,10 @@ const GUEST_PACKAGE: &str = "zkml-guest";
 
 /// RISC Zero builder image for the Docker build.
 ///
-/// `risc0-build` 3.0.6 defaults to `r0.1.88.0`, whose Rust 1.88 is older than
+/// `risc0-build` 3.0.6 defaulted to `r0.1.88.0`, whose Rust 1.88 is older than
 /// the workspace MSRV (1.91, which `zkml-common` declares) and than what some
-/// guest dependencies need, so that build fails. `r0.1.91.1` ships Rust 1.91.
+/// guest dependencies need. 3.0.7 defaults to `r0.1.97.0`. `r0.1.91.1` ships
+/// Rust 1.91 and stays pinned, so the toolchain only moves on purpose.
 /// Pinning the tag is part of what makes the image id reproducible: a different
 /// toolchain produces a different binary. `RISC0_DOCKER_CONTAINER_TAG`
 /// overrides it.
