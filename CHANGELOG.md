@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- Verifier contract interface `VERSION` 11. `accept_admin` returns
+  `Result<(), VerificationError>` and, without a live proposal, the new
+  `PendingAdminMismatch` (18) instead of panicking. `get_risc0_config` and
+  `get_risc0_vk` return `Option` instead of panicking before they are set. The
+  constructor and `set_model_hash` panic on a model hash that is not 32 bytes
+  below the BN254 scalar modulus, which no proof could ever match.
+
+### Security
+- Both verification paths refuse a proof point at infinity (Soroban's all-zero
+  encoding, which the curve checks accept) with `MalformedProofA`, `B` or `C`.
+  An honest Groth16 proof never holds the identity.
+- Registering a verifying key (constructor, `set_verification_key`,
+  `set_risc0_vk`) pairs its three G2 points, so the host checks they are in the
+  prime-order subgroup and a key that would trap every verification is never
+  stored. Up to `VERSION` 10 such a key was accepted. Costs 22.8M instructions,
+  once per key.
+- Admin proposals expire after `ADMIN_PROPOSAL_LEDGERS` (7 days), and the admin
+  can withdraw one with `cancel_admin_proposal` (event `("cfg_upd", "adm_cncl")`).
+  `get_pending_admin` reads the live proposal.
+
 ### Changed
+- `verify_inference` assembles L with one `g1_msm` instead of four
+  multiplications and four additions: 28,956,777 CPU instructions on the WASM,
+  down from 31,006,558. `verify_receipt` is 29,577,642. The WASM budget tests
+  fail above 30.5M, and a new one measures `set_risc0_vk`.
 - The verifier's tests moved out of `lib.rs` (from 3,988 lines to 1,281) into
   `crates/zkml-verifier/src/tests/`, one file per module. Module names are kept,
   so test paths and `test_snapshots/` do not move. The contract WASM is byte for

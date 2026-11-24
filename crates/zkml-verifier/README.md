@@ -32,7 +32,7 @@ pull the verifier's exported functions into your contract.
 
 ## Interface
 
-Contract interface `VERSION` is `10`. The full reference, with argument types and the
+Contract interface `VERSION` is `11`. The full reference, with argument types and the
 order of checks, is in [docs/reference/verifier-contract.md](https://github.com/ZKML-Soroban/ZKML-Soroban/blob/main/docs/reference/verifier-contract.md).
 
 | Function | Auth | Description |
@@ -47,10 +47,11 @@ order of checks, is in [docs/reference/verifier-contract.md](https://github.com/
 | `get_admin()` / `is_paused()` / `version()` | none | Read-only state. |
 | `get_risc0_config()` / `get_risc0_vk()` | none | Registered RISC Zero configuration and verifying key. |
 | `set_verification_key(vk)` | admin | Rotates the verification key for `verify_inference`. |
-| `set_model_hash(model_hash)` | admin | Replaces the model commitment. |
+| `set_model_hash(model_hash)` | admin | Replaces the model commitment; refuses one that is not 32 bytes below the BN254 scalar modulus. |
 | `set_risc0_config(config)` / `set_risc0_vk(vk)` | admin | Registers the guest image id, control root, selector and RISC Zero's verifying key. |
-| `propose_admin(new_admin)` | admin | Starts a two-step admin transfer. |
-| `accept_admin()` | pending admin | Completes the transfer. |
+| `propose_admin(new_admin)` | admin | Starts a two-step admin transfer; the proposal expires after 7 days. |
+| `accept_admin()` | pending admin | Completes the transfer, or returns `PendingAdminMismatch` without a live proposal. |
+| `cancel_admin_proposal()` / `get_pending_admin()` | admin / none | Withdraws or reads the pending proposal. |
 | `set_pause(paused)` | admin | Pauses or resumes verification. |
 
 Every admin setter emits an event. Events are declared with `#[contractevent]`, so their
@@ -117,9 +118,11 @@ Causes for each code are in [docs/reference/errors.md](https://github.com/ZKML-S
 
 ## Cost
 
-Measured on the compiled WASM, `verify_inference` (point checks, 4 scalar
-multiplications and a 4-pair pairing check) costs 31.0M CPU instructions and
-`verify_receipt` 29.6M, against a 100M limit per transaction. Measure on the
+Measured on the compiled WASM, `verify_inference` (point checks, one 4-point
+`g1_msm` and a 4-pair pairing check) costs 29.0M CPU instructions and
+`verify_receipt` 29.6M, against a 100M limit per transaction. Registering a
+key with `set_risc0_vk` costs 22.8M, most of it the pairing that checks its G2
+subgroup. Measure on the
 WASM rather than natively: the native test environment meters only host calls.
 See the `wasm_budget` tests.
 

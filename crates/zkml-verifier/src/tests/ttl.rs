@@ -166,15 +166,18 @@ fn admin_transfer_renews_instance_ttl_at_each_step() {
         "propose_admin left TTL at {after}"
     );
 
+    // Accepting cannot meet a TTL below the threshold any more: proposing
+    // renewed it to 120 days, and since VERSION 11 a proposal dies after 7.
+    // So accept at the last ledger of the window and check the instance is
+    // still far from expiring.
     let env = Env::default();
     let (contract_id, client, _vk) = setup(&env);
     client.propose_admin(&Address::generate(&env));
-    advance_ledger(&env, BELOW_THRESHOLD);
-    assert!(instance_ttl(&env, &contract_id) < INSTANCE_TTL_THRESHOLD);
+    advance_ledger(&env, ADMIN_PROPOSAL_LEDGERS);
     client.accept_admin();
     let after = instance_ttl(&env, &contract_id);
     assert!(
-        after >= INSTANCE_TTL_EXTEND_TO,
+        after >= INSTANCE_TTL_EXTEND_TO - ADMIN_PROPOSAL_LEDGERS,
         "accept_admin left TTL at {after}"
     );
 }

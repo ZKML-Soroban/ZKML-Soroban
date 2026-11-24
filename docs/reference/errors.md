@@ -12,9 +12,9 @@ Returned by `verify_inference`, `verify_receipt` and `claim_digest` as a Soroban
 | ---- | ------------------------------- | ------------------------------------------------------------ |
 | 1    | `ContractNotInitialized`        | The contract has no stored state (the constructor did not run) |
 | 2    | `PublicInputsTooShort`          | Public inputs end before a required field                    |
-| 3    | `MalformedProofA`               | Point A is not 64 bytes, has a coordinate not below the field modulus, or is not on the curve |
-| 4    | `MalformedProofB`               | Point B is not 128 bytes or is not on the curve              |
-| 5    | `MalformedProofC`               | Point C is not 64 bytes, has a coordinate not below the field modulus, or is not on the curve. Up to `VERSION` 9, `verify_inference` reported a wrong-length `proof_c` as code 3 |
+| 3    | `MalformedProofA`               | Point A is not 64 bytes, is the point at infinity, has a coordinate not below the field modulus, or is not on the curve. Infinity is refused since `VERSION` 11 |
+| 4    | `MalformedProofB`               | Point B is not 128 bytes, is the point at infinity, or is not on the curve |
+| 5    | `MalformedProofC`               | Point C is not 64 bytes, is the point at infinity, has a coordinate not below the field modulus, or is not on the curve. Up to `VERSION` 9, `verify_inference` reported a wrong-length `proof_c` as code 3 |
 | 6    | `MalformedVerificationKey`      | A verification key point has the wrong length              |
 | 7    | `VerificationFailed`            | Pairing check failed or `model_hash` mismatch. Up to `VERSION` 9, also returned while paused |
 | 8    | `InvalidPublicInputLength`      | Extra bytes after the 80-byte layout                         |
@@ -27,6 +27,7 @@ Returned by `verify_inference`, `verify_receipt` and `claim_digest` as a Soroban
 | 15   | `NonCanonicalPublicInput`       | `model_hash` or `input_hash` is not below the BN254 scalar modulus `r`, so it is not the canonical encoding of its scalar |
 | 16   | `NativeKeyNotConfigured`        | `verify_inference` on a contract deployed without a native verification key |
 | 17   | `ContractPaused`                | The admin paused the contract; both verification entry points refuse every call until `set_pause(false)` |
+| 18   | `PendingAdminMismatch`          | `accept_admin` found no live proposal: none was made, it was cancelled, or it expired. Up to `VERSION` 10 this panicked with `no pending admin transfer` |
 
 There is no `ImageIdMismatch`. The image id is carried by neither the seal nor
 the journal; it only enters the claim digest, so a receipt from another guest
@@ -37,14 +38,13 @@ Panics (not error codes):
 | Function                          | Message                                   |
 | --------------------------------- | ----------------------------------------- |
 | `get_admin`, admin setters without stored state | `contract is not initialized` |
-| `get_risc0_config` before `set_risc0_config` | `risc0 config has not been set` |
-| `get_risc0_vk` before `set_risc0_vk` | `risc0 verifying key has not been set` |
 | `set_risc0_config` with an invalid control id | `bn254_control_id is not a valid BN254 scalar` |
 | `set_risc0_vk` without six `ic` points | `a RISC Zero verifying key has six ic points` |
 | `set_risc0_vk` with a point off its curve or at infinity | `the RISC Zero verifying key holds a point that is off the curve or at infinity` |
-| `accept_admin` with no transfer proposed | `no pending admin transfer` |
+| Constructor or `set_model_hash` with a model hash that is not 32 bytes below the BN254 scalar modulus | `model_hash must be 32 bytes below the BN254 scalar modulus` |
 | Constructor or `set_verification_key` with a native key without five `ic` points | `a native verifying key has five ic points` |
 | Constructor or `set_verification_key` with a native key point off its curve or at infinity | `the native verifying key holds a point that is off the curve or at infinity` |
+| Constructor, `set_verification_key` or `set_risc0_vk` with a key G2 point outside the prime-order subgroup | host error `Error(Crypto, InvalidInput)`: `bn254 G2: point not in the correct subgroup` |
 | Admin setters without admin auth  | Soroban auth failure                      |
 
 The constructor cannot be called a second time: the protocol runs it once, at

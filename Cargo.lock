@@ -6505,6 +6505,9 @@ dependencies = [
 name = "zkml-verifier"
 version = "0.0.5"
 dependencies = [
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.5.0",
  "serde_json",
  "soroban-sdk 27.0.3",
  "zkml-common",

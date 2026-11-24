@@ -104,7 +104,7 @@ fn the_risc0_config_round_trips() {
     let cfg = config(&env);
     client.set_risc0_config(&cfg);
 
-    let stored = client.get_risc0_config();
+    let stored = client.get_risc0_config().expect("the config was set");
     assert_eq!(stored.image_id, cfg.image_id);
     assert_eq!(stored.control_root, cfg.control_root);
     assert_eq!(stored.bn254_control_id, cfg.bn254_control_id);
@@ -185,9 +185,10 @@ fn changing_the_config_emits_an_event() {
 }
 
 #[test]
-#[should_panic(expected = "risc0 config has not been set")]
 fn reading_the_config_before_setting_it_says_so() {
+    // Up to VERSION 10 both getters panicked here.
     let env = Env::default();
     let (client, _admin) = setup(&env);
-    client.get_risc0_config();
+    assert!(client.get_risc0_config().is_none());
+    assert!(client.get_risc0_vk().is_none());
 }

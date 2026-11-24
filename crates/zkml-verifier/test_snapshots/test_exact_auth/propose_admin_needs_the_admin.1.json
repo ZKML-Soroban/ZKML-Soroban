@@ -237,7 +237,24 @@
                         "symbol": "pend_adm"
                       },
                       "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "address"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "expires_at_ledger"
+                            },
+                            "val": {
+                              "u32": 120960
+                            }
+                          }
+                        ]
                       }
                     },
                     {

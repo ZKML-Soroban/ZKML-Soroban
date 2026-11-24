@@ -50,6 +50,10 @@ icon: "user-shield"
 | Receipt from a different RISC Zero version | Seal selector checked against the registered one before the pairing | Implemented |
 | Forged RISC Zero receipt through under-constrained upstream circuits (any claim accepted from one valid receipt) | RISC Zero 3.1.0 circuits and Groth16 setup; `export-vk` emits their parameters, which the admin registers | Fixed in `0.0.5` (RISC Zero GHSA-g6qg-9j8p-7j87; GHSA-hmx6-94gg-9r4q). A verifier still registered with 3.0.x parameters stays forgeable until its admin re-registers |
 | Degenerate RISC Zero verifying key | `set_risc0_vk` refuses points off the curve and the point at infinity, which would unbind the journal from the proof | Implemented |
+| A key whose G2 points are outside the prime-order subgroup, which would make every verification trap | Registration pairs the key's G2 points, so the host checks their subgroup and the key is never stored | Implemented in `VERSION` 11 |
+| A proof with a point at infinity, which drops a term from the pairing | Both entry points refuse A, B or C at infinity before any cryptography | Implemented in `VERSION` 11 |
+| A model hash no proof can match, which switches verification off silently | The constructor and `set_model_hash` refuse a hash that is not 32 bytes below the BN254 scalar modulus | Implemented in `VERSION` 11 |
+| A forgotten admin proposal accepted months later | Proposals expire after 7 days and the admin can cancel one | Implemented in `VERSION` 11 |
 | Admin registers a guest, key or config that accepts false results | The admin is trusted with what verifies; every admin setter emits a public `cfg_upd` event, so the change is visible on chain even though it is allowed | Accepted: detectable, not prevented |
 | Proof forgery by a quantum computer (Shor on BN254) | Crypto-agile verifier, hybrid and hash-based proofs, see [post-quantum readiness](/security/post-quantum) | Planned |
 

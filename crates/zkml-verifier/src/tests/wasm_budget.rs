@@ -31,13 +31,18 @@ fn hex_to_vec(hex: &str) -> std::vec::Vec<u8> {
 
 /// Ceiling for each entry point, measured on the compiled WASM.
 ///
-/// The docs quote 31.0M for `verify_inference` and 29.6M for
+/// The docs quote 29.0M for `verify_inference` and 29.6M for
 /// `verify_receipt` (README, `docs/reference/benchmarks.md` and the pages
 /// that link to it). This sits about 3% above the larger of the two, so a
 /// change that moves the cost noticeably fails here and the figures get
 /// re-measured, instead of drifting away from what the docs say. The
 /// network limit is 100M.
-const DOCUMENTED_CPU_CEILING: u64 = 32_000_000;
+const DOCUMENTED_CPU_CEILING: u64 = 30_500_000;
+
+/// Ceiling for `set_risc0_vk`, which since VERSION 11 pairs the key's three G2
+/// points to have the host check their subgroup: 22.8M measured, with the
+/// same ~3% margin. An admin call, run once per key.
+const DOCUMENTED_REGISTRATION_CEILING: u64 = 23_500_000;
 
 fn read(name: &str) -> serde_json::Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -97,6 +102,9 @@ fn wasm_budget() {
     for point in vk["ic"].as_array().unwrap() {
         ic.push_back(b(point.as_str().unwrap()));
     }
+    // Registering the key runs a pairing on its G2 points (the subgroup
+    // check), so it is measured too: it has to fit in one transaction.
+    env.cost_estimate().budget().reset_unlimited();
     client.set_risc0_vk(&VerificationKey {
         alpha: b(vk["alpha"].as_str().unwrap()),
         beta: b(vk["beta"].as_str().unwrap()),
@@ -104,6 +112,12 @@ fn wasm_budget() {
         delta: b(vk["delta"].as_str().unwrap()),
         ic,
     });
+    let register_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+    println!("\n=== set_risc0_vk CPU instructions: {register_cpu}");
+    assert!(
+        register_cpu < DOCUMENTED_REGISTRATION_CEILING,
+        "registering the key costs {register_cpu}, above {DOCUMENTED_REGISTRATION_CEILING}"
+    );
 
     let seal = b(bundle["seal"].as_str().unwrap());
     let journal = b(bundle["journal"].as_str().unwrap());

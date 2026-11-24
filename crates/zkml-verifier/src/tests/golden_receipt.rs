@@ -263,6 +263,31 @@ fn each_proof_point_reports_its_own_error() {
     }
 }
 
+/// Each point of a real seal replaced by the point at infinity, all zero
+/// bytes, which the curve checks accept. Refused since VERSION 11.
+#[test]
+fn a_proof_point_at_infinity_is_refused() {
+    let env = Env::default();
+    let (client, seal, journal) = setup(&env);
+    let mut raw = std::vec![0u8; seal.len() as usize];
+    seal.copy_into_slice(&mut raw);
+
+    for (range, expected) in [
+        (4usize..68, VerificationError::MalformedProofA),
+        (68..196, VerificationError::MalformedProofB),
+        (196..260, VerificationError::MalformedProofC),
+    ] {
+        let mut bad = raw.clone();
+        bad[range.clone()].fill(0);
+        assert_eq!(
+            client.try_verify_receipt(&Bytes::from_slice(&env, &bad), &journal),
+            Err(Ok(expected)),
+            "bytes {range:?}"
+        );
+    }
+    assert_eq!(client.get_verification_count(), 0);
+}
+
 #[test]
 fn a_coordinate_above_the_field_modulus_is_a_typed_error_not_a_trap() {
     // The host's own on-curve check traps on this, so it is the case that
@@ -382,7 +407,7 @@ fn a_receipt_for_another_model_is_rejected() {
     let (client, seal, journal) = setup(&env);
 
     // Re-register the contract for a different model.
-    client.set_model_hash(&Bytes::from_slice(&env, &[0x99; 32]));
+    client.set_model_hash(&Bytes::from_slice(&env, &[0x11; 32]));
     assert_eq!(
         client.try_verify_receipt(&seal, &journal),
         Err(Ok(VerificationError::VerificationFailed))
@@ -465,7 +490,7 @@ fn a_receipt_for_another_guest_is_rejected() {
     // Same proof, same journal, but the contract is told a different guest
     // produced it. The image id is inside the claim digest, so this has to
     // fail the pairing.
-    let mut cfg = client.get_risc0_config();
+    let mut cfg = client.get_risc0_config().unwrap();
     let mut id = cfg.image_id.to_array();
     id[0] ^= 0x01;
     cfg.image_id = BytesN::from_array(&env, &id);
@@ -483,7 +508,7 @@ fn a_wrong_control_root_is_rejected() {
     env.mock_all_auths();
     let (client, seal, journal) = setup(&env);
 
-    let mut cfg = client.get_risc0_config();
+    let mut cfg = client.get_risc0_config().unwrap();
     let mut root = cfg.control_root.to_array();
     root[31] ^= 0x01;
     cfg.control_root = BytesN::from_array(&env, &root);

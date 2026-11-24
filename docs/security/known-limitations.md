@@ -10,13 +10,15 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
 ## Proving
 
 - **Testnet only.** A real receipt has been verified on Stellar testnet (see
-  [Live on testnet](/guides/deployment#live-on-testnet)), at about 31 million
+  [Live on testnet](/guides/deployment#live-on-testnet)), at about 30 million
   CPU instructions against a 100 million limit. Nothing has been deployed to
   mainnet, and the contract has not had a third-party audit.
-- **A crafted G2 point can still trap.** Both entry points validate their proof
-  points and return a typed error for a corrupted one, but a G2 point on the
-  curve and outside the subgroup traps in the host. Corruption does not
-  produce one; it takes a deliberately crafted point.
+- **A crafted G2 point in a proof can still trap.** Both entry points validate
+  their proof points and return a typed error for a corrupted one or one at
+  infinity, but a proof's B on the curve and outside the subgroup traps in the
+  host. Corruption does not produce one; it takes a deliberately crafted point,
+  and the transaction aborts without recording anything. Keys are checked for
+  this at registration, since `VERSION` 11.
 - **Groth16 compression needs x86_64 Linux with Docker.** The Circom witness
   generator image is not published for other platforms (risc0 issue #1749), so
   `prove_groth16` fails fast with `UnsupportedPlatform` elsewhere. The `cuda`
@@ -79,9 +81,8 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   the 3.0.x parameters, which `0.0.4` and earlier printed, accepts forged
   receipts (RISC Zero GHSA-g6qg-9j8p-7j87) until its admin registers the 3.1.0
   parameters from `0.0.5`.
-- **Some getters panic.** `get_risc0_config` and `get_risc0_vk` panic until the
-  RISC Zero values are set. `get_admin` panics only on a contract without stored
-  state, which the constructor rules out.
+- **`get_admin` can panic.** Only on a contract without stored state, which the
+  constructor rules out. Since `VERSION` 11 the other getters return `Option`.
 - **A native key with a known trapdoor cannot be detected.** The constructor and
   `set_verification_key` refuse a native key with a point off its curve or at
   infinity, but a key built from points whose discrete logs are known, such as
