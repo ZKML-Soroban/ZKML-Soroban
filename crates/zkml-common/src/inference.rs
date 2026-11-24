@@ -273,18 +273,27 @@ pub fn binary_decision(score: FixedPoint, threshold: FixedPoint) -> i64 {
     }
 }
 
+/// The class label of a decision-tree leaf: its value rounded down to an
+/// integer. Up to 0.0.5 trees always reported 0.
+fn leaf_class(value: FixedPoint) -> i64 {
+    value.value >> value.scale.min(63)
+}
+
 /// Run inference and return both the raw score and the decision (class label).
 ///
 /// For logistic regression: returns (score, binary_decision(score, threshold))
 /// For TinyMLP: returns (first_output, argmax(all_outputs))
-/// For decision tree: returns (leaf_value, 0) (no multi-class decision)
+/// For decision tree: returns (leaf_value, floor(leaf_value)): a classifier
+/// tree's leaf holds its predicted class index, as the ONNX importer and
+/// `tools/sklearn_to_json.py` write it, so the class arrives in the label. For a
+/// regression tree the label is just the value's integer part.
 ///
 /// The decision is deterministic and reproducible off-chain and on-chain.
 pub fn run_inference_with_decision(model: &Model, inputs: &[FixedPoint]) -> (FixedPoint, i64) {
     match model {
         Model::DecisionTree(tree) => {
             let score = infer_decision_tree(tree, inputs);
-            (score, 0) // Decision trees return the leaf value directly
+            (score, leaf_class(score))
         }
         Model::LogisticRegression(lr) => {
             let score = infer_logistic_regression(lr, inputs);
@@ -485,7 +494,7 @@ mod tests_inference_with_decision {
     }
 
     #[test]
-    fn decision_tree_returns_zero_decision() {
+    fn decision_tree_returns_the_leaf_class() {
         use crate::models::{DecisionTree, TreeNode};
         let tree = DecisionTree {
             num_features: 1,
@@ -495,7 +504,24 @@ mod tests_inference_with_decision {
         let inputs = vec![fp(0.5)];
         let (score, decision) = run_inference_with_decision(&model, &inputs);
         assert!((score.dequantize() - 42.0).abs() < 1e-3);
-        assert_eq!(decision, 0); // Decision trees don't produce class labels
+        // The leaf value, rounded down: a classifier leaf holds its class.
+        assert_eq!(decision, 42);
+    }
+
+    #[test]
+    fn a_fractional_or_negative_leaf_rounds_down() {
+        use crate::models::{DecisionTree, TreeNode};
+        for (leaf, label) in [(2.75, 2), (0.5, 0), (-0.5, -1), (-3.0, -3)] {
+            let model = Model::DecisionTree(DecisionTree {
+                num_features: 1,
+                nodes: vec![TreeNode::Leaf { value: fp(leaf) }],
+            });
+            assert_eq!(
+                run_inference_with_decision(&model, &[fp(0.0)]).1,
+                label,
+                "{leaf}"
+            );
+        }
     }
 }
 
@@ -665,7 +691,7 @@ pub fn try_run_inference_with_decision(
     match model {
         Model::DecisionTree(tree) => {
             let score = try_infer_decision_tree(tree, inputs)?;
-            Ok((score, 0))
+            Ok((score, leaf_class(score)))
         }
         Model::LogisticRegression(lr) => {
             let score = try_infer_logistic_regression(lr, inputs)?;
@@ -754,7 +780,7 @@ mod tests_decision_fallible {
     }
 
     #[test]
-    fn decision_tree_label_is_zero() {
+    fn decision_tree_label_is_the_leaf_class() {
         let model = Model::DecisionTree(DecisionTree {
             num_features: 1,
             nodes: vec![
@@ -769,8 +795,10 @@ mod tests_decision_fallible {
             ],
         });
         let (score, label) = try_run_inference_with_decision(&model, &[fp(0.9)]).unwrap();
-        assert_eq!(label, 0);
+        assert_eq!(label, 1);
         assert_eq!(score, fp(1.0));
+        let (_, label) = try_run_inference_with_decision(&model, &[fp(0.1)]).unwrap();
+        assert_eq!(label, 0);
     }
 }
 

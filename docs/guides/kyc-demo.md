@@ -98,9 +98,10 @@ sequenceDiagram
 
 ## Mapping risk tiers to the public inputs
 
-For decision trees, `class_label` is always `0` and `output` carries the leaf value
-(raw Q16.16). For a JSON tree whose leaves store the tier, that is the tier (tier 2
-is `2 * 65536`). A multi-class ONNX `TreeEnsembleClassifier`, such as the model
+For decision trees, `class_label` is the tier and `output` carries the leaf value
+(raw Q16.16): for a JSON tree whose leaves store the tier, `class_label` is `2`
+for tier 2 and `output` is `2 * 65536`. Up to `0.0.5` trees reported
+`class_label` `0`, and the tier was only in `output`. A multi-class ONNX `TreeEnsembleClassifier`, such as the model
 from step 2, imports with the predicted class in each leaf, so its output is the
 tier too; see [ONNX import](/guides/onnx-import#tree-leaf-values).
 

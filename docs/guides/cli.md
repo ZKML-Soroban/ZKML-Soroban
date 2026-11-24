@@ -38,9 +38,10 @@ validate      <MODEL> [--dataset <FILE>]
 inspect       <MODEL>                           Kind, features, structure, validity
 ```
 
-`<MODEL>` is a file in the [JSON exchange format](/guides/model-format). The CLI
-does not accept `.onnx` files; convert them with the library importer first
-(see [ONNX import](/guides/onnx-import)).
+`<MODEL>` is a file in the [JSON exchange format](/guides/model-format), or an
+ONNX model when its name ends in `.onnx`, which goes through the
+[ONNX importer](/guides/onnx-import): the same opset checks, operator allowlist
+and quantization as the library call.
 
 `-i/--input` is one comma-separated string, for example `"0.5,0.2,0.9,0.1"`.
 It may start with a negative value: `-i -0.5,0.2` is read as the input, not

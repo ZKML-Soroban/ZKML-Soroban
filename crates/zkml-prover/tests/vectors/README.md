@@ -34,8 +34,9 @@ Each vector is a JSON file with the following structure:
 Every case without `expected_error` must carry both `expected_output` and
 `expected_class_label`. The label is what the contract records next to the
 score: `1` if the score is at or above a logistic regression's
-`decision_threshold` and `0` otherwise, and always `0` for a decision tree. A
-case without it fails, so a wrong decision layer cannot pass on a correct score.
+`decision_threshold` and `0` otherwise, and for a decision tree the leaf value
+rounded down to an integer, which is the predicted class of a classifier tree
+(up to 0.0.5 it was always `0`). A case without it fails, so a wrong decision layer cannot pass on a correct score.
 
 ### Fixed-Point Representation
 

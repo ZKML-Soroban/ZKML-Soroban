@@ -14,6 +14,13 @@ let bytes = std::fs::read("model.onnx")?;
 let model = import_onnx(&bytes)?;   // Result<Model, OnnxImportError>
 ```
 
+The CLI takes `.onnx` files directly and runs this same importer. For the KYC
+model that `examples/kyc-demo/train_model.py` writes:
+
+```bash
+cargo run -p zkml-prover -- inspect examples/kyc-demo/kyc_decision_tree.onnx
+```
+
 ## Pipeline
 
 1. Decode the protobuf with `prost`.

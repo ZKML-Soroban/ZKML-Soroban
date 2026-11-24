@@ -38,7 +38,7 @@
       "description": "Input just above threshold (0.50001 > 0.5) goes right",
       "inputs": [{"value": 32769, "scale": 16}],
       "expected_output": {"value": 65536, "scale": 16},
-      "expected_class_label": 0
+      "expected_class_label": 1
     }
   ]
 }

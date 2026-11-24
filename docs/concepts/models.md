@@ -19,8 +19,11 @@ A flat vector of nodes, root at index 0.
 and unreachable nodes. Traversal is bounded by an iteration limit so a malformed
 tree cannot loop forever.
 
-**Decision:** `class_label` is always `0`; the prediction is the leaf value in
-`output`.
+**Decision:** `class_label` is the leaf value rounded down to an integer, and
+`output` is the leaf value itself. A classifier tree's leaf holds its predicted
+class index (the ONNX importer and `tools/sklearn_to_json.py` both write it
+that way), so `class_label` is the predicted class. Up to `0.0.5` it was always
+`0`.
 
 ## Logistic regression
 
