@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- The workspace lockfile moves `url` to 2.5.9, which fixes RUSTSEC-2026-0592
+  (stack overflow in `Url::origin()` on nested `blob:` URLs). `url` reaches
+  `zkml-prover` through `reqwest`, which RISC Zero's `bonsai-sdk` pulls in; the
+  prover never calls `origin()`, and neither the contract nor the zkVM guest
+  links `url`.
+
 ## [0.0.4] - 2026-11-20
 
 Security release. Model and input commitments become hiding, fixing
