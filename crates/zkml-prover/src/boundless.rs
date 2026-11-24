@@ -133,8 +133,9 @@ impl Market for BoundlessMarket {
                 .map_err(|e| failed(e.to_string()))?;
             let params = client
                 .new_request()
+                // A `Url` converts into a `Url` infallibly.
                 .with_program_url(self.config.program_url.clone())
-                .map_err(|e| failed(e.to_string()))?
+                .unwrap_or_else(|never| match never {})
                 .with_image_id(risc0_zkvm::sha::Digest::from(request.image_id))
                 .with_env(env)
                 .with_offer(offer)
