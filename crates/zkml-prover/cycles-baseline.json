@@ -1,0 +1,12 @@
+{
+  "credit_lr": {
+    "padded_cycles": 14680064,
+    "segments": 14,
+    "user_cycles": 13836264
+  },
+  "kyc_tree": {
+    "padded_cycles": 24641536,
+    "segments": 24,
+    "user_cycles": 23268536
+  }
+}

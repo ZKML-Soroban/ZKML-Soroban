@@ -299,6 +299,36 @@ mod zkvm_prove {
             .map_err(|e| ProveError::Zkvm(format!("building env: {e}")))
     }
 
+    /// How much work one guest run is, measured by executing it without proving.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+    pub struct CycleCount {
+        /// Cycles the guest program itself ran, summed over segments.
+        pub user_cycles: u64,
+        /// What proving pays for: each segment padded to its power of two.
+        pub padded_cycles: u64,
+        /// Number of segments.
+        pub segments: usize,
+    }
+
+    /// Execute the guest on `model` and `inputs` and count its cycles, without
+    /// proving. Takes seconds, and the count is deterministic for a given guest
+    /// build, so it can gate regressions in CI.
+    pub fn count_cycles(
+        model: &Model,
+        inputs: &[FixedPoint],
+        opening: &Opening,
+    ) -> Result<CycleCount, ProveError> {
+        let env = build_env(model, inputs, opening)?;
+        let session = risc0_zkvm::default_executor()
+            .execute(env, ZKML_GUEST_ELF)
+            .map_err(|e| ProveError::Zkvm(format!("execution failed: {e}")))?;
+        Ok(CycleCount {
+            user_cycles: session.cycles(),
+            padded_cycles: session.segments.iter().map(|s| 1u64 << s.po2).sum(),
+            segments: session.segments.len(),
+        })
+    }
+
     /// Run inference inside the zkVM and return a verified STARK receipt.
     ///
     /// `RISC0_DEV_MODE=1` makes this fast and insecure, which is what CI uses.
@@ -468,8 +498,8 @@ mod zkvm_prove {
 
 #[cfg(feature = "zkvm")]
 pub use zkvm_prove::{
-    bundle_from_output, decode_journal, encode_seal, generate_receipt, guest_build_is_reproducible,
-    image_id, prove_groth16, verify_bundle, ProveOutput,
+    bundle_from_output, count_cycles, decode_journal, encode_seal, generate_receipt,
+    guest_build_is_reproducible, image_id, prove_groth16, verify_bundle, CycleCount, ProveOutput,
 };
 
 /// Serialize a legacy bundle to JSON.

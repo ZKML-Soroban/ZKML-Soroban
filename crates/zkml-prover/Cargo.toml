@@ -81,3 +81,9 @@ proptest = "1.5"
 # point checks against. A dev-dependency so that test runs without `zkvm`.
 ark-bn254 = { version = "0.5", default-features = false, features = ["curve"] }
 ark-ff = { version = "0.5", default-features = false }
+# ONNX import benchmarks in benches/; `cargo bench -p zkml-prover`.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "onnx"
+harness = false

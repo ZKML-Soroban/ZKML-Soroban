@@ -36,6 +36,7 @@ validate      <MODEL> [--dataset <FILE>]
                       [--max-input-magnitude <F>]    default 1.0
                       [--min-agreement <F>]          default 0.99
 inspect       <MODEL>                           Kind, features, structure, validity
+cycles        <MODEL> -i <CSV> --opening <FILE> zkVM cycles without proving (zkvm feature)
 ```
 
 `<MODEL>` is a file in the [JSON exchange format](/guides/model-format), or an
@@ -256,6 +257,28 @@ structure: valid
 
 `structure` reports the result of `DecisionTree::validate` or
 `TinyMLP::validate` instead of failing, so `inspect` works on broken models.
+
+### cycles
+
+Executes the guest on a model and input, without proving, and prints its zkVM
+cycles. It takes seconds where proving takes half an hour, and proving cost
+follows the cycle count, so it is the quick way to see what a model or a guest
+change costs. Requires the `zkvm` feature.
+
+```bash
+ZKML_GUEST_DOCKER=1 cargo run -p zkml-prover --features zkvm --   cycles examples/models/credit_lr.json -i "0.5,0.2,0.9,0.1" --opening model.opening
+```
+
+```text
+user cycles: 13836264
+padded cycles: 14680064
+segments: 14
+```
+
+`user cycles` is what the guest ran; `padded cycles` is what proving pays for,
+each segment padded to a power of two. `--format json` prints one JSON line. CI
+compares both example models against `crates/zkml-prover/cycles-baseline.json`
+on the reproducible guest and fails when one grows by more than 5%.
 
 ## Inspecting a bundle
 

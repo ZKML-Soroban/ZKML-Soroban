@@ -47,6 +47,10 @@ cargo test --workspace
 # zkVM guest tests (requires the RISC Zero toolchain)
 RISC0_DEV_MODE=1 cargo test -p zkml-prover --features zkvm
 
+# Native benchmarks (criterion) and the guest's cycle counts
+cargo bench -p zkml-common -p zkml-prover
+ZKML_GUEST_DOCKER=1 cargo test -p zkml-prover --features zkvm --test cycles_baseline -- --nocapture
+
 # Preview the documentation site
 cd docs && npx mint dev
 ```
