@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Registering a verifying key (constructor, `set_verification_key`,
   `set_risc0_vk`) pairs its three G2 points, so the host checks they are in the
   prime-order subgroup and a key that would trap every verification is never
-  stored. Up to `VERSION` 10 such a key was accepted. Costs 22.8M instructions,
+  stored. Up to `VERSION` 10 such a key was accepted. Costs 22.7M instructions,
   once per key.
 - Admin proposals expire after `ADMIN_PROPOSAL_LEDGERS` (7 days), and the admin
   can withdraw one with `cancel_admin_proposal` (event `("cfg_upd", "adm_cncl")`).
@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `verify_inference` assembles L with one `g1_msm` instead of four
   multiplications and four additions: 28,956,777 CPU instructions on the WASM,
-  down from 31,006,558. `verify_receipt` is 29,577,642. The WASM budget tests
+  down from 31,006,558. `verify_receipt` is 29,578,818. The WASM budget tests
   fail above 30.5M, and a new one measures `set_risc0_vk`.
 - The verifier's tests moved out of `lib.rs` (from 3,988 lines to 1,281) into
   `crates/zkml-verifier/src/tests/`, one file per module. Module names are kept,

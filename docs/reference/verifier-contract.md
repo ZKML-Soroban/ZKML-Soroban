@@ -122,7 +122,7 @@ rejected, only without a typed error. Corruption does not produce such a point:
 a changed byte lands back on the curve with probability about `1/p`. It takes a
 crafted one. A key is different, since it is stored and used for every proof:
 since `VERSION` 11, registering one pairs its three G2 points, so the host
-checks their subgroup and a bad key is never stored. That costs about 22.8M
+checks their subgroup and a bad key is never stored. That costs about 22.7M
 instructions, once per key.
 </Note>
 
@@ -327,7 +327,7 @@ verifications do not bump TTL. Nullifier entries are extended to
 
 Measured on the compiled WASM, `verify_receipt` costs 29.6M CPU instructions and
 `verify_inference` 29.0M, against a 100M limit per transaction. Registering
-RISC Zero's key with `set_risc0_vk` costs 22.8M. See
+RISC Zero's key with `set_risc0_vk` costs 22.7M. See
 [Benchmarks](/reference/benchmarks).
 
 ## Known limitations

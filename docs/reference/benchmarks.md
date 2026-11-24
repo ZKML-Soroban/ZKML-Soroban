@@ -11,9 +11,9 @@ the Soroban cost estimator, each on a proof that genuinely verifies:
 
 | Operation | CPU instructions | Memory (bytes) | Share of the 100M limit |
 | --------- | ---------------- | -------------- | ----------------------- |
-| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,577,642 | 1,817,254 | 30% |
+| `verify_receipt` (point checks + claim digest + L assembly + pairing) | 29,578,818 | 1,817,254 | 30% |
 | `verify_inference` (point checks + L assembly + pairing) | 28,956,777 | 1,795,390 | 29% |
-| `set_risc0_vk` (point checks + G2 subgroup check) | 22,750,670 | | 23% |
+| `set_risc0_vk` (point checks + G2 subgroup check) | 22,743,662 | | 23% |
 
 Both entry points check the three proof points and assemble L with one
 multi-scalar multiplication, `g1_msm`. Verifying a RISC Zero receipt costs a
@@ -57,7 +57,7 @@ returns a typed error instead of aborting the transaction in the host. Measured
 on the WASM when the checks were added to `verify_receipt`, they cost 776,552
 instructions. Adding them to `verify_inference` in contract `VERSION` 10 moved
 it from 30,208,647 to 31,006,558, 797,911 more. Refusing points at infinity in
-`VERSION` 11 added 12,601 to `verify_receipt`.
+`VERSION` 11 added 14,653 to `verify_receipt`.
 
 A first version checked G2 with double-and-add multiplication and cost
 24,855,241 instructions, a 76% increase, which is why it uses Montgomery

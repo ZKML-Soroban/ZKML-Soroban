@@ -121,7 +121,7 @@ Causes for each code are in [docs/reference/errors.md](https://github.com/ZKML-S
 Measured on the compiled WASM, `verify_inference` (point checks, one 4-point
 `g1_msm` and a 4-pair pairing check) costs 29.0M CPU instructions and
 `verify_receipt` 29.6M, against a 100M limit per transaction. Registering a
-key with `set_risc0_vk` costs 22.8M, most of it the pairing that checks its G2
+key with `set_risc0_vk` costs 22.7M, most of it the pairing that checks its G2
 subgroup. Measure on the
 WASM rather than natively: the native test environment meters only host calls.
 See the `wasm_budget` tests.
