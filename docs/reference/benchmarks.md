@@ -93,8 +93,8 @@ on `examples/models/credit_lr.json` (logistic regression, 4 features):
 | Machine | Ryzen AI 9 HX 370, 24 threads, 15 GB RAM, Arch Linux x86_64 under WSL2 |
 | Acceleration | none (CPU only) |
 | Peak prover memory | about 8.9 GB (`r0vm`) |
-| Guest cycles | 11,010,048 (current guest; 9,437,184 before the 0.0.2 guest changes) |
-| Total wall clock, prove + compress | 1,302 s, 1,506 s and 1,452 s over three runs |
+| Guest cycles | 14,680,064 with RISC Zero 3.1.0 (`0.0.5`); 11,010,048 with 3.0.6, and 9,437,184 before the 0.0.2 guest changes |
+| Total wall clock, prove + compress | 1,986 s with RISC Zero 3.1.0; 1,302 s, 1,506 s and 1,452 s over three runs with 3.0.6 |
 | Seal | 260 bytes (4-byte selector + 256-byte proof) |
 | Journal | 96 bytes |
 | Total on-chain payload | 356 bytes |

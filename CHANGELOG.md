@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-11-24
+
+Security release. RISC Zero 3.0.x Groth16 receipts can be forged
+(GHSA-g6qg-9j8p-7j87 upstream), so a verifier registered with the parameters
+`0.0.4` produced accepts made-up results. The prover moves to RISC Zero 3.1.0,
+and a deployed verifier has to register the new parameters. Tracked as
+GHSA-hmx6-94gg-9r4q. See Security and Breaking.
+
+### Security
+- RISC Zero 3.1.0: `risc0-zkvm` 3.1.0, `risc0-build` 3.0.7, `risc0-groth16`
+  3.0.6 and the 4.1.0 recursion and rv32im circuits, regenerated with a new
+  Groth16 trusted setup. In 3.0.x the recursion circuit and the Groth16 wrapper
+  under-constrain the claim digest's bit decompositions, so anyone holding one
+  valid Groth16 receipt can have an arbitrary claim, image id and journal
+  included, accepted (RISC Zero GHSA-g6qg-9j8p-7j87 and GHSA-mm6c-35cm-g4x2,
+  critical). `verify_receipt` itself is unchanged and correct; what it trusts is
+  the registered parameters, and `export-vk` now emits the 3.1.0 ones: selector
+  `e71e6620`, control root
+  `e6feef13db7aed4a731c7b0852de1f5c89b137726073f625d05333184d3a551d`, BN254
+  control id `de81d091ba14062acb5023b3b36deee95624e3fd47475cb7ff64aed5f9eac20a`
+  and the new verifying key. A deployed verifier should be paused, given these
+  with `set_risc0_config` and `set_risc0_vk`, and unpaused. The two testnet
+  verifiers listed in the deployment guide were paused on 2026-11-24.
+- The workspace lockfile moves `url` to 2.5.9, which fixes RUSTSEC-2026-0592
+  (stack overflow in `Url::origin()` on nested `blob:` URLs). `url` reaches
+  `zkml-prover` through `reqwest`, which RISC Zero's `bonsai-sdk` pulls in; the
+  prover never calls `origin()`, and neither the contract nor the zkVM guest
+  links `url`.
+
+### Breaking
+- Receipts from `0.0.4` and earlier do not verify against the 3.1.0
+  parameters; prove again with `0.0.5`. The reproducible guest's image id
+  changes to `2d651704f44c82eabe53dcc17ebe537f2f760cf21db11ec0c16859ccd3d2e181`, and the golden receipt and RISC Zero parameters in
+  `crates/zkml-verifier/testdata/` are regenerated from it.
+- Proving needs the RISC Zero 3.1.0 toolchain (`rzup install cargo-risczero
+  3.1.0`, `rzup install r0vm 3.1.0`), and local Groth16 compression pulls
+  `risczero/risc0-groth16-prover:v2026-10-20.1`.
+
+### Changed
+- The recursion circuits now ship inside crates
+  (`risc0-circuit-recursion-zkrs`), so builds no longer download them from
+  RISC Zero's S3 bucket, which was retired on 2026-11-23 and answers 403. A
+  clean build with the `prove` feature failed until this upgrade. `zip` 2.3
+  leaves the tree, and the audit drops its six ignores.
+
 ## [0.0.4] - 2026-11-20
 
 Security release. Model and input commitments become hiding, fixing
@@ -409,7 +454,8 @@ June 2026 Phase 1 off-chain milestone and was never published.
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.5
 [0.0.4]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.4
 [0.0.3]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.3
 [0.0.2]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.2

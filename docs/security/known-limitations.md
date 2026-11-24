@@ -74,6 +74,11 @@ plan around them. Each item is tracked on the [roadmap](/project/roadmap).
   successful verification overwrites; there is no per-subject lookup.
 - **One model per contract.** A contract holds a single model commitment; a
   second model needs a second deployment.
+- **A verifier keeps the RISC Zero parameters it was given.** The contract
+  does not know which RISC Zero version a key belongs to. One registered with
+  the 3.0.x parameters, which `0.0.4` and earlier printed, accepts forged
+  receipts (RISC Zero GHSA-g6qg-9j8p-7j87) until its admin registers the 3.1.0
+  parameters from `0.0.5`.
 - **Some getters panic.** `get_risc0_config` and `get_risc0_vk` panic until the
   RISC Zero values are set. `get_admin` panics only on a contract without stored
   state, which the constructor rules out.

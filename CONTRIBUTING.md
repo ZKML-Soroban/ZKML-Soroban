@@ -27,7 +27,7 @@ unacceptable behavior as described in its Enforcement section.
   `rust-toolchain.toml` pins the channel, components and the `wasm32v1-none` target.
 - **Stellar CLI** (deployment only):
   [installation guide](https://developers.stellar.org/docs/tools/cli).
-- **RISC Zero toolchain 3.0.6** (zkVM proving only):
+- **RISC Zero toolchain 3.1.0** (zkVM proving only):
   [installation guide](https://dev.risczero.com/api/zkvm/install).
 - **just** (optional task runner): [casey/just](https://github.com/casey/just).
 - **Node.js 22** (optional, documentation preview only).

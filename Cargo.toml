@@ -13,7 +13,7 @@ exclude = ["methods", "methods/guest"]
 
 [workspace.package]
 # Single workspace version: every publishable crate is released together.
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 rust-version = "1.91"
 license = "Apache-2.0"
@@ -25,15 +25,15 @@ keywords = ["zkml", "zero-knowledge", "stellar", "soroban", "groth16"]
 [workspace.dependencies]
 # Internal crates. `version` is required for crates.io and must match
 # `workspace.package.version`.
-zkml-common = { path = "crates/zkml-common", version = "0.0.4", default-features = false }
+zkml-common = { path = "crates/zkml-common", version = "0.0.5", default-features = false }
 # `default-features = false` so `zkml-common` can build for `wasm32v1-none`.
 # Crates that need the std layer ask for it themselves; with workspace
 # inheritance a member cannot turn default features off again.
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1"
 # Pinned exactly: RISC Zero API changes are a tracked project risk (roadmap).
-risc0-zkvm = { version = "=3.0.6" }
-risc0-build = { version = "=3.0.6" }
+risc0-zkvm = { version = "=3.1.0" }
+risc0-build = { version = "=3.0.7" }
 
 # Size-optimized profile for the Soroban verifier WASM. Kept separate from
 # `release` so the off-chain prover is not built with `opt-level = "z"`.

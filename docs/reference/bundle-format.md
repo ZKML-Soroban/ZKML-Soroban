@@ -19,10 +19,10 @@ bundle is readable and roughly half the size of the v1 JSON.
   "version": 2,
   "proof_system": "Risc0Groth16",
   "image_id": "04de8993fd7f341c62fcab73aa007eb3d09e4c6882fd31db6a21d56b8612c5ca",
-  "seal": "73c457ba2e0f32f8faf15e48...",
+  "seal": "e71e66200c5054022e9b27c4...",
   "journal": "5a4b4d4c0100010073e881eda8...",
   "meta": {
-    "prover_version": "0.0.4",
+    "prover_version": "0.0.5",
     "created_at": 1790002334,
     "cycles": 9437184,
     "timings": { "prove_and_compress_ms": 1172526, "total_ms": 1172573 }

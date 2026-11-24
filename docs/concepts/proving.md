@@ -169,8 +169,9 @@ machine sluggish while it runs. Budget for that, or prove on a headless box.
 
 | Component                           | Version  |
 | ----------------------------------- | -------- |
-| `risc0-zkvm`, `risc0-build`         | `=3.0.6` |
-| `cargo-risczero`, `r0vm` toolchain  | `3.0.6`  |
+| `risc0-zkvm`                        | `=3.1.0` |
+| `risc0-build`                       | `=3.0.7` |
+| `cargo-risczero`, `r0vm` toolchain  | `3.1.0`  |
 
 Exact pins reduce the risk from RISC Zero API changes. Compression itself lives
 in `risc0-zkvm` (`ProverOpts::groth16()`), so there is no separate pin for it.

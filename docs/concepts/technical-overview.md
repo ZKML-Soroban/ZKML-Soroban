@@ -88,7 +88,7 @@ Opset floors: core `>= 17`, `ai.onnx.ml >= 1`. See [ONNX import](/guides/onnx-im
 ### Phase 1: RISC Zero zkVM
 
 1. `methods/guest` is compiled for the RISC Zero target with
-   `risc0-build =3.0.6`.
+   `risc0-build =3.0.7`.
 2. The host writes the `Model` and `Vec<FixedPoint>` into the executor
    environment.
 3. The guest runs `run_inference_with_decision`, computes the commitments, and

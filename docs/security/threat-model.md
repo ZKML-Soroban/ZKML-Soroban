@@ -48,6 +48,7 @@ icon: "user-shield"
 | Arithmetic overflow changing results | Checked `i128` intermediates, static overflow bounds in `validate` | Implemented |
 | Accepting RISC Zero proofs with mismatched public inputs | `verify_receipt` recomputes the claim digest from the journal, so a journal, image id or control root that does not match the proof fails the pairing | Implemented (tested against a real proof, verified on testnet) |
 | Receipt from a different RISC Zero version | Seal selector checked against the registered one before the pairing | Implemented |
+| Forged RISC Zero receipt through under-constrained upstream circuits (any claim accepted from one valid receipt) | RISC Zero 3.1.0 circuits and Groth16 setup; `export-vk` emits their parameters, which the admin registers | Fixed in `0.0.5` (RISC Zero GHSA-g6qg-9j8p-7j87; GHSA-hmx6-94gg-9r4q). A verifier still registered with 3.0.x parameters stays forgeable until its admin re-registers |
 | Degenerate RISC Zero verifying key | `set_risc0_vk` refuses points off the curve and the point at infinity, which would unbind the journal from the proof | Implemented |
 | Admin registers a guest, key or config that accepts false results | The admin is trusted with what verifies; every admin setter emits a public `cfg_upd` event, so the change is visible on chain even though it is allowed | Accepted: detectable, not prevented |
 | Proof forgery by a quantum computer (Shor on BN254) | Crypto-agile verifier, hybrid and hash-based proofs, see [post-quantum readiness](/security/post-quantum) | Planned |

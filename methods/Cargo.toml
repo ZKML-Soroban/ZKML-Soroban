@@ -8,7 +8,7 @@ publish = false
 
 [build-dependencies]
 # Pinned exactly: RISC Zero API changes are a tracked project risk.
-risc0-build = "=3.0.6"
+risc0-build = "=3.0.7"
 
 [package.metadata.risc0]
 methods = ["guest"]

@@ -14,7 +14,7 @@ rustup target add wasm32v1-none
 ```
 
 - Optional: the [Stellar CLI](https://developers.stellar.org/docs/tools/cli) for deployment
-- Optional: the [RISC Zero toolchain](https://dev.risczero.com/api/zkvm/install) (`rzup`, version `3.0.6`) to run the zkVM guest
+- Optional: the [RISC Zero toolchain](https://dev.risczero.com/api/zkvm/install) (`rzup`, version `3.1.0`) to run the zkVM guest
 
 ## Platform notes
 
@@ -97,13 +97,13 @@ the `zkvm` feature of `zkml-prover`.
 ## Use the crates
 
 `zkml-common` and `zkml-verifier` are published to crates.io. The current
-release is `0.0.4` (2026-11-20); the first, `0.0.1`, came out on 2026-09-15.
+release is `0.0.5` (2026-11-24); the first, `0.0.1`, came out on 2026-09-15.
 Changes merged to `main` after a release reach crates.io with the next version
 bump, so depend on the Git repository if you need them sooner. `zkml-prover` is not published yet (`publish = false`).
 
 ```toml
 [dependencies]
-zkml-common = "0.0.4"
+zkml-common = "0.0.5"
 ```
 
 ## Run inference
