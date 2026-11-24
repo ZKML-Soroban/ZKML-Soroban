@@ -9,27 +9,21 @@ description = "End-to-end demo runner for zkml-soroban (not published)"
 publish = false
 
 [dependencies]
-# CLI argument parsing
 clap = { version = "4", features = ["derive"] }
-
-# Workspace dependencies
 zkml-prover = { path = "../zkml-prover" }
-zkml-verifier = { path = "../zkml-verifier" }
+zkml-common = { workspace = true, features = ["std", "poseidon"] }
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
-
-# Async runtime for contract interaction
-tokio = { version = "1", features = ["full"] }
-
-# Soroban SDK for contract interaction
-soroban-sdk = "21"
+# Reading a submitted transaction's fee from Stellar RPC (`getTransaction`).
+# Already in the lockfile through RISC Zero; blocking is enough for one call.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+base64 = "0.22"
 
 [features]
 default = []
-# Enable RISC Zero zkVM features (requires the rzup toolchain)
+# Prove in the runner instead of submitting a pre-built `--bundle`.
+# Real proving needs x86_64 Linux with Docker; see zkml-prover's manifest.
 zkvm = ["zkml-prover/zkvm"]
-# Enable Groth16 compression (requires x86_64 Linux with Docker at runtime)
 groth16 = ["zkml-prover/groth16"]
-# GPU acceleration; see the zkml-prover manifest for what each one covers.
 cuda = ["zkml-prover/cuda"]
 metal = ["zkml-prover/metal"]

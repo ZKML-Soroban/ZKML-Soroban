@@ -19,14 +19,14 @@ risk score, and verify it on-chain.
 | Synthetic dataset (`generate_dataset.py`) | Works                                             |
 | Training and ONNX export (`train_model.py`) | Works, exports with `target_opset=17`           |
 | ONNX import into `zkml-prover`          | Works: a decision tree of 43 nodes over 10 features |
-| Model commitment                        | Available via `zkml-prover commit` (JSON models)    |
+| Model commitment                        | Available via `zkml-prover commit` (JSON or ONNX)   |
 | Contract build and deployment           | Works with the `stellar` CLI ([guide](/guides/deployment)) |
 | On-chain receipt verification (`verify_receipt`) | Verified on testnet ([transactions](/guides/deployment#live-on-testnet)) |
 | Groth16 proof generation                | Works on x86_64 Linux with Docker (`prove --groth16`) |
 | RISC Zero parameter export              | Works (`export-vk --format soroban-args`)           |
 | End-to-end script (`deploy.sh`)         | Works: the KYC tree verified on testnet on 2026-11-20 ([transactions](/guides/deployment#live-on-testnet)) |
-| Demo runner (`zkml-demo`)               | Skeleton only                                       |
-| The trained ONNX model through the CLI  | Not yet: the CLI reads JSON models only             |
+| Demo runner (`zkml-demo`)               | Works: proves or takes `--bundle`, deploys, verifies and reports the success criteria |
+| The trained ONNX model through the CLI  | Works: every subcommand takes `.onnx` files         |
 
 ## 1. Generate the dataset
 
@@ -95,6 +95,28 @@ sequenceDiagram
     Contract-->>Anchor: verified event (model_hash, output)
     Anchor->>Contract: get_result
 ```
+
+## 4. Run the demo runner
+
+```bash
+# Prove here (x86_64 Linux with Docker), deploy a fresh verifier, verify, report:
+cargo run --release -p zkml-demo --features groth16,zkvm --   --model examples/kyc-demo/kyc_decision_tree.onnx -i "<10 features>"   --opening target/kyc-demo/model.opening --source zkml-demo --report report.json
+
+# Anywhere else: submit a bundle proved on Linux, with the RISC Zero
+# parameters exported next to it:
+cargo run -p zkml-demo -- --model examples/models/kyc_tree.json -i "0.6,0.4,0.0"   --opening model.opening --bundle bundle.json --risc0-params risc0.json
+```
+
+The runner checks the bundle against the native run before submitting it: the
+model commitment under the opening, the output and the class must match. Then
+it deploys the verifier with the `stellar` CLI (unless `--contract` names one),
+registers the bundle's guest, submits `verify_receipt`, reads `get_result` back
+and prints a report: stage timings, seal and journal sizes, the fee charged and
+each Phase 1 criterion (proof under 500 bytes, end to end under 60 s, the
+on-chain result equal to the native prediction) marked pass, fail or not
+measured. `--report` also writes it as JSON. Local proving takes about half an
+hour, so the latency criterion fails until remote proving lands; with
+`--bundle` it is not measured.
 
 ## Mapping risk tiers to the public inputs
 
