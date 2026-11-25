@@ -22,7 +22,7 @@ bundle is readable and roughly half the size of the v1 JSON.
   "seal": "e71e66200c5054022e9b27c4...",
   "journal": "5a4b4d4c0100010073e881eda8...",
   "meta": {
-    "prover_version": "0.0.5",
+    "prover_version": "0.0.6",
     "created_at": 1790002334,
     "cycles": 9437184,
     "timings": { "prove_and_compress_ms": 1172526, "total_ms": 1172573 }

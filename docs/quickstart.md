@@ -97,13 +97,13 @@ the `zkvm` feature of `zkml-prover`.
 ## Use the crates
 
 `zkml-common` and `zkml-verifier` are published to crates.io. The current
-release is `0.0.5` (2026-11-24); the first, `0.0.1`, came out on 2026-09-15.
+release is `0.0.6` (2026-11-24); the first, `0.0.1`, came out on 2026-09-15.
 Changes merged to `main` after a release reach crates.io with the next version
 bump, so depend on the Git repository if you need them sooner. `zkml-prover` is not published yet (`publish = false`).
 
 ```toml
 [dependencies]
-zkml-common = "0.0.5"
+zkml-common = "0.0.6"
 ```
 
 ## Run inference
