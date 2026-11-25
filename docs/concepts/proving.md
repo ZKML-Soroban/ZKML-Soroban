@@ -19,15 +19,16 @@ to a Groth16 proof, and packages the result as a verification bundle.
 | Verification key export (`export-vk`)                   | Implemented                             |
 | `VerificationBundleV2` with real proof bytes            | Implemented                             |
 | On-chain verification of those bundles (`verify_receipt`) | Implemented, verified on testnet        |
-| Remote proving (Boundless)                              | Not implemented (returns an error)      |
+| Remote proving (Boundless)                              | Implemented behind `boundless`; tested against a mock market, no live run recorded yet |
 
 <Warning>
 Without a GPU, Groth16 compression shells out to a Docker image that runs the
 Circom witness generator, and that image is published for x86_64 only (risc0
 issue #1749). On any other platform `prove_groth16` fails immediately with
 `ProveError::UnsupportedPlatform` instead of failing deep inside the prover.
-RISC Zero shut down the Bonsai proving service in December 2025, so there is no
-hosted fallback; the remote path is reserved for Boundless.
+RISC Zero shut down the Bonsai proving service in December 2025; the remote
+path is the Boundless market (`--backend boundless`, see the
+[CLI guide](/guides/cli#prove)), which needs neither.
 </Warning>
 
 ## Platform support
@@ -265,7 +266,7 @@ crates/zkml-prover   host: generate_receipt, prove_groth16, verify_bundle, bundl
 ## Known limitations
 
 - Bundles have been verified on testnet, not on mainnet.
-- Remote proving (`--backend boundless`) returns `ProveError::RemoteBackend`.
+- Remote proving (`--backend boundless`) has been tested against a mock market only; its price and latency on the live market are not measured yet.
 - Compression needs roughly 10 GB of RAM and takes minutes on a laptop.
 - Model and input commitments share domain `0` in the proving path.
 - The legacy `prove --no-proof` output carries public inputs but no proof. It

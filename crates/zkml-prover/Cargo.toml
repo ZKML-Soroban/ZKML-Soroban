@@ -43,8 +43,17 @@ cuda = ["groth16", "risc0-zkvm/cuda"]
 # Metal path for the Groth16 wrap, so compression on macOS still needs Docker
 # with x86 emulation. See `docs/concepts/proving.md`.
 metal = ["zkvm", "risc0-zkvm/metal"]
+# Remote proving on the Boundless market (`prove --groth16 --backend boundless`).
+# It needs neither Docker nor x86_64: the market's provers do the proving. The
+# SDK brings an EVM client stack, so default builds do not pull it in.
+boundless = ["groth16", "dep:boundless-market", "dep:tokio", "dep:url"]
 
 [dependencies]
+# Boundless market client, behind the `boundless` feature. Pinned exactly; its
+# risc0-zkvm requirement (^3.0.4) resolves against the workspace pin.
+boundless-market = { version = "=2.0.1", optional = true }
+tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time"] }
+url = { version = "2", optional = true }
 zkml-common = { workspace = true, features = ["std", "sha2", "poseidon"] }
 serde = { workspace = true, features = ["std"] }
 serde_json = "1"

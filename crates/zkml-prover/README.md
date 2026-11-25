@@ -82,9 +82,10 @@ RISC0_DEV_MODE=0 cargo test -p zkml-prover --features groth16 \
 `RISC0_DEV_MODE=1` produces fake receipts with no seal, so `prove_groth16`
 refuses to run under it instead of emitting a bundle that looks real.
 
-Remote proving (`--backend boundless`) is not implemented. RISC Zero shut down
-Bonsai in December 2025; the replacement is Boundless or a self-hosted Bento
-prover.
+Remote proving: `--backend boundless` with the `boundless` feature requests a
+standalone Groth16 proof on the Boundless market, which replaced RISC Zero's
+Bonsai (shut down in December 2025). Configuration is read from the
+environment; see `docs/guides/cli.md`.
 
 ## Public proving API
 

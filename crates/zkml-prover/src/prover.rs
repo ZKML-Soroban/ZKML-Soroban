@@ -81,8 +81,23 @@ pub enum ProveError {
     DevModeHasNoSeal,
 
     /// A remote proving backend was requested but is not wired up yet.
-    #[error("remote proving backend is not available: {0}")]
+    #[error("remote proving: {0}")]
     RemoteBackend(String),
+
+    /// The market did not fulfill the request before it expired.
+    #[error("proof request {request_id} was not fulfilled: {detail}")]
+    RemoteUnfulfilled { request_id: String, detail: String },
+
+    /// Gave up waiting; the request may still be fulfilled later.
+    #[error("gave up on proof request {request_id} after {waited_secs} s; look it up on the market before submitting again")]
+    RemoteTimeout {
+        request_id: String,
+        waited_secs: u64,
+    },
+
+    /// What came back is not a Groth16 seal the contract would accept.
+    #[error("proof request {request_id} returned an unusable proof: {detail}")]
+    RemoteWrongProofType { request_id: String, detail: String },
 
     /// Serialization of the bundle failed.
     #[error("serialization: {0}")]
@@ -94,15 +109,10 @@ pub enum ProveError {
 pub enum ProverBackend {
     /// Compress locally. Requires x86_64 Linux with Docker.
     Local,
-    /// Send the work to a remote proving market.
-    ///
-    /// RISC Zero shut down Bonsai in December 2025; the replacement is the
-    /// Boundless market. The client is not implemented yet, so this variant
-    /// currently fails with [`ProveError::RemoteBackend`].
-    Remote {
-        /// Endpoint of the proving market.
-        endpoint: String,
-    },
+    /// Prove on the Boundless market (`boundless` feature). RISC Zero shut
+    /// down Bonsai in December 2025; Boundless replaced it. Needs neither
+    /// Docker nor x86_64. See [`crate::remote::prove_remote`].
+    Boundless,
 }
 
 impl ProverBackend {
@@ -110,9 +120,7 @@ impl ProverBackend {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
             "local" => Some(ProverBackend::Local),
-            "boundless" | "remote" => Some(ProverBackend::Remote {
-                endpoint: "https://boundless.network".to_string(),
-            }),
+            "boundless" | "remote" => Some(ProverBackend::Boundless),
             _ => None,
         }
     }
@@ -357,10 +365,11 @@ mod zkvm_prove {
         opening: &Opening,
         backend: &ProverBackend,
     ) -> Result<ProveOutput, ProveError> {
-        if let ProverBackend::Remote { endpoint } = backend {
-            return Err(ProveError::RemoteBackend(format!(
-                "{endpoint}: the Boundless client is not implemented yet"
-            )));
+        if *backend == ProverBackend::Boundless {
+            return Err(ProveError::RemoteBackend(
+                "prove_groth16 proves locally; use remote::prove_remote for the Boundless market"
+                    .into(),
+            ));
         }
         if dev_mode_enabled() {
             return Err(ProveError::DevModeHasNoSeal);
@@ -601,10 +610,14 @@ mod tests {
     #[test]
     fn backend_parsing() {
         assert_eq!(ProverBackend::parse("local"), Some(ProverBackend::Local));
-        assert!(matches!(
+        assert_eq!(
             ProverBackend::parse("boundless"),
-            Some(ProverBackend::Remote { .. })
-        ));
+            Some(ProverBackend::Boundless)
+        );
+        assert_eq!(
+            ProverBackend::parse("remote"),
+            Some(ProverBackend::Boundless)
+        );
         assert_eq!(ProverBackend::parse("nope"), None);
     }
 
