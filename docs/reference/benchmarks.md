@@ -86,7 +86,7 @@ cargo test -p zkml-verifier test_verifier_accept_path_and_resource_budget -- --n
 Proving cost follows the guest's cycle count. `zkml-prover cycles` executes the
 guest without proving and reports it in seconds; CI compares both example
 models with `crates/zkml-prover/cycles-baseline.json` on the reproducible guest
-and fails when one grows by more than 5%. RISC Zero 3.1.0, guest `fcf4b6b1...`:
+and fails when one grows by more than 5%. RISC Zero 3.1.0, guest `51517769...` (`0.0.6`):
 
 | Model | Input | User cycles | Padded (what proving pays for) | Segments |
 | ----- | ----- | ----------- | ------------------------------ | -------- |

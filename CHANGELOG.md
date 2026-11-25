@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-11-24
+
+Contract interface `VERSION` 11, ONNX models in the CLI, an end-to-end demo
+runner, cycle and WASM budget gates in CI, and remote proving on the Boundless
+market. A verifier deployed from `0.0.5` keeps working but does not get the new
+checks; see Breaking for the interface changes. The reproducible guest's image
+id changes to
+`51517769482348c21ab73f2b6d6971e329a4a454f628a1e1938b0fcffc75e26e`.
+
 ### Breaking
 - Verifier contract interface `VERSION` 11. `accept_admin` returns
   `Result<(), VerificationError>` and, without a live proposal, the new
@@ -79,10 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always `0`. A classifier tree's leaf holds the predicted class (the ONNX
   importer and `tools/sklearn_to_json.py` write it that way), so the KYC risk
   tier now arrives in `class_label` as well as in `output`. The guest compiles
-  this, so the reproducible image id changes to
-  `fcf4b6b101f93c6bb7b6b89e778c494d113e55c0e6a34129de6b30257617f557`, and the
-  golden receipt and RISC Zero parameters in `crates/zkml-verifier/testdata/`
-  are regenerated from it.
+  this, so the reproducible image id changes (to
+  `51517769482348c21ab73f2b6d6971e329a4a454f628a1e1938b0fcffc75e26e` with the
+  `0.0.6` version), and the golden receipt and RISC Zero parameters in
+  `crates/zkml-verifier/testdata/` are regenerated from it.
 
 ### Fixed
 - Verifier tests that could not fail now test what their names say:
@@ -545,7 +554,8 @@ June 2026 Phase 1 off-chain milestone and was never published.
 - Verifier contract: public input parsing, events, and query methods.
 - Documentation set, CI with fmt/clippy, and contributor tooling.
 
-[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/ZKML-Soroban/ZKML-Soroban/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.6
 [0.0.5]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.5
 [0.0.4]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.4
 [0.0.3]: https://github.com/ZKML-Soroban/ZKML-Soroban/releases/tag/v0.0.3
